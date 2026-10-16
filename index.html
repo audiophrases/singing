@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="google" content="notranslate" />
+    <meta name="description" content="Singing: songs, karaoke and lyric games for the English class. Free, no ads, no sign-up." />
+    <meta name="theme-color" content="#605dff" />
+    <title>Singing · Songs and games for English class</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" />
+    <link rel="stylesheet" href="css/singing.css?v=1" />
+  </head>
+  <body>
+    <header class="topbar" id="topbar">
+      <a class="brand" href="#/"><span class="brand-mic" aria-hidden="true">🎤</span> Singing</a>
+      <nav class="topnav" aria-label="Main">
+        <a href="#/" data-nav="library">Songs</a>
+        <a href="#/studio" data-nav="studio">Studio</a>
+        <a href="#/chant" data-nav="chant">Chant maker</a>
+        <a href="#/party" data-nav="party">Party</a>
+        <a href="#/help" data-nav="help">Help</a>
+      </nav>
+      <div class="topbar-right">
+        <button id="teamsBtn" class="btn btn-sm teams-chip" type="button" title="Teams and scores (T)">👥 Teams</button>
+      </div>
+    </header>
+
+    <main id="app" class="container" tabindex="-1"></main>
+
+    <div id="stage" class="stage hidden" aria-live="polite"></div>
+    <div id="modalRoot"></div>
+    <div id="toasts" class="toasts" aria-live="polite"></div>
+
+    <noscript><p class="container">Singing needs JavaScript to play music.</p></noscript>
+    <script type="module" src="js/main.js?v=1"></script>
+  </body>
+</html>

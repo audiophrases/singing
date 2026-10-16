@@ -745,6 +745,12 @@ const INSTRUMENTS = {
         bp.connect(g);
         g.connect(sum);
       }
+      // A little of the raw buzz, lowpassed, keeps the fundamental clear.
+      const body = sy.filter('lowpass', Math.min(1200, freq * 1.6), 0.7);
+      const bodyGain = sy.gain(0.9);
+      src.connect(body);
+      body.connect(bodyGain);
+      bodyGain.connect(sum);
       sum.connect(out);
       src.start(t);
       src.stop(end);
