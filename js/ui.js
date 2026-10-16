@@ -43,6 +43,12 @@ export function clear(el) {
   return el;
 }
 
+// Append children the way h() does: null/false are skipped, arrays flattened.
+export function add(el, ...children) {
+  append(el, children);
+  return el;
+}
+
 export function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }

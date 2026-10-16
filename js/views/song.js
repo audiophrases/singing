@@ -1,7 +1,7 @@
 /*
  * A song's page: listen, change the band, read the lyrics, pick an activity.
  */
-import { h, clear, levelBadge, toast, confirmDialog, typingTarget } from '../ui.js';
+import { h, add, levelBadge, toast, confirmDialog, typingTarget } from '../ui.js';
 import { getSong, deleteUserSong, saveUserSong, newSongId } from '../store.js';
 import { makeTrack } from '../track.js';
 import { transportBar, knobsBar, applyKnobs } from '../controls.js';
@@ -104,7 +104,7 @@ export async function render(el, { id }) {
   }
   const vocab = h('div', { class: 'vocab-list' }, (song.vocab || []).map((w) => h('button', { class: 'chip', type: 'button', title: 'Listen', onclick: () => speak(w) }, `🔊 ${w}`)));
 
-  el.append(
+  add(el,
     h('div', { class: 'row', style: { marginBottom: '.6rem' } }, h('a', { class: 'btn btn-sm ghost', href: '#/' }, '← All songs')),
     head,
     acts,
