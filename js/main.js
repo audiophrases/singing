@@ -36,9 +36,12 @@ let cleanup = null;
 let renderSeq = 0;
 
 function parseHash() {
-  const raw = decodeURIComponent(location.hash.replace(/^#/, '')) || '/';
-  const [path, qs] = raw.split('?');
-  const query = Object.fromEntries(new URLSearchParams(qs || ''));
+  const raw = location.hash.replace(/^#/, '') || '/';
+  const q = raw.indexOf('?');
+  const rawPath = q >= 0 ? raw.slice(0, q) : raw;
+  let path = rawPath;
+  try { path = decodeURIComponent(rawPath); } catch { /* keep as is */ }
+  const query = Object.fromEntries(new URLSearchParams(q >= 0 ? raw.slice(q + 1) : ''));
   return { path, query };
 }
 

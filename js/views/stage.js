@@ -70,23 +70,35 @@ export async function render(root, params) {
 
   const viz = startViz(canvas, { live: track.kind === 'synth' });
   cleanups.push(() => viz.stop());
-  const syncViz = () => viz.setPlaying(track.playing);
-  ['play', 'pause', 'end', 'barrier'].forEach((ev) => cleanups.push(track.on(ev, syncViz)));
 
-  const transport = transportBar(track);
-  const knobs = knobsBar(track, song);
-  cleanups.push(() => transport.destroy());
-  const defaultBottom = h('div', { class: 'row', style: { width: '100%', flexWrap: 'wrap', gap: '.6rem' } }, transport, knobs);
+  // Transport, knobs and visualizer follow whichever track is current.
+  let transport = null;
+  let defaultBottom = null;
+  let trackOffs = [];
+  let bottomMode = null;
+  const bindTrack = () => {
+    trackOffs.forEach((off) => off());
+    if (transport) transport.destroy();
+    const syncViz = () => viz.setPlaying(track.playing);
+    trackOffs = ['play', 'pause', 'end', 'barrier'].map((ev) => track.on(ev, syncViz));
+    transport = transportBar(track);
+    defaultBottom = h('div', { class: 'row', style: { width: '100%', flexWrap: 'wrap', gap: '.6rem' } }, transport, knobsBar(track, song));
+    if (ctx) ctx.transport = transport;
+  };
+  cleanups.push(() => { trackOffs.forEach((off) => off()); if (transport) transport.destroy(); });
 
   const setBottom = (el) => {
+    bottomMode = el;
     clear(bottom);
     if (el === false) { bottom.classList.add('hidden'); return; }
     bottom.classList.remove('hidden');
     bottom.append(el || defaultBottom);
   };
+  let ctx = null;
+  bindTrack();
   setBottom(null);
 
-  const ctx = {
+  ctx = {
     song,
     track,
     timeline: track.timeline,
@@ -111,6 +123,14 @@ export async function render(root, params) {
     },
     finish(result) { showResult(result); },
     restart() { location.hash = `#/play/${encodeURIComponent(song.id)}/${game.id}?r=${Date.now().toString(36)}`; },
+    replaceTrack(next) {
+      track.destroy();
+      track = next;
+      ctx.track = next;
+      ctx.timeline = next.timeline;
+      bindTrack();
+      setBottom(bottomMode);
+    },
   };
 
   function openOptions() {
