@@ -1,0 +1,10 @@
+{
+  "name": "singing",
+  "private": true,
+  "type": "module",
+  "description": "Singing: songs, karaoke and lyric games for the English class.",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "serve": "npx http-server -p 8080 -c-1 ."
+  }
+}
