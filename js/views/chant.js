@@ -2,8 +2,8 @@
  * Song maker: type any English text, choose a mood, and Singing composes a
  * tune and chords for it - ready for karaoke and every game.
  */
-import { h, clear, toast } from '../ui.js';
-import { composeSong, MOODS } from '../music/composer.js';
+import { h, clear, toast, debounce, fmtTime } from '../ui.js';
+import { composeSong, checkLyrics, MOODS } from '../music/composer.js';
 import { SynthTrack } from '../music/player.js';
 import { compileSong } from '../music/score.js';
 import { transportBar, knobsBar } from '../controls.js';
@@ -35,7 +35,16 @@ export async function render(el) {
   const titleIn = h('input', { type: 'text', value: state.title, placeholder: 'Song title', maxlength: 60 });
   titleIn.addEventListener('input', () => { state.title = titleIn.value; saveDraft(); });
   const textIn = h('textarea', { class: 'maker-text', rows: 9, placeholder: 'Type or paste your text. One line = one line of the song. A blank line starts a new verse.' }, state.text);
-  textIn.addEventListener('input', () => { state.text = textIn.value; saveDraft(); });
+  const advice = h('ul', { class: 'maker-advice', 'aria-live': 'polite' });
+  const status = h('div', { class: 'maker-status', role: 'status', 'aria-live': 'polite' });
+  const showAdvice = () => {
+    const res = checkLyrics(state.text);
+    clear(advice);
+    for (const n of res.notes) advice.append(h('li', { class: n.level }, n.text));
+    return res;
+  };
+  const adviseSoon = debounce(showAdvice, 250);
+  textIn.addEventListener('input', () => { state.text = textIn.value; saveDraft(); adviseSoon(); });
   const moodRow = h('div', { class: 'style-strip' });
   const drawMoods = () => {
     clear(moodRow);
@@ -47,15 +56,30 @@ export async function render(el) {
   const keySel = h('select', { style: { width: 'auto' } }, ['C', 'D', 'E', 'F', 'G', 'A', 'Bb'].map((k) => h('option', { value: k, selected: k === state.key }, k)));
   keySel.addEventListener('change', () => { state.key = keySel.value; saveDraft(); make(); });
 
-  const preview = h('div', { class: 'maker-preview' });
+  const preview = h('div', { class: 'maker-preview' }, h('p', { class: 'small' }, 'Your song will appear here.'));
 
-  function make({ reroll = false } = {}) {
+  function setStatus(level, text) {
+    status.className = `maker-status ${level}`;
+    status.textContent = text;
+  }
+
+  // fromButton: the teacher asked for it, so show the result (scroll to it).
+  function make({ reroll = false, fromButton = false } = {}) {
     if (reroll) state.seed = Math.floor(Math.random() * 1e6) + 1;
     saveDraft();
+    const check = showAdvice();
+    if (!check.ok) {
+      setStatus('bad', `⚠️ ${check.notes[0].text}`);
+      if (fromButton) {
+        textIn.classList.remove('shake');
+        void textIn.offsetWidth;
+        textIn.classList.add('shake');
+        textIn.focus();
+      }
+      return;
+    }
     if (track) { track.destroy(); track = null; }
     if (transport) { transport.destroy(); transport = null; }
-    clear(preview);
-    if (!state.text.trim()) { preview.append(h('p', { class: 'small' }, 'Type some text first.')); return; }
     const words = [...new Set(state.text.split(/\s+/).map(normWord).filter((w) => w.length > 3 && !STOPWORDS.has(w)))].slice(0, 10);
     let c;
     try {
@@ -64,10 +88,11 @@ export async function render(el) {
     } catch (e) {
       console.error(e);
       song = null;
-      preview.append(h('p', { class: 'bad' }, `Singing could not make a song from this text (${e.message}). Try shorter lines, or put each line of the song on its own line.`));
+      setStatus('bad', `⚠️ Singing could not make a song from this text (${e.message}). Try shorter lines, with each line of the song on its own line.`);
       return;
     }
     if (c.warnings.length) console.warn(c.warnings);
+    clear(preview);
     track = new SynthTrack(song);
     transport = transportBar(track);
     const lyrics = h('div', { class: 'lyrics-panel' }, c.lines.map((l) => h('div', { class: 'lp-line' }, l.sectionStart ? h('b', null, `${l.section}: `) : null, l.text)));
@@ -81,6 +106,9 @@ export async function render(el) {
       h('h3', { class: 'section-title' }, '📜 Your song'),
       lyrics,
     );
+    const warned = check.notes.some((n) => n.level === 'warn');
+    setStatus(warned ? 'warn' : 'ok', `✅ Your song is ready: ${c.lines.length} line${c.lines.length === 1 ? '' : 's'}, ${fmtTime(track.duration)}.${warned ? ' See the notes above.' : ''} Listen below.`);
+    if (fromButton) preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function save() {
@@ -104,9 +132,12 @@ export async function render(el) {
       h('div', { class: 'row' }, h('span', { class: 'filter-label' }, 'Try'), EXAMPLES.map((ex) => h('button', { class: 'chip', type: 'button', onclick: () => { state.title = ex.title; state.text = ex.text; titleIn.value = ex.title; textIn.value = ex.text; make(); } }, ex.title))),
       h('label', null, 'Title'), titleIn,
       h('label', null, 'Your text'), textIn,
+      h('p', { class: 'small' }, 'One line of the song on each line, 4 to 12 syllables each. Leave a blank line between verses.'),
+      advice,
       h('label', null, 'Mood'), moodRow,
       h('div', { class: 'row top-space' }, h('span', { class: 'knob-label' }, 'Key'), keySel, h('span', { class: 'grow' }),
-        h('button', { class: 'btn primary btn-lg', type: 'button', onclick: () => make() }, '✨ Make my song')),
+        h('button', { class: 'btn primary btn-lg', type: 'button', onclick: () => make({ fromButton: true }) }, '✨ Make my song')),
+      status,
     ),
     h('section', { class: 'card' }, preview),
   );

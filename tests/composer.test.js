@@ -74,3 +74,17 @@ test('a very long line is split into singable lines', () => {
   const plain = composeSong(Array(30).fill('la').join(' '), { seed: 2 });
   assert.deepEqual(compileSong(plain).warnings, []);
 });
+
+test('lyrics advice explains problems before composing', async () => {
+  const { checkLyrics } = await import('../js/music/composer.js');
+  assert.equal(checkLyrics('').ok, false);
+  assert.equal(checkLyrics('🎵 123').ok, false);
+  const long = checkLyrics(`${Array(13).fill('around the world').join(', ')}.`);
+  assert.equal(long.ok, true);
+  assert.equal(long.lines, 5);
+  assert.ok(long.notes.some((n) => n.level === 'warn' && /Line 1 is long/.test(n.text)));
+  assert.equal(checkLyrics(Array(70).fill('one two three four').join('\n')).ok, false);
+  const good = checkLyrics('I like apples, I like pears,\nI like walking up the stairs.');
+  assert.deepEqual(good.notes.map((n) => n.level), ['ok']);
+  assert.ok(checkLyrics('Me gusta la canción').notes.some((n) => /canción/.test(n.text)));
+});

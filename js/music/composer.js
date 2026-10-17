@@ -183,6 +183,65 @@ export function splitLongLine(raw) {
   return balance(pieces, ' ');
 }
 
+export const MAX_SONG_LINES = 60;
+
+/*
+ * Advice about a text before it is turned into a song.
+ * -> { ok, lines, verses, notes: [{ level: 'ok'|'warn'|'bad', text }] }
+ * ok is false when the text cannot be made into a song at all.
+ */
+export function checkLyrics(text) {
+  const notes = [];
+  const raw = String(text || '').replace(/\r/g, '');
+  if (!/[A-Za-z]/.test(raw)) {
+    notes.push({ level: 'bad', text: raw.trim() ? 'There are no English words to sing. Type the words of your song.' : 'Type some text first: one line of the song on each line.' });
+    return { ok: false, lines: 0, verses: 0, notes };
+  }
+  const verses = raw.split(/\n\s*\n/).map((v) => v.split('\n').map((l) => l.trim()).filter(Boolean)).filter((v) => v.length);
+  let lineNo = 0;
+  let total = 0;
+  const counts = [];
+  const long = [];
+  const short = [];
+  for (const verse of verses) {
+    for (const line of verse) {
+      lineNo += 1;
+      const n = countSyl(line);
+      const parts = splitLongLine(line);
+      total += parts.length;
+      for (const p of parts) counts.push(countSyl(p));
+      if (parts.length > 1) long.push({ lineNo, n, parts: parts.length });
+      else if (n <= 2) short.push(lineNo);
+    }
+  }
+  if (total > MAX_SONG_LINES) {
+    notes.push({ level: 'bad', text: `This text makes ${total} lines of song - the most is ${MAX_SONG_LINES} (about 4 minutes). Use part of the text, or make two songs.` });
+    return { ok: false, lines: total, verses: verses.length, notes };
+  }
+  for (const l of long.slice(0, 3)) {
+    notes.push({ level: 'warn', text: `Line ${l.lineNo} is long (${l.n} syllables), so it will be split into ${l.parts} lines of the song.` });
+  }
+  if (long.length > 3) notes.push({ level: 'warn', text: `${long.length - 3} more long lines will be split too.` });
+  if (long.length) notes.push({ level: 'warn', text: 'Tip: put each line of the song on its own line, with 4 to 12 syllables each.' });
+  if (short.length) {
+    notes.push({ level: 'warn', text: `${short.length === 1 ? `Line ${short[0]} is` : `Lines ${short.slice(0, 5).join(', ')} are`} very short, so the notes will be long. That is fine for a chorus like "Hey!" - or join it to the next line.` });
+  }
+  // Words with letters English does not use (canción, garçon).
+  const odd = [...new Set(raw.split(/\s+/)
+    .filter((w) => /\p{L}/u.test(w.replace(/[A-Za-z]/g, '')))
+    .map((w) => w.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, '')))];
+  if (odd.length) {
+    notes.push({ level: 'warn', text: `The song maker is made for English, so these words may be sung strangely: ${odd.slice(0, 4).join(', ')}${odd.length > 4 ? '…' : ''}` });
+  }
+  if (total >= 40) notes.push({ level: 'warn', text: `A long song: ${total} lines.` });
+  if (!notes.length) {
+    const lo = Math.min(...counts);
+    const hi = Math.max(...counts);
+    notes.push({ level: 'ok', text: `${total} line${total === 1 ? '' : 's'} in ${verses.length} verse${verses.length === 1 ? '' : 's'}, ${lo === hi ? lo : `${lo}-${hi}`} syllables per line - ready to sing.` });
+  }
+  return { ok: true, lines: total, verses: verses.length, notes };
+}
+
 function signature(syls, slots) {
   return `${syls.length}:${slots}:${syls.map((s) => s.stress).join('')}`;
 }
