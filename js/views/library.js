@@ -171,7 +171,7 @@ export async function render(el) {
         h('div', { class: 'row' },
           h('button', { class: 'btn primary', type: 'button', onclick: surpriseMe }, '🎲 Surprise me'),
           h('a', { class: 'btn', href: '#/studio' }, '➕ Add a song'),
-          h('a', { class: 'btn', href: '#/chant' }, '🗣️ Chant maker'),
+          h('a', { class: 'btn', href: '#/chant' }, '✨ Song maker'),
           h('a', { class: 'btn', href: '#/party' }, '🎉 Party games'),
           continueCard,
         ),

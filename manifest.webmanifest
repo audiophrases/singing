@@ -1,0 +1,10 @@
+{
+  "name": "Singing",
+  "short_name": "Singing",
+  "description": "Songs, karaoke and lyric games for the English class.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f7f8fb",
+  "theme_color": "#605dff",
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
