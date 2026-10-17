@@ -106,7 +106,11 @@ export async function start(ctx) {
     }
   }
 
+  // A recording with a karaoke version: the class is the singer.
+  if (track.hasKaraoke) track.setSinger(false);
+
   ctx.options(() => h('div', null,
+    track.hasKaraoke ? toggle('🎤 The singer on the recording', track.singer, (v) => track.setSinger(v)) : null,
     toggle('🟡 Bouncing ball', opts.ball, (v) => { opts.ball = v; setSettings({ ball: v }); }),
     toggle('🖼️ Pictures', opts.pics, (v) => { opts.pics = v; setSettings({ showPics: v }); lastIdx = -99; }),
     toggle('🌍 Translations (when the song has them)', opts.tr, (v) => { opts.tr = v; setSettings({ translations: v }); lastIdx = -99; }),

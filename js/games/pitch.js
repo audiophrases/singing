@@ -4,7 +4,8 @@
  * children, teens and teachers can all play the same song.
  *
  * The notes come from the built-in band, or for a recording from the
- * UltraStar file imported in the Studio (the singer on the record guides).
+ * UltraStar file imported in the Studio (the singer on the record guides,
+ * or its karaoke version plays for "I know it").
  */
 import { h, clear } from '../ui.js';
 import { openMic } from '../mic.js';
@@ -17,7 +18,9 @@ import { sfx, floatEmoji } from '../sfx.js';
 export async function start(ctx) {
   const { track, main } = ctx;
   const band = track.kind === 'synth';
-  const recorded = band ? [] : track.timeline.lines.flatMap((l) => l.notes.map((n) => ({ ...n, hit: 0, total: 0, line: l.index })));
+  const kar = !band && !!track.hasKaraoke;
+  if (kar) track.setSinger(true);
+  const recorded =band ? [] : track.timeline.lines.flatMap((l) => l.notes.map((n) => ({ ...n, hit: 0, total: 0, line: l.index })));
   if (!band && !recorded.length) {
     clear(main).append(h('div', { class: 'setup-card' }, h('h2', null, 'Pitch Pal needs the notes of the song: a built-in song, or a song imported from an UltraStar file in the Studio.')));
     return null;
@@ -31,7 +34,9 @@ export async function start(ctx) {
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Level'),
         choiceRow([[1.2, '🌱 Easy'], [0.8, '🎤 Normal'], [0.45, '🏆 Pro']], conf.tol, (v) => { conf.tol = v; })),
       band ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Melody'),
-        choiceRow([[true, '🤖 Help me'], [false, '🙊 I know it']], conf.guide, (v) => { conf.guide = v; })) : null),
+        choiceRow([[true, '🤖 Help me'], [false, '🙊 I know it']], conf.guide, (v) => { conf.guide = v; })) : null,
+      kar ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Music'),
+        choiceRow([[true, '🎤 With the singer'], [false, '🙊 Karaoke version']], conf.guide, (v) => { conf.guide = v; })) : null),
     startLabel: '🎙️ Start (allow the microphone)',
     onStart: async () => {
       try {
@@ -70,7 +75,7 @@ export async function start(ctx) {
   }
 
   function begin() {
-    if (band && !conf.guide) track.setMute('lead', true);
+    if ((band || kar) && !conf.guide) track.setMute('lead', true);
     const notes = band ? bandNotes() : recorded;
     const lo = Math.min(...notes.map((n) => n.midi)) - 3;
     const hi = Math.max(...notes.map((n) => n.midi)) + 3;

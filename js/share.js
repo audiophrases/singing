@@ -31,6 +31,7 @@ export function packableSong(song) {
   delete s.createdAt;
   delete s.updatedAt;
   if (s.audio) delete s.audio.mediaId;
+  if (s.karaoke) delete s.karaoke.mediaId;
   return s;
 }
 
@@ -85,7 +86,7 @@ export async function shareLink(song) {
   openModal([
     h('h2', null, '🔗 Share this song'),
     h('p', { class: 'small' }, 'Anyone who opens this link gets the song - lyrics, tune, pictures and timing. Nothing is uploaded: the song is inside the link.'),
-    song.source === 'audio' ? h('p', { class: 'small bad' }, 'Your audio file is not in the link. The other teacher will need to add their own copy.') : null,
+    song.source === 'audio' ? h('p', { class: 'small bad' }, `Your audio file${song.karaoke ? ' and its karaoke version are' : ' is'} not in the link. The other teacher will need to add their own copy.`) : null,
     input,
     h('div', { class: 'row top-space' }, h('button', { class: 'btn primary', type: 'button', onclick: copy }, '📋 Copy link'), h('span', { class: 'small' }, `${link.length} characters`)),
     h('div', { class: 'share-qr-wrap' }, qr),

@@ -235,6 +235,8 @@ function usMeta(meta) {
     title: meta.TITLE || '',
     artist: meta.ARTIST || '',
     audio: meta.AUDIO || meta.MP3 || '',
+    instrumental: meta.INSTRUMENTAL || '',
+    vocals: meta.VOCALS || '',
     language: meta.LANGUAGE || '',
     youtubeId: yt ? yt[1] : '',
   };

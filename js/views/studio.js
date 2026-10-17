@@ -4,16 +4,29 @@
  * along to sync each line - or import a timing file (UltraStar, LRC, SRT,
  * WebVTT) and just line it up with the music.
  */
-import { h, clear, toast, fmtTime, confirmDialog } from '../ui.js';
+import { h, clear, toast, fmtTime, confirmDialog, openModal } from '../ui.js';
 import { getSong, saveUserSong, newSongId, userSongs } from '../store.js';
 import { youtubeId } from '../media/youtube.js';
-import { putMedia, newMediaId } from '../media/store.js';
+import { putMedia, getMedia, newMediaId } from '../media/store.js';
 import { decodeText, readTimingFile, shiftSynced } from '../media/timing.js';
+import { decodeMono, features, alignNotes, alignRecordings } from '../media/align.js';
 import { parseLyrics, lyricsText } from '../lyrics/lines.js';
 import { makeTrack } from '../track.js';
 import { compileSong } from '../music/score.js';
 
 const EMOJIS = ['🎵', '🎤', '🎸', '🎹', '🥁', '🎺', '🌟', '❤️', '🌈', '🌍', '🐶', '🚀', '☀️', '🌙', '🎉', '🍕', '⚽', '🦄'];
+
+// Resolves with the index of the button pressed, or -1.
+function choose(title, message, labels) {
+  return new Promise((resolve) => {
+    let picked = -1;
+    const m = openModal([
+      h('h2', null, title),
+      h('p', null, message),
+      h('div', { class: 'modal-actions' }, labels.map((label, i) => h('button', { class: `btn${i === 0 ? ' primary' : ''}`, type: 'button', onclick: () => { picked = i; m.close(); } }, label))),
+    ], { onClose: () => resolve(picked) });
+  });
+}
 
 export async function render(el, { id }) {
   const existing = id ? getSong(id) : null;
@@ -47,23 +60,49 @@ export async function render(el, { id }) {
   const ytIn = h('input', { type: 'url', value: song.youtube && song.youtube.id ? `https://youtu.be/${song.youtube.id}` : '', placeholder: 'https://www.youtube.com/watch?v=...' });
   const fileIn = h('input', { type: 'file', accept: 'audio/*' });
   const fileNote = h('span', { class: 'small' }, song.audio && song.audio.name ? `🎧 ${song.audio.name}` : '');
-  const setAudioFile = async (f) => {
+  const karIn = h('input', { type: 'file', accept: 'audio/*' });
+  const karNote = h('div', { class: 'small' }, song.karaoke && song.karaoke.name ? `🎤 ${song.karaoke.name}` : '');
+  // Files added in this visit, to listen to them (auto-align) without reading them back.
+  const blobs = {};
+  const keepFile = async (f) => {
     const mid = newMediaId();
+    await putMedia(mid, f);
+    blobs[mid] = f;
+    return mid;
+  };
+  const setAudioFile = async (f) => {
     try {
-      await putMedia(mid, f);
-      song.audio = { mediaId: mid, name: f.name };
+      song.audio = { mediaId: await keepFile(f), name: f.name };
       fileNote.textContent = `🎧 ${f.name} (saved in this browser)`;
+      return true;
     } catch (e) {
       toast(`Could not keep the file: ${e.message}`, 'bad');
+      return false;
     }
   };
-  fileIn.addEventListener('change', () => { if (fileIn.files[0]) setAudioFile(fileIn.files[0]); });
+  const setKaraokeFile = async (f) => {
+    try {
+      song.karaoke = { mediaId: await keepFile(f), name: f.name, offset: 0 };
+      karNote.textContent = `🎤 ${f.name} (saved in this browser)`;
+      return true;
+    } catch (e) {
+      toast(`Could not keep the file: ${e.message}`, 'bad');
+      return false;
+    }
+  };
+  fileIn.addEventListener('change', async () => { if (fileIn.files[0] && await setAudioFile(fileIn.files[0])) afterMedia({ audio: true }); });
+  karIn.addEventListener('change', async () => { if (karIn.files[0] && await setKaraokeFile(karIn.files[0])) afterMedia({ karaoke: true }); });
+  const dropKaraoke = h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { delete song.karaoke; karIn.value = ''; karNote.textContent = ''; } }, '✕ No karaoke version');
   const drawSrc = () => {
     clear(srcRow);
     [['youtube', '▶ YouTube video'], ['audio', '🎧 Audio file'], ['none', '📝 No music (lyrics only)']].forEach(([v, label]) => srcRow.append(h('button', { class: 'chip', type: 'button', 'aria-pressed': String(song.source === v), onclick: () => { song.source = v; drawSrc(); } }, label)));
     clear(srcBox);
     if (song.source === 'youtube') srcBox.append(field('YouTube link', ytIn), h('p', { class: 'small' }, 'Some videos do not allow playing on other websites; if yours does not play, try another upload of the song.'));
-    if (song.source === 'audio') srcBox.append(field('Audio file (mp3, m4a...)', fileIn), fileNote, h('p', { class: 'small' }, 'The file stays in this browser. Share links do not include it.'));
+    if (song.source === 'audio') {
+      srcBox.append(field('Audio file (mp3, m4a...)', fileIn), fileNote,
+        field('Karaoke version (optional)', karIn), karNote, dropKaraoke,
+        h('p', { class: 'small' }, 'The karaoke version is the same recording without the singer: an official instrumental, or this file through a vocal remover. Karaoke, Echo and Pitch Pal use it; Singing lines it up with the song by itself. The files stay in this browser; share links do not include them.'));
+    }
     if (song.source === 'none') srcBox.append(h('p', { class: 'small' }, 'No music: you sing or play it yourself. The lyrics move at the speed you set when you sync (or at a reading pace).'));
   };
   drawSrc();
@@ -138,14 +177,88 @@ export async function render(el, { id }) {
   // Imported timing that is a little early or late (another version of the
   // song, a video with a longer intro): move every line at once.
   let moved = 0;
-  const shiftAll = (d) => {
+  const shiftAll = (d, note = '') => {
     collect();
     if (!song.synced.some((l) => Number.isFinite(l.start))) { toast('Nothing is synced yet: import a timing file or tap along first.', 'bad'); return; }
     song.synced = shiftSynced(song.synced, d);
     moved = Math.round((moved + d) * 100) / 100;
-    syncStatus.textContent = moved ? `All lines moved ${Math.abs(moved)} s ${moved < 0 ? 'earlier' : 'later'}. Press ▶ on a line to check.` : 'All lines back where they were.';
+    syncStatus.textContent = note || (moved ? `All lines moved ${Math.abs(moved)} s ${moved < 0 ? 'earlier' : 'later'}. Press ▶ on a line to check.` : 'All lines back where they were.');
     drawSync();
   };
+
+  // ---- auto-align: listen to the audio files themselves
+  const heard = {};
+  const featuresOf = (mid) => {
+    if (!heard[mid]) {
+      heard[mid] = (async () => {
+        const blob = blobs[mid] || await getMedia(mid);
+        if (!blob) throw new Error('the audio file is not in this browser any more');
+        return features(await decodeMono(blob));
+      })();
+      heard[mid].catch(() => { delete heard[mid]; });
+    }
+    return heard[mid];
+  };
+  // Let the message show before the (second-long) listening starts.
+  const working = (el, text) => { el.textContent = text; return new Promise((r) => setTimeout(r, 50)); };
+  const hasAudioFile = () => song.source === 'audio' && song.audio && song.audio.mediaId;
+
+  // The UltraStar melody against the song: move the lyrics to where it is sung.
+  async function alignLyrics({ auto = false } = {}) {
+    collect();
+    const notes = song.synced.flatMap((l) => l.notes || []);
+    if (!notes.some((n) => Number.isFinite(n[2]))) {
+      if (!auto) toast('Auto-align listens for the melody, so it needs an UltraStar file. For other timing, use Tap to align.', 'bad');
+      return;
+    }
+    if (!hasAudioFile()) {
+      if (!auto) toast('Auto-align listens to the audio file: add one first. (YouTube cannot be listened to: use Tap to align.)', 'bad');
+      return;
+    }
+    await working(syncStatus, '🪄 Listening for the melody in your audio…');
+    let res;
+    try {
+      res = alignNotes(await featuresOf(song.audio.mediaId), notes);
+    } catch (e) {
+      syncStatus.textContent = `Could not listen to the audio: ${e.message}.`;
+      return;
+    }
+    if (!res.confident) {
+      syncStatus.textContent = '🪄 Could not find the melody in this recording for sure, so nothing moved. Press ▶ on a line to check by ear, and Tap to align if it is off.';
+    } else if (Math.abs(res.offset) < 0.03) {
+      syncStatus.textContent = '🪄 Checked against your audio: the lyrics are already in time ✓';
+    } else {
+      shiftAll(res.offset, `🪄 Lined up with your audio: all lines moved ${Math.abs(res.offset).toFixed(2)} s ${res.offset < 0 ? 'earlier' : 'later'}. Press ▶ on a line to check.`);
+    }
+  }
+
+  // The karaoke version against the song: how far apart the same music is.
+  async function alignKaraoke() {
+    if (!song.karaoke || !hasAudioFile()) return;
+    const k = song.karaoke;
+    await working(karNote, `🎤 ${k.name}: lining it up with the song…`);
+    let res;
+    try {
+      res = alignRecordings(await featuresOf(song.audio.mediaId), await featuresOf(k.mediaId));
+    } catch (e) {
+      karNote.textContent = `🎤 ${k.name}: could not listen to it (${e.message}).`;
+      return;
+    }
+    if (song.karaoke !== k) return;
+    if (!res.confident) {
+      k.offset = 0;
+      karNote.textContent = `⚠️ ${k.name} does not sound like the same recording as the song (or its speed is different), so the two may not stay together. Use an instrumental of this very recording.`;
+      return;
+    }
+    k.offset = res.offset;
+    const gap = Math.abs(res.offset) >= 0.03 ? ` (its music is ${Math.abs(res.offset).toFixed(2)} s ${res.offset > 0 ? 'later' : 'earlier'} in the file)` : '';
+    karNote.textContent = `🎤 ${k.name}: lined up with the song${gap} ✓`;
+  }
+
+  async function afterMedia({ audio = false, karaoke = false, lyrics = false }) {
+    if (audio || lyrics) await alignLyrics({ auto: true });
+    if (audio || karaoke) await alignKaraoke();
+  }
 
   async function startAlign() {
     collect();
@@ -200,13 +313,15 @@ export async function render(el, { id }) {
   }, 150);
 
   // ---- timing files (UltraStar, LRC, SRT, WebVTT) and dropped files
-  async function importTiming(file, { withAudio = false } = {}) {
-    let text;
-    try {
-      text = decodeText(await file.arrayBuffer());
-    } catch (e) {
-      toast(`Could not read ${file.name}: ${e.message}`, 'bad');
-      return;
+  // Resolves true when timed lines came in.
+  async function importTiming(file, { withAudio = false, text = null } = {}) {
+    if (text === null) {
+      try {
+        text = decodeText(await file.arrayBuffer());
+      } catch (e) {
+        toast(`Could not read ${file.name}: ${e.message}`, 'bad');
+        return false;
+      }
     }
     const res = readTimingFile(text, file.name);
     collect();
@@ -216,10 +331,10 @@ export async function render(el, { id }) {
       song.synced = parseLyrics(lyricsIn.value);
       importNote.textContent = `📜 Lyrics from ${file.name}. The file has no timing: tap along to sync.`;
       drawSync();
-      return;
+      return false;
     }
-    if (!res.lines.length) { toast(`No timed lyrics found in ${file.name}.`, 'bad'); return; }
-    if (song.synced.length && !(await confirmDialog(`Replace the lyrics and timing with the ${res.lines.length} lines in ${file.name}?`, { ok: 'Replace' }))) return;
+    if (!res.lines.length) { toast(`No timed lyrics found in ${file.name}.`, 'bad'); return false; }
+    if (song.synced.length && !(await confirmDialog(`Replace the lyrics and timing with the ${res.lines.length} lines in ${file.name}?`, { ok: 'Replace' }))) return false;
     song.synced = res.lines;
     lyricsIn.value = lyricsText(song.synced);
     if (!titleIn.value.trim() && res.meta.title) titleIn.value = res.meta.title;
@@ -229,25 +344,62 @@ export async function render(el, { id }) {
     sync = null;
     drawSync();
     const what = res.notes ? ', with every syllable and note: Pitch Pal can score this song' : res.words ? ', with word times' : '';
-    const audio = res.meta.audio && !withAudio && !(song.audio && song.audio.name) ? ` It was timed for “${res.meta.audio}”: that version fits best.` : '';
-    importNote.textContent = `✅ ${res.lines.length} lines from the ${res.label} file${what}.${audio} Play the song and check the lines: if they are all early or late, move them below or tap to align.`;
+    const audio = res.meta.audio && !withAudio && !(song.audio && song.audio.name) ? ` It was timed for “${res.meta.audio}”.` : '';
+    const check = res.notes ? ' Singing lines it up with your audio file by itself.' : ' Play the song and check the lines: if they are all early or late, move them below or tap to align.';
+    importNote.textContent = `✅ ${res.lines.length} lines from the ${res.label} file${what}.${audio}${check}`;
+    return true;
   }
 
   const AUDIO_EXT = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|weba)$/i;
   const TIMING_EXT = /\.(txt|lrc|srt|vtt)$/i;
+  const KARAOKE_NAME = /instrumental|karaoke|backing|minus.?one|no.?vocals?|without.?vocals?|off.?vocal|\binst\b|\(inst/i;
+  const stem = (n) => String(n || '').replace(/\.[^.]+$/, '').trim().toLowerCase();
+
+  /*
+   * Dropped files: the song, its karaoke version and the lyrics, in any mix.
+   * Which audio is which: the names in the UltraStar file (#AUDIO/#MP3,
+   * #INSTRUMENTAL), then words like "instrumental" in the names, then ask.
+   */
   async function takeFiles(files) {
     const list = [...files];
-    const audio = list.find((f) => (f.type || '').startsWith('audio/') || AUDIO_EXT.test(f.name));
+    const audios = list.filter((f) => (f.type || '').startsWith('audio/') || AUDIO_EXT.test(f.name));
     const timing = list.find((f) => TIMING_EXT.test(f.name));
-    if (!audio && !timing) { toast('Drop an audio file (mp3...) and/or a lyrics file (UltraStar .txt, .lrc, .srt, .vtt).', 'bad'); return; }
-    if (audio) {
+    if (!audios.length && !timing) { toast('Drop an audio file (mp3...), its karaoke version and/or a lyrics file (UltraStar .txt, .lrc, .srt, .vtt).', 'bad'); return; }
+    let text = null;
+    let meta = {};
+    if (timing) {
+      try {
+        text = decodeText(await timing.arrayBuffer());
+        meta = readTimingFile(text, timing.name).meta;
+      } catch (e) {
+        toast(`Could not read ${timing.name}: ${e.message}`, 'bad');
+      }
+    }
+    const named = (n) => (n ? audios.find((f) => stem(f.name) === stem(n)) : null);
+    let karFile = named(meta.instrumental) || audios.find((f) => KARAOKE_NAME.test(f.name)) || null;
+    let songFile = [named(meta.audio), ...audios].find((f) => f && f !== karFile) || null;
+    if (audios.length >= 2 && !karFile) {
+      const pick = await choose('Which one is the karaoke version?', 'The karaoke version is the one without the singer.', [...audios.slice(0, 3).map((f) => f.name), 'Neither']);
+      karFile = pick >= 0 && pick < Math.min(3, audios.length) ? audios[pick] : null;
+      songFile = audios.find((f) => f !== karFile) || null;
+    }
+    if (songFile || karFile) {
       song.source = 'audio';
       drawSrc();
     }
-    await Promise.all([audio ? setAudioFile(audio) : null, timing ? importTiming(timing, { withAudio: !!audio }) : null]);
+    const [gotSong, gotKar, gotLyrics] = await Promise.all([
+      songFile ? setAudioFile(songFile) : false,
+      karFile ? setKaraokeFile(karFile) : false,
+      timing && text !== null ? importTiming(timing, { withAudio: !!songFile, text }) : false,
+    ]);
+    if (gotSong || gotKar || gotLyrics) await afterMedia({ audio: gotSong, karaoke: gotKar, lyrics: gotLyrics });
   }
   const timingIn = h('input', { type: 'file', accept: '.txt,.lrc,.srt,.vtt,text/plain', class: 'hidden' });
-  timingIn.addEventListener('change', () => { if (timingIn.files[0]) importTiming(timingIn.files[0]); timingIn.value = ''; });
+  timingIn.addEventListener('change', async () => {
+    const f = timingIn.files[0];
+    timingIn.value = '';
+    if (f && await importTiming(f)) afterMedia({ lyrics: true });
+  });
 
   const onKey = (e) => {
     if (!sync && !align) return;
@@ -281,7 +433,7 @@ export async function render(el, { id }) {
   const shiftBtn = (d, label, title) => h('button', { class: 'btn btn-sm', type: 'button', title, onclick: () => shiftAll(d) }, label);
   const card = h('section', { class: 'card studio-card' },
     h('h1', { class: 'page-title' }, existing ? `✏️ ${song.title}` : '🎚️ Studio: add a song'),
-    h('p', { class: 'muted' }, 'Any song your class loves: paste the lyrics, link the music, tap along to sync - or drop an mp3 and its lyrics file (UltraStar, LRC, SRT) here. Prefer a song with no copyright worries? ', h('a', { href: '#/chant' }, 'The Song maker'), ' writes a tune for any text.'),
+    h('p', { class: 'muted' }, 'Any song your class loves: paste the lyrics, link the music, tap along to sync - or drop an mp3, its karaoke version and its lyrics file (UltraStar, LRC, SRT) here. Prefer a song with no copyright worries? ', h('a', { href: '#/chant' }, 'The Song maker'), ' writes a tune for any text.'),
     h('div', { class: 'studio-grid' },
       field('Title', titleIn), field('Artist', artistIn), field('Level', levelSel), field('Grammar focus', grammarIn), field('Key words', vocabIn)),
     field('Picture', emojiRow),
@@ -300,7 +452,8 @@ export async function render(el, { id }) {
       h('span', { class: 'small' }, 'All lines earlier / later:'),
       shiftBtn(-1, '−1 s', '1 second earlier'), shiftBtn(-0.1, '−0.1 s', '0.1 seconds earlier'),
       shiftBtn(0.1, '+0.1 s', '0.1 seconds later'), shiftBtn(1, '+1 s', '1 second later'),
-      h('button', { class: 'btn btn-sm', type: 'button', title: 'Play the song and tap once when the first line starts', onclick: startAlign }, '🎯 Tap to align')),
+      h('button', { class: 'btn btn-sm', type: 'button', title: 'Play the song and tap once when the first line starts', onclick: startAlign }, '🎯 Tap to align'),
+      h('button', { class: 'btn btn-sm', type: 'button', title: 'Listen to the audio file and find where the UltraStar melody is sung', onclick: () => alignLyrics() }, '🪄 Auto-align')),
     syncStatus,
     syncList,
     h('div', { class: 'row top-space' },

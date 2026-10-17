@@ -79,6 +79,15 @@ Singing composes a song for it:
   YouTube's rolling captions). *All lines earlier / later* and *Tap to align*
   fix timing made for another version of the song. Editing the lyrics keeps
   the timing of every line.
+- **🪄 Auto-align**: an UltraStar file carries the melody, so Singing listens
+  to the audio file (chroma, in the browser, about a second) and moves the
+  lyrics to where that melody is sung. It runs by itself on import, and only
+  moves anything when the match is clear.
+- **Karaoke version**: add the same recording without the singer (an official
+  instrumental, or the song through a vocal remover). It is lined up with the
+  song automatically (onset correlation) and plays in step with it; the
+  🎤 *Singer* knob switches between the two. Karaoke starts with the karaoke
+  version, Echo's "your turn" and Pitch Pal's "I know it" use it.
 - **Remix**: rewrite any line (new animals, students' names, new verbs). The
   tune bends to fit the new syllables.
 - **Share link**: the whole song is compressed into the URL; no server needed.
@@ -91,11 +100,15 @@ Singing composes a song for it:
 |---|---|
 | Lines only (tapped, LRC, SRT) | Every game except Pitch Pal and Round. Words inside a line are timed by syllable weight, so Karaoke's wipe and Finish the line's stops are close, not exact. |
 | Word times (enhanced LRC, VTT) | The same, with exact word starts. |
-| UltraStar | Everything above with exact syllables, plus **Pitch Pal**. |
+| UltraStar | Everything above with exact syllables, plus **Pitch Pal** and auto-align. |
+| + karaoke version | Real karaoke, Echo over the music, Pitch Pal without the singer. |
 
-A recording cannot change key or style or lose its singer, so those knobs,
-Round and Remix stay with the built-in band. Echo's "your turn" pauses the
-music. Audio files stay in the browser that added them: keep copyrighted
+The ideal set for a song is the audio file, its UltraStar `.txt` and its
+karaoke version: drop all three on the Studio. A recording cannot change key
+or style, so those knobs, Round and Remix stay with the built-in band; without
+a karaoke version, Echo's "your turn" pauses the music. YouTube videos cannot
+be listened to or swapped, so auto-align and the karaoke version need audio
+files. Audio files stay in the browser that added them: keep copyrighted
 recordings out of this repository, since the site is public.
 
 ## Reused from PinPlay
@@ -118,12 +131,12 @@ npm run serve     # http://localhost:8080
 index.html, css/singing.css
 js/main.js            router (#/, #/song/<id>, #/play/<id>/<game>, #/studio, #/chant, ...)
 js/music/             notes, score (song format), synth, band (styles), player, composer, timeline
-js/media/             YouTube, audio file and lyrics-only players (same interface as the band), timing files
+js/media/             YouTube, audio file and lyrics-only players (same interface as the band), timing files, auto-align
 js/lyrics/            word lists, grammar spotter, rhymes, syllables, gaps & distractors, bingo, Studio lyrics format
 js/games/             one module per activity
 js/views/             library, song, stage, studio, song maker, remix, print, party, help, card
 js/data/songs/        the songbook
-tests/                unit tests (89)
+tests/                unit tests (94)
 ```
 
 ### Song format (built-in band)

@@ -2,6 +2,8 @@
  * Player controls shared by the song page and the stage: play button,
  * progress bar with a tick per line, and the band's knobs (speed, key,
  * style, guide voice). Knob values are remembered per song for the session.
+ * Recordings with a karaoke version get a singer on/off knob instead (not
+ * remembered: each game starts with the singer it needs).
  */
 import { h, fmtTime } from './ui.js';
 import { STYLES, GUIDES } from './music/band.js';
@@ -135,6 +137,17 @@ export function knobsBar(track, song) {
       if (guideSel.value !== 'off') setSettings({ guide: guideSel.value });
     });
     wrap.append(h('div', { class: 'knob', title: 'Who sings the melody' }, h('span', { class: 'knob-label' }, '🎵 Melody'), guideSel));
+  }
+
+  // A recording with a karaoke version: the singer on or off.
+  if (track.hasKaraoke) {
+    const singerSel = h('select', { 'aria-label': 'Singer' },
+      h('option', { value: 'on' }, '🎤 On (the song)'),
+      h('option', { value: 'off' }, '🙊 Off (karaoke version)'));
+    singerSel.value = track.singer ? 'on' : 'off';
+    singerSel.addEventListener('change', () => track.setSinger(singerSel.value === 'on'));
+    track.on('change', (e) => { if (e && 'singer' in e) singerSel.value = e.singer ? 'on' : 'off'; });
+    wrap.append(h('div', { class: 'knob', title: 'The song, or its karaoke version without the singer' }, h('span', { class: 'knob-label' }, '🎤 Singer'), singerSel));
   }
   return wrap;
 }
