@@ -1,56 +1,19 @@
 /*
- * Studio: bring your own song. Paste the lyrics, link a YouTube video or add
- * an audio file (or no music at all), then tap along to sync each line.
- *
- * Lyrics format, one line per sung line:
- *   [Chorus]                 starts a section
- *   🌟 Twinkle little star    a leading emoji is the line's picture
- *   A: How are you?          "A:" (Boys:, Girls:, Teacher:...) is a part
- *   Hello | Hola             after " | " comes a translation
+ * Studio: bring your own song. Paste the lyrics (format in lyrics/lines.js),
+ * link a YouTube video or add an audio file (or no music at all), then tap
+ * along to sync each line - or import a timing file (UltraStar, LRC, SRT,
+ * WebVTT) and just line it up with the music.
  */
-import { h, clear, toast, fmtTime } from '../ui.js';
+import { h, clear, toast, fmtTime, confirmDialog } from '../ui.js';
 import { getSong, saveUserSong, newSongId, userSongs } from '../store.js';
 import { youtubeId } from '../media/youtube.js';
 import { putMedia, newMediaId } from '../media/store.js';
+import { decodeText, readTimingFile, shiftSynced } from '../media/timing.js';
+import { parseLyrics, lyricsText } from '../lyrics/lines.js';
 import { makeTrack } from '../track.js';
 import { compileSong } from '../music/score.js';
 
 const EMOJIS = ['🎵', '🎤', '🎸', '🎹', '🥁', '🎺', '🌟', '❤️', '🌈', '🌍', '🐶', '🚀', '☀️', '🌙', '🎉', '🍕', '⚽', '🦄'];
-
-export function parseLyrics(text, previous = []) {
-  const out = [];
-  let section = '';
-  for (const raw of String(text || '').replace(/\r/g, '').split('\n')) {
-    const line = raw.trim();
-    if (!line) continue;
-    const sec = /^\[(.+)\]$/.exec(line);
-    if (sec) { section = sec[1].trim(); continue; }
-    let rest = line;
-    let tr = '';
-    const bar = rest.indexOf(' | ');
-    if (bar >= 0) { tr = rest.slice(bar + 3).trim(); rest = rest.slice(0, bar).trim(); }
-    let pic = '';
-    const em = /^((?:\p{Extended_Pictographic}|\p{Emoji_Presentation})(?:️|‍(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}))*)\s+/u.exec(rest);
-    if (em) { pic = em[1]; rest = rest.slice(em[0].length); }
-    let part = '';
-    const pm = /^([A-Za-z][\w ]{0,11}):\s+(.+)$/.exec(rest);
-    const label = pm ? pm[1].trim() : '';
-    if (pm && (!/\s/.test(label) || /^group \d$/i.test(label))) { part = label; rest = pm[2]; }
-    const item = { text: rest, pic, part, tr };
-    if (section) { item.section = section; section = ''; }
-    out.push(item);
-  }
-  // Keep the timing of lines that did not change.
-  out.forEach((l, i) => {
-    const p = previous[i];
-    if (p && p.text === l.text && Number.isFinite(p.start)) { l.start = p.start; if (Number.isFinite(p.end)) l.end = p.end; }
-  });
-  return out;
-}
-
-export function lyricsText(synced = []) {
-  return synced.map((l) => `${l.section ? `[${l.section}]\n` : ''}${l.pic ? `${l.pic} ` : ''}${l.part ? `${l.part}: ` : ''}${l.text}${l.tr ? ` | ${l.tr}` : ''}`).join('\n');
-}
 
 export async function render(el, { id }) {
   const existing = id ? getSong(id) : null;
@@ -84,9 +47,7 @@ export async function render(el, { id }) {
   const ytIn = h('input', { type: 'url', value: song.youtube && song.youtube.id ? `https://youtu.be/${song.youtube.id}` : '', placeholder: 'https://www.youtube.com/watch?v=...' });
   const fileIn = h('input', { type: 'file', accept: 'audio/*' });
   const fileNote = h('span', { class: 'small' }, song.audio && song.audio.name ? `🎧 ${song.audio.name}` : '');
-  fileIn.addEventListener('change', async () => {
-    const f = fileIn.files[0];
-    if (!f) return;
+  const setAudioFile = async (f) => {
     const mid = newMediaId();
     try {
       await putMedia(mid, f);
@@ -95,7 +56,8 @@ export async function render(el, { id }) {
     } catch (e) {
       toast(`Could not keep the file: ${e.message}`, 'bad');
     }
-  });
+  };
+  fileIn.addEventListener('change', () => { if (fileIn.files[0]) setAudioFile(fileIn.files[0]); });
   const drawSrc = () => {
     clear(srcRow);
     [['youtube', '▶ YouTube video'], ['audio', '🎧 Audio file'], ['none', '📝 No music (lyrics only)']].forEach(([v, label]) => srcRow.append(h('button', { class: 'chip', type: 'button', 'aria-pressed': String(song.source === v), onclick: () => { song.source = v; drawSrc(); } }, label)));
@@ -110,8 +72,11 @@ export async function render(el, { id }) {
 
   // ---- sync
   const syncList = h('ol', { class: 'sync-list' });
-  const tapBtn = h('button', { class: 'btn primary btn-lg sync-tap', type: 'button', disabled: true }, '👆 TAP at the start of each line (Space)');
+  const TAP_LABEL = '👆 TAP at the start of each line (Space)';
+  const tapBtn = h('button', { class: 'btn primary btn-lg sync-tap', type: 'button', disabled: true }, TAP_LABEL);
   const syncStatus = h('div', { class: 'small' });
+  const importNote = h('div', { class: 'small' });
+  let align = null;
 
   const collect = () => {
     song.title = titleIn.value.trim() || 'Untitled song';
@@ -128,7 +93,8 @@ export async function render(el, { id }) {
   const drawSync = (active = -1) => {
     clear(syncList);
     song.synced.forEach((l, i) => {
-      const nudge = (d) => { if (Number.isFinite(l.start)) { l.start = Math.max(0, +(l.start + d).toFixed(2)); drawSync(active); } };
+      // The whole line moves: its end, word times and notes too.
+      const nudge = (d) => { if (Number.isFinite(l.start)) { song.synced[i] = shiftSynced([l], d)[0]; drawSync(active); } };
       syncList.append(h('li', { class: `sync-row${i === active ? ' active' : ''}${Number.isFinite(l.start) ? ' done' : ''}` },
         h('span', { class: 'sync-time' }, Number.isFinite(l.start) ? fmtTime(l.start) + `.${String(Math.floor((l.start % 1) * 10))}` : '—'),
         h('button', { class: 'btn btn-sm', type: 'button', title: '0.1 s earlier', onclick: () => nudge(-0.1) }, '−'),
@@ -143,7 +109,7 @@ export async function render(el, { id }) {
     if (track) track.destroy();
     track = null;
     try {
-      track = await makeTrack({ ...song, synced: song.synced.map((l) => ({ ...l, start: undefined, end: undefined })), duration: 3600 });
+      track = await makeTrack({ ...song, synced: song.synced.map((l) => ({ text: l.text })), duration: 3600 });
     } catch (e) {
       toast(e.message, 'bad');
       throw e;
@@ -154,9 +120,13 @@ export async function render(el, { id }) {
   async function startSync() {
     collect();
     if (!song.synced.length) { toast('Paste the lyrics first.', 'bad'); return; }
+    const detailed = song.synced.some((l) => l.notes || l.words);
+    if (detailed && !(await confirmDialog('Tapping replaces the timing from the imported file, including its word times and notes (Pitch Pal needs the notes). To fix timing that is just early or late, use "All lines earlier / later" instead.', { ok: 'Tap again', title: 'Replace the timing?' }))) return;
     try { await ensureTrack(); } catch { return; }
-    song.synced.forEach((l) => { delete l.start; delete l.end; });
+    song.synced.forEach((l) => { delete l.start; delete l.end; delete l.words; delete l.notes; });
+    align = null;
     sync = { next: 0 };
+    tapBtn.textContent = TAP_LABEL;
     tapBtn.disabled = false;
     syncStatus.textContent = 'Listen, and tap when each line starts. Backspace = undo.';
     drawSync(0);
@@ -165,7 +135,42 @@ export async function render(el, { id }) {
     tapBtn.focus();
   }
 
+  // Imported timing that is a little early or late (another version of the
+  // song, a video with a longer intro): move every line at once.
+  let moved = 0;
+  const shiftAll = (d) => {
+    collect();
+    if (!song.synced.some((l) => Number.isFinite(l.start))) { toast('Nothing is synced yet: import a timing file or tap along first.', 'bad'); return; }
+    song.synced = shiftSynced(song.synced, d);
+    moved = Math.round((moved + d) * 100) / 100;
+    syncStatus.textContent = moved ? `All lines moved ${Math.abs(moved)} s ${moved < 0 ? 'earlier' : 'later'}. Press ▶ on a line to check.` : 'All lines back where they were.';
+    drawSync();
+  };
+
+  async function startAlign() {
+    collect();
+    const first = song.synced.find((l) => Number.isFinite(l.start));
+    if (!first) { toast('Nothing is synced yet: import a timing file or tap along first.', 'bad'); return; }
+    try { await ensureTrack(); } catch { return; }
+    sync = null;
+    align = { start: first.start };
+    tapBtn.textContent = `👆 TAP when “${first.text.slice(0, 40)}” starts (Space)`;
+    tapBtn.disabled = false;
+    syncStatus.textContent = 'Listen, and tap once when the first line starts: all the lines move to match.';
+    track.seek(0);
+    track.play();
+    tapBtn.focus();
+  }
+
   const tap = () => {
+    if (align && track) {
+      const d = Math.round((track.time() - 0.15 - align.start) * 100) / 100;
+      align = null;
+      tapBtn.textContent = TAP_LABEL;
+      tapBtn.disabled = true;
+      shiftAll(d);
+      return;
+    }
     if (!sync || !track) return;
     const l = song.synced[sync.next];
     if (!l) return;
@@ -185,8 +190,71 @@ export async function render(el, { id }) {
   };
   tapBtn.addEventListener('click', tap);
 
+  // While the music plays, the line being sung lights up in the list.
+  const follow = setInterval(() => {
+    if (!track || !track.playing || align || (sync && sync.next < song.synced.length)) return;
+    const t = track.time();
+    let k = -1;
+    song.synced.forEach((l, i) => { if (Number.isFinite(l.start) && l.start <= t) k = i; });
+    [...syncList.children].forEach((li, i) => li.classList.toggle('active', i === k));
+  }, 150);
+
+  // ---- timing files (UltraStar, LRC, SRT, WebVTT) and dropped files
+  async function importTiming(file, { withAudio = false } = {}) {
+    let text;
+    try {
+      text = decodeText(await file.arrayBuffer());
+    } catch (e) {
+      toast(`Could not read ${file.name}: ${e.message}`, 'bad');
+      return;
+    }
+    const res = readTimingFile(text, file.name);
+    collect();
+    if (res.format === 'text') {
+      if (song.synced.length && !(await confirmDialog(`Replace the lyrics with the text of ${file.name}?`, { ok: 'Replace' }))) return;
+      lyricsIn.value = text.trim();
+      song.synced = parseLyrics(lyricsIn.value);
+      importNote.textContent = `📜 Lyrics from ${file.name}. The file has no timing: tap along to sync.`;
+      drawSync();
+      return;
+    }
+    if (!res.lines.length) { toast(`No timed lyrics found in ${file.name}.`, 'bad'); return; }
+    if (song.synced.length && !(await confirmDialog(`Replace the lyrics and timing with the ${res.lines.length} lines in ${file.name}?`, { ok: 'Replace' }))) return;
+    song.synced = res.lines;
+    lyricsIn.value = lyricsText(song.synced);
+    if (!titleIn.value.trim() && res.meta.title) titleIn.value = res.meta.title;
+    if (!artistIn.value.trim() && res.meta.artist) artistIn.value = res.meta.artist;
+    if (res.meta.youtubeId && song.source === 'youtube' && !youtubeId(ytIn.value)) ytIn.value = `https://youtu.be/${res.meta.youtubeId}`;
+    moved = 0;
+    sync = null;
+    drawSync();
+    const what = res.notes ? ', with every syllable and note: Pitch Pal can score this song' : res.words ? ', with word times' : '';
+    const audio = res.meta.audio && !withAudio && !(song.audio && song.audio.name) ? ` It was timed for “${res.meta.audio}”: that version fits best.` : '';
+    importNote.textContent = `✅ ${res.lines.length} lines from the ${res.label} file${what}.${audio} Play the song and check the lines: if they are all early or late, move them below or tap to align.`;
+  }
+
+  const AUDIO_EXT = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|weba)$/i;
+  const TIMING_EXT = /\.(txt|lrc|srt|vtt)$/i;
+  async function takeFiles(files) {
+    const list = [...files];
+    const audio = list.find((f) => (f.type || '').startsWith('audio/') || AUDIO_EXT.test(f.name));
+    const timing = list.find((f) => TIMING_EXT.test(f.name));
+    if (!audio && !timing) { toast('Drop an audio file (mp3...) and/or a lyrics file (UltraStar .txt, .lrc, .srt, .vtt).', 'bad'); return; }
+    if (audio) {
+      song.source = 'audio';
+      drawSrc();
+    }
+    await Promise.all([audio ? setAudioFile(audio) : null, timing ? importTiming(timing, { withAudio: !!audio }) : null]);
+  }
+  const timingIn = h('input', { type: 'file', accept: '.txt,.lrc,.srt,.vtt,text/plain', class: 'hidden' });
+  timingIn.addEventListener('change', () => { if (timingIn.files[0]) importTiming(timingIn.files[0]); timingIn.value = ''; });
+
   const onKey = (e) => {
-    if (!sync) return;
+    if (!sync && !align) return;
+    if (align) {
+      if (e.code === 'Space' && document.activeElement !== lyricsIn) { e.preventDefault(); tap(); }
+      return;
+    }
     if (e.code === 'Space' && document.activeElement !== lyricsIn) { e.preventDefault(); tap(); }
     if (e.key === 'Backspace' && document.activeElement !== lyricsIn && sync.next > 0) {
       e.preventDefault();
@@ -210,29 +278,45 @@ export async function render(el, { id }) {
   };
 
   drawSync();
-  el.append(
-    h('section', { class: 'card' },
-      h('h1', { class: 'page-title' }, existing ? `✏️ ${song.title}` : '🎚️ Studio: add a song'),
-      h('p', { class: 'muted' }, 'Any song your class loves: paste the lyrics, link the music, tap along to sync. Prefer a song with no copyright worries? ', h('a', { href: '#/chant' }, 'The Song maker'), ' writes a tune for any text.'),
-      h('div', { class: 'studio-grid' },
-        field('Title', titleIn), field('Artist', artistIn), field('Level', levelSel), field('Grammar focus', grammarIn), field('Key words', vocabIn)),
-      field('Picture', emojiRow),
-      field('Teacher notes', aboutIn),
-      h('h3', { class: 'section-title' }, '🎵 Music'), srcRow, srcBox,
-      h('h3', { class: 'section-title' }, '📜 Lyrics'),
-      h('p', { class: 'small' }, 'One line per line of the song. [Chorus] starts a section · an emoji at the start is the picture · "A: " marks a part · " | " adds a translation.'),
-      lyricsIn,
-      h('h3', { class: 'section-title' }, '⏱️ Sync'),
-      h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: startSync }, '▶ Start syncing'), tapBtn, h('button', { class: 'btn', type: 'button', onclick: () => track && (track.playing ? track.pause() : track.play()) }, '⏯')),
-      syncStatus,
-      syncList,
-      h('div', { class: 'row top-space' },
-        h('button', { class: 'btn primary btn-lg', type: 'button', onclick: save }, '💾 Save song'),
-        existing ? h('a', { class: 'btn', href: `#/song/${encodeURIComponent(song.id)}` }, 'Cancel') : null),
-    ),
-    importExport(),
+  const shiftBtn = (d, label, title) => h('button', { class: 'btn btn-sm', type: 'button', title, onclick: () => shiftAll(d) }, label);
+  const card = h('section', { class: 'card studio-card' },
+    h('h1', { class: 'page-title' }, existing ? `✏️ ${song.title}` : '🎚️ Studio: add a song'),
+    h('p', { class: 'muted' }, 'Any song your class loves: paste the lyrics, link the music, tap along to sync - or drop an mp3 and its lyrics file (UltraStar, LRC, SRT) here. Prefer a song with no copyright worries? ', h('a', { href: '#/chant' }, 'The Song maker'), ' writes a tune for any text.'),
+    h('div', { class: 'studio-grid' },
+      field('Title', titleIn), field('Artist', artistIn), field('Level', levelSel), field('Grammar focus', grammarIn), field('Key words', vocabIn)),
+    field('Picture', emojiRow),
+    field('Teacher notes', aboutIn),
+    h('h3', { class: 'section-title' }, '🎵 Music'), srcRow, srcBox,
+    h('h3', { class: 'section-title' }, '📜 Lyrics'),
+    h('div', { class: 'row' },
+      h('button', { class: 'btn', type: 'button', onclick: () => timingIn.click() }, '📂 Import lyrics with timing'), timingIn,
+      h('span', { class: 'small' }, 'UltraStar (.txt), LRC, SRT or WebVTT. UltraStar files also have the notes, for Pitch Pal.')),
+    importNote,
+    h('p', { class: 'small' }, 'One line per line of the song. [Chorus] starts a section · an emoji at the start is the picture · "A: " marks a part · " | " adds a translation.'),
+    lyricsIn,
+    h('h3', { class: 'section-title' }, '⏱️ Sync'),
+    h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: startSync }, '▶ Start syncing'), tapBtn, h('button', { class: 'btn', type: 'button', onclick: () => track && (track.playing ? track.pause() : track.play()) }, '⏯')),
+    h('div', { class: 'row sync-shift' },
+      h('span', { class: 'small' }, 'All lines earlier / later:'),
+      shiftBtn(-1, '−1 s', '1 second earlier'), shiftBtn(-0.1, '−0.1 s', '0.1 seconds earlier'),
+      shiftBtn(0.1, '+0.1 s', '0.1 seconds later'), shiftBtn(1, '+1 s', '1 second later'),
+      h('button', { class: 'btn btn-sm', type: 'button', title: 'Play the song and tap once when the first line starts', onclick: startAlign }, '🎯 Tap to align')),
+    syncStatus,
+    syncList,
+    h('div', { class: 'row top-space' },
+      h('button', { class: 'btn primary btn-lg', type: 'button', onclick: save }, '💾 Save song'),
+      existing ? h('a', { class: 'btn', href: `#/song/${encodeURIComponent(song.id)}` }, 'Cancel') : null),
   );
-  return () => { document.removeEventListener('keydown', onKey); if (track) track.destroy(); };
+  card.addEventListener('dragover', (e) => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); card.classList.add('dropping'); } });
+  card.addEventListener('dragleave', (e) => { if (!card.contains(e.relatedTarget)) card.classList.remove('dropping'); });
+  card.addEventListener('drop', (e) => {
+    if (!e.dataTransfer.files.length) return;
+    e.preventDefault();
+    card.classList.remove('dropping');
+    takeFiles(e.dataTransfer.files);
+  });
+  el.append(card, importExport());
+  return () => { clearInterval(follow); document.removeEventListener('keydown', onKey); if (track) track.destroy(); };
 }
 
 // Songs played by the band: edit the song file directly (for the curious).

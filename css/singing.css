@@ -961,6 +961,9 @@ body.on-stage .yt-dock { bottom: 5.2rem; }
 .sync-time { font-variant-numeric: tabular-nums; min-width: 4rem; font-weight: 600; color: var(--muted); }
 .sync-text { flex: 1; }
 .sync-tap { min-width: 18rem; }
+.sync-shift { margin-top: 0.5rem; }
+.studio-card { transition: outline-color 0.15s; outline: 3px dashed transparent; outline-offset: -6px; }
+.studio-card.dropping { outline-color: var(--primary); }
 .remix-list { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 1rem; }
 .remix-section { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-top: 0.6rem; }
 .remix-line { display: grid; grid-template-columns: 2rem 1fr 4rem; gap: 0.5rem; align-items: center; }

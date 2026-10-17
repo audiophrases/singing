@@ -6,18 +6,6 @@
 import { Emitter } from '../music/player.js';
 import { timelineFromSynced } from '../music/timeline.js';
 
-export function autoTime(lines, { pace = 0.34, gap = 1.2, start = 2 } = {}) {
-  let t = start;
-  return lines.map((l) => {
-    const words = String(l.text || '').trim().split(/\s+/).filter(Boolean);
-    const syl = words.reduce((a, w) => a + Math.max(1, (w.toLowerCase().match(/[aeiouy]+/g) || []).length), 0);
-    const len = Math.max(1.5, syl * pace);
-    const out = { ...l, start: t, end: t + len };
-    t += len + gap;
-    return out;
-  });
-}
-
 export class PolledTrack extends Emitter {
   constructor(song) {
     super();
@@ -25,9 +13,8 @@ export class PolledTrack extends Emitter {
     this.rate = 1;
     this.barrier = null;
     this.playing = false;
-    const synced = Array.isArray(song.synced) ? song.synced : [];
-    const timed = synced.every((l) => Number.isFinite(l.start)) && synced.length ? synced : autoTime(synced);
-    this.timeline = timelineFromSynced(timed, song.duration || 0);
+    // Lines with no time yet get an estimated one.
+    this.timeline = timelineFromSynced(Array.isArray(song.synced) ? song.synced : [], song.duration || 0);
     this.pollTimer = null;
   }
 

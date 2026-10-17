@@ -2,6 +2,9 @@
  * Pitch Pal: the melody scrolls past as bars; sing into the microphone and
  * your voice draws a line. Hit the bars to score. Any octave counts, so
  * children, teens and teachers can all play the same song.
+ *
+ * The notes come from the built-in band, or for a recording from the
+ * UltraStar file imported in the Studio (the singer on the record guides).
  */
 import { h, clear } from '../ui.js';
 import { openMic } from '../mic.js';
@@ -13,8 +16,10 @@ import { sfx, floatEmoji } from '../sfx.js';
 
 export async function start(ctx) {
   const { track, main } = ctx;
-  if (track.kind !== 'synth') {
-    clear(main).append(h('div', { class: 'setup-card' }, h('h2', null, 'Pitch Pal needs a song played by the built-in band.')));
+  const band = track.kind === 'synth';
+  const recorded = band ? [] : track.timeline.lines.flatMap((l) => l.notes.map((n) => ({ ...n, hit: 0, total: 0, line: l.index })));
+  if (!band && !recorded.length) {
+    clear(main).append(h('div', { class: 'setup-card' }, h('h2', null, 'Pitch Pal needs the notes of the song: a built-in song, or a song imported from an UltraStar file in the Studio.')));
     return null;
   }
   const conf = { tol: 0.8, guide: true };
@@ -25,8 +30,8 @@ export async function start(ctx) {
     body: h('div', null,
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Level'),
         choiceRow([[1.2, '🌱 Easy'], [0.8, '🎤 Normal'], [0.45, '🏆 Pro']], conf.tol, (v) => { conf.tol = v; })),
-      h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Melody'),
-        choiceRow([[true, '🤖 Help me'], [false, '🙊 I know it']], conf.guide, (v) => { conf.guide = v; }))),
+      band ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Melody'),
+        choiceRow([[true, '🤖 Help me'], [false, '🙊 I know it']], conf.guide, (v) => { conf.guide = v; })) : null),
     startLabel: '🎙️ Start (allow the microphone)',
     onStart: async () => {
       try {
@@ -45,11 +50,10 @@ export async function start(ctx) {
   let cleanup = null;
   ctx.addCleanup(() => { card.destroy(); if (cleanup) cleanup(); });
 
-  function begin() {
-    if (!conf.guide) track.setMute('lead', true);
+  function bandNotes() {
     const compiled = track.compiled;
     const bs = track.beatSec;
-    const notes = compiled.melody.filter((m) => m.midi !== null).map((m) => {
+    return compiled.melody.filter((m) => m.midi !== null).map((m) => {
       const line = compiled.lines[m.line];
       const syl = line && m.syl >= 0 ? line.syllables[m.syl] : null;
       return {
@@ -63,6 +67,11 @@ export async function start(ctx) {
         line: m.line,
       };
     });
+  }
+
+  function begin() {
+    if (band && !conf.guide) track.setMute('lead', true);
+    const notes = band ? bandNotes() : recorded;
     const lo = Math.min(...notes.map((n) => n.midi)) - 3;
     const hi = Math.max(...notes.map((n) => n.midi)) + 3;
     const score = scoreBox();

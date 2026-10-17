@@ -73,12 +73,30 @@ Singing composes a song for it:
 - **Studio**: paste lyrics (with `[Chorus]` sections, emoji pictures, `A:`/`B:`
   parts and `| translations`), link a **YouTube** video or add an **audio file**
   (kept in the browser), then **tap along** to sync each line with fine-tuning.
+- **Timing files**: drop an mp3 and its lyrics file on the Studio. It reads
+  **UltraStar** `.txt` (every syllable's time and pitch, duet parts),
+  **LRC** (with `<mm:ss.xx>` word times), **SRT** and **WebVTT** (including
+  YouTube's rolling captions). *All lines earlier / later* and *Tap to align*
+  fix timing made for another version of the song. Editing the lyrics keeps
+  the timing of every line.
 - **Remix**: rewrite any line (new animals, students' names, new verbs). The
   tune bends to fit the new syllables.
 - **Share link**: the whole song is compressed into the URL; no server needed.
 - **Worksheets**: lyrics, gap fill with word bank, cut-up strips, bingo cards.
 - **Export to PinPlay**: a PinPlay quiz (context gaps read aloud, word choice,
   word order, error hunt, rhyme matching) ready to import in PinPlay's builder.
+
+### Real recordings (YouTube or audio file) in the games
+| Timing | What works |
+|---|---|
+| Lines only (tapped, LRC, SRT) | Every game except Pitch Pal and Round. Words inside a line are timed by syllable weight, so Karaoke's wipe and Finish the line's stops are close, not exact. |
+| Word times (enhanced LRC, VTT) | The same, with exact word starts. |
+| UltraStar | Everything above with exact syllables, plus **Pitch Pal**. |
+
+A recording cannot change key or style or lose its singer, so those knobs,
+Round and Remix stay with the built-in band. Echo's "your turn" pauses the
+music. Audio files stay in the browser that added them: keep copyrighted
+recordings out of this repository, since the site is public.
 
 ## Reused from PinPlay
 - Visual language: tokens, buttons, cards, Inter, the purple `#605dff`.
@@ -100,12 +118,12 @@ npm run serve     # http://localhost:8080
 index.html, css/singing.css
 js/main.js            router (#/, #/song/<id>, #/play/<id>/<game>, #/studio, #/chant, ...)
 js/music/             notes, score (song format), synth, band (styles), player, composer, timeline
-js/media/             YouTube, audio file and lyrics-only players (same interface as the band)
-js/lyrics/            word lists, grammar spotter, rhymes, syllables, gaps & distractors, bingo
+js/media/             YouTube, audio file and lyrics-only players (same interface as the band), timing files
+js/lyrics/            word lists, grammar spotter, rhymes, syllables, gaps & distractors, bingo, Studio lyrics format
 js/games/             one module per activity
 js/views/             library, song, stage, studio, song maker, remix, print, party, help, card
 js/data/songs/        the songbook
-tests/                unit tests (75)
+tests/                unit tests (89)
 ```
 
 ### Song format (built-in band)
