@@ -96,6 +96,10 @@ export function placeRhythm(syls, slots, slotsPerBar, rnd = Math.random) {
   }
   // The last syllable wants room to ring.
   let best = -1;
+  if (dp[n - 1].every((v) => v >= INF)) {
+    // No placement fits (more syllables than the grid allows): space them evenly.
+    return syls.map((_, i) => Math.min(slots - 1, Math.floor((i * slots) / n)));
+  }
   let bestV = INF;
   for (let s = n - 1; s < slots; s += 1) {
     if (dp[n - 1][s] >= INF) continue;
@@ -132,6 +136,53 @@ function stepToward(from, to, scale, keyPc) {
   return m;
 }
 
+const MAX_LINE = 12;
+
+function countSyl(text) {
+  return lineSyllables(text).length;
+}
+
+// Group pieces (with their syllable counts) into lines of about equal length.
+function balance(pieces, joiner) {
+  const total = pieces.reduce((a, p) => a + p.n, 0);
+  let linesLeft = Math.ceil(total / MAX_LINE);
+  const out = [];
+  let cur = [];
+  let curN = 0;
+  let left = total;
+  for (const p of pieces) {
+    const goal = left / Math.max(1, linesLeft);
+    if (cur.length && curN + p.n > goal + p.n / 2) {
+      out.push(cur.join(joiner));
+      left -= curN;
+      linesLeft -= 1;
+      cur = [];
+      curN = 0;
+    }
+    cur.push(p.text);
+    curN += p.n;
+  }
+  if (cur.length) out.push(cur.join(joiner));
+  return out;
+}
+
+/*
+ * A line too long to sing in one breath is split: first at commas and
+ * semicolons, then (if a piece is still long) between words.
+ */
+export function splitLongLine(raw) {
+  if (countSyl(raw) <= MAX_LINE + 4) return [raw];
+  const clauses = raw.split(/(?<=[,;:])\s+/).filter(Boolean);
+  const pieces = [];
+  for (const c of clauses) {
+    const n = countSyl(c);
+    if (n <= MAX_LINE + 4) { pieces.push({ text: c, n }); continue; }
+    const words = c.split(/\s+/).filter(Boolean).map((w) => ({ text: w, n: countSyl(w) }));
+    for (const part of balance(words, ' ')) pieces.push({ text: part, n: countSyl(part) });
+  }
+  return balance(pieces, ' ');
+}
+
 function signature(syls, slots) {
   return `${syls.length}:${slots}:${syls.map((s) => s.stress).join('')}`;
 }
@@ -154,7 +205,9 @@ export function composeSong(text, opts = {}) {
   const lo = tonic - 3;
   const hi = tonic + 14;
 
-  const verses = String(text || '').replace(/\r/g, '').split(/\n\s*\n/).map((v) => v.split('\n').map((l) => l.trim()).filter(Boolean)).filter((v) => v.length);
+  const verses = String(text || '').replace(/\r/g, '').split(/\n\s*\n/)
+    .map((v) => v.split('\n').map((l) => l.trim()).filter(Boolean).flatMap(splitLongLine))
+    .filter((v) => v.length);
   const lines = [];
   const memory = new Map();
   let progIdx = 0;
@@ -165,7 +218,7 @@ export function composeSong(text, opts = {}) {
     verse.forEach((raw, li) => {
       const syls = lineSyllables(raw);
       if (!syls.length) return;
-      const bars = syls.length <= 9 ? 2 : syls.length <= 18 ? 4 : 6;
+      const bars = 2 * Math.max(1, Math.ceil(syls.length / 9));
       const slots = bars * slotsPerBar;
       const lastOfVerse = li === verse.length - 1;
       const even = li % 2 === 1;

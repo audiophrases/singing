@@ -61,3 +61,16 @@ test('same-shape lines share a tune', () => {
   const song = composeSong('What about you?\nWhat about me?\nWhat about you?\nWhat about me?', { seed: 5 });
   assert.equal(song.lines[0].n, song.lines[2].n);
 });
+
+test('a very long line is split into singable lines', () => {
+  const text = `${Array(13).fill('around the world').join(', ')}.`;
+  const song = composeSong(text, { mood: 'disco', key: 'A', seed: 1 });
+  const c = compileSong(song);
+  assert.deepEqual(c.warnings, []);
+  assert.ok(c.lines.length >= 4, `${c.lines.length} lines`);
+  for (const l of c.lines) assert.ok(l.syllables.length <= 16, l.text);
+  assert.equal(c.lines.map((l) => l.text).join(' ').split('world').length - 1, 13);
+  // A long line with no commas at all.
+  const plain = composeSong(Array(30).fill('la').join(' '), { seed: 2 });
+  assert.deepEqual(compileSong(plain).warnings, []);
+});

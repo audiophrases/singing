@@ -57,8 +57,16 @@ export async function render(el) {
     clear(preview);
     if (!state.text.trim()) { preview.append(h('p', { class: 'small' }, 'Type some text first.')); return; }
     const words = [...new Set(state.text.split(/\s+/).map(normWord).filter((w) => w.length > 3 && !STOPWORDS.has(w)))].slice(0, 10);
-    song = composeSong(state.text, { title: state.title || 'My song', mood: state.mood, key: state.key, seed: state.seed, vocab: words });
-    const c = compileSong(song);
+    let c;
+    try {
+      song = composeSong(state.text, { title: state.title || 'My song', mood: state.mood, key: state.key, seed: state.seed, vocab: words });
+      c = compileSong(song);
+    } catch (e) {
+      console.error(e);
+      song = null;
+      preview.append(h('p', { class: 'bad' }, `Singing could not make a song from this text (${e.message}). Try shorter lines, or put each line of the song on its own line.`));
+      return;
+    }
     if (c.warnings.length) console.warn(c.warnings);
     track = new SynthTrack(song);
     transport = transportBar(track);
