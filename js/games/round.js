@@ -82,7 +82,7 @@ class RoundTrack extends SynthTrack {
   fire(e, when) {
     if (e.pan !== undefined && e.inst) {
       const dur = e.d * (60 / this.effBpm);
-      this.synth.note(e.inst, { midi: e.midi, time: when, dur, vel: e.vel, bus: e.bus, text: e.text, first: e.first, pan: e.pan });
+      this.synth.note(e.inst, { midi: e.midi, time: when, dur, vel: e.vel, bus: e.bus, text: e.text, first: e.first, last: e.last, ph: e.ph, pan: e.pan });
       return;
     }
     super.fire(e, when);

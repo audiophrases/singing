@@ -19,9 +19,10 @@ Web Audio band. Nothing is a recording, so any song can be:
 - **played in 16 styles**: pop, rock, campfire, lullaby, music box, waltz,
   marching band, reggae, blues shuffle, disco, hip-hop, country, sea shanty,
   reggaeton, 8-bit, just piano or drums only. (Twinkle Twinkle as reggae is a feature.)
-- sung by a **robot singer**: a formant synthesizer that sings the vowels of the real
-  words. It can also be a flute, piano, whistle, synth or bells, or switched off
-  for real karaoke.
+- sung by a **robot singer**: a Klatt-style formant synthesizer that sings the real
+  words, consonants included. It looks words up in a 16,000-word pronunciation
+  dictionary (from CMUdict) and guesses the rest from their spelling. It can also be a flute,
+  piano, whistle, synth or bells, or switched off for real karaoke.
 
 All instruments (FM e-piano, Karplus-Strong guitar/ukulele/harp, organ,
 accordion, strings, brass, basses, drum kit, claps, stomps...) are synthesized.
@@ -132,12 +133,13 @@ index.html, css/singing.css
 js/main.js            router (#/, #/song/<id>, #/play/<id>/<game>, #/studio, #/chant, ...)
 js/music/             notes, score (song format), synth, band (styles), player, composer, timeline
 js/media/             YouTube, audio file and lyrics-only players (same interface as the band), timing files, auto-align
-js/lyrics/            word lists, grammar spotter, rhymes, syllables, gaps & distractors, bingo, Studio lyrics format
+js/lyrics/            word lists, grammar spotter, rhymes, syllables, phonemes (robot singer), gaps & distractors, bingo, Studio lyrics format
 js/games/             one module per activity
 js/views/             library, song, stage, studio, song maker, remix, print, party, help, card
 js/data/songs/        the songbook
 lab/karaoke.html      prototype: make a karaoke version in the browser (Demucs v4 on WebGPU, js/media/separate*.js)
-tests/                unit tests (99)
+tests/                unit tests (104)
+tools/                build-phonedict.mjs: regenerates js/lyrics/phonedict.js from CMUdict
 ```
 
 ### Song format (built-in band)

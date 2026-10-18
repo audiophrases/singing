@@ -12,6 +12,7 @@
  * feature, not a bug.
  */
 import { chordAt } from './score.js';
+import { syllablePhones } from '../lyrics/phonemes.js';
 
 const DRUM_KEYS = {
   k: 'kick', s: 'snare', h: 'hat', o: 'openhat', c: 'clap', r: 'rim', t: 'shaker', T: 'tamb',
@@ -159,7 +160,7 @@ export const STYLES = {
 
 export const GUIDES = {
   robo: { name: 'Robot singer', emoji: '🤖', inst: 'robo' },
-  flute: { name: 'Flute', emoji: '🪈', inst: 'flute' },
+  flute: { name: 'Flute', emoji: '🎶', inst: 'flute' },
   piano: { name: 'Piano', emoji: '🎹', inst: 'piano' },
   whistle: { name: 'Whistle', emoji: '😗', inst: 'whistle' },
   synth: { name: 'Synth', emoji: '🎛️', inst: 'synthlead' },
@@ -418,6 +419,21 @@ export function arrange(compiled, styleId = 'pop', opts = {}) {
   return events;
 }
 
+// How each syllable of a line sounds, for the robot singer: { on, nu, co }.
+const linePhones = new WeakMap();
+function phonesOf(line, si) {
+  let ph = linePhones.get(line);
+  if (!ph) {
+    ph = [];
+    for (const w of line.words || []) {
+      const parts = w.syllables.map((i) => line.syllables[i].text);
+      syllablePhones(parts.join(''), parts).forEach((x, k) => { ph[w.syllables[k]] = x; });
+    }
+    linePhones.set(line, ph);
+  }
+  return ph[si] || null;
+}
+
 // The melody, for the guide voice and the claps/stomps on "x" notes.
 export function melodyEvents(compiled, guide = 'robo', opts = {}) {
   const transpose = opts.transpose || 0;
@@ -436,9 +452,11 @@ export function melodyEvents(compiled, guide = 'robo', opts = {}) {
     const line = compiled.lines[m.line];
     const syl = line && m.syl >= 0 ? line.syllables[m.syl] : null;
     const first = !syl || syl.notes[0] === m;
+    const last = !syl || syl.notes[syl.notes.length - 1] === m;
     out.push({
       t: m.start, d: m.beats * 0.98, inst: g.inst, midi: m.midi + transpose + (opts.octave || 0) * 12,
-      vel: 0.85, bus: 'lead', text: syl ? syl.text : 'la', first,
+      vel: 0.85, bus: 'lead', text: syl ? syl.text : 'la', first, last,
+      ph: g.inst === 'robo' && syl ? phonesOf(line, m.syl) : null,
     });
   }
   return out;

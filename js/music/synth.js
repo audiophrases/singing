@@ -11,6 +11,7 @@
  * can mute the guide melody for karaoke or solo the drums for a chant.
  */
 import { midiToFreq } from './notes.js';
+import { syllablePhones, isVowelPhone } from '../lyrics/phonemes.js';
 
 let shared = null;
 
@@ -163,7 +164,7 @@ export class Synth {
 
   // ---------------------------------------------------------------- notes
 
-  note(inst, { midi, time, dur, vel = 0.8, bus = 'comp', text = '', first = true, pan = 0 }) {
+  note(inst, { midi, time, dur, vel = 0.8, bus = 'comp', text = '', first = true, last = true, ph = null, pan = 0 }) {
     const def = INSTRUMENTS[inst] || INSTRUMENTS.piano;
     const t = Math.max(time, this.ctx.currentTime);
     const out = this.ctx.createGain();
@@ -177,7 +178,7 @@ export class Synth {
     }
     node.connect(this.destFor(bus, def));
     const voice = { out, srcs: [] };
-    const end = def.play(this, { voice, out, midi, freq: midiToFreq(midi), t, dur: Math.max(0.03, dur), vel, text, first });
+    const end = def.play(this, { voice, out, midi, freq: midiToFreq(midi), t, dur: Math.max(0.03, dur), vel, text, first, last, ph });
     return this.track(voice, end);
   }
 
@@ -300,56 +301,138 @@ function decayEnv(param, t, dur, { a = 0.003, decay = 1, peak = 1, cut = true, r
   return t + decay + 0.1;
 }
 
-// ------------------------------------------------------------- vowels (robo)
+// ------------------------------------------------------------- phones (robo)
 
-// Formants (F1, F2, F3) for a handful of English vowels.
+/*
+ * The robot singer speaks in phones (see js/lyrics/phonemes.js). Each one is
+ * a target for the voice: formants F1-F3 (and how damped), how much buzz
+ * (voicing), hiss (frication noise and its filter) and breath (aspiration
+ * through the formants). Consonants take their formants from the vowel next
+ * to them, which is what makes "ba", "da" and "ga" sound different.
+ */
 const VOWELS = {
-  i: [280, 2250, 2900],
-  I: [400, 1950, 2550],
-  e: [520, 1850, 2500],
-  ae: [680, 1700, 2400],
-  a: [740, 1150, 2450],
-  o: [560, 880, 2400],
-  u: [320, 900, 2250],
-  U: [440, 1050, 2250],
-  uh: [620, 1200, 2400],
-  er: [480, 1350, 1700],
-  ei: [450, 2050, 2600],
+  i: { f: [280, 2250, 2900] }, I: { f: [400, 1920, 2560] }, E: { f: [550, 1770, 2490] }, '@': { f: [690, 1660, 2430] },
+  a: { f: [730, 1100, 2440] }, c: { f: [570, 840, 2410] }, '^': { f: [620, 1200, 2550] }, U: { f: [450, 1030, 2380] },
+  u: { f: [310, 870, 2250] }, R: { f: [470, 1350, 1690] },
+  e: { f: [480, 2000, 2600], to: [330, 2200, 2850] }, o: { f: [540, 920, 2400], to: [400, 800, 2300] },
+  Y: { f: [730, 1150, 2440], to: [400, 1900, 2550] }, W: { f: [730, 1150, 2440], to: [420, 900, 2300] },
+  O: { f: [570, 840, 2410], to: [400, 1900, 2550] },
+};
+const vowelStart = (p) => (VOWELS[p] || VOWELS['^']).f;
+const vowelEnd = (p) => (VOWELS[p] || VOWELS['^']).to || vowelStart(p);
+
+const CONSONANTS = {
+  l: { k: 'glide', f: [360, 1100, 2700], v: 0.7, damp: 1.5 },
+  r: { k: 'glide', f: [420, 1250, 1600], v: 0.75, damp: 1 },
+  w: { k: 'glide', f: [300, 700, 2200], v: 0.65, damp: 1.5 },
+  y: { k: 'glide', f: [280, 2200, 3000], v: 0.65, damp: 1 },
+  m: { k: 'nasal', at: 'lips' }, n: { k: 'nasal', at: 'gum' }, N: { k: 'nasal', at: 'soft' },
+  p: { k: 'stop', at: 'lips', nf: 1100, nq: 0.7 }, b: { k: 'stop', at: 'lips', voiced: true, nf: 1100, nq: 0.7 },
+  t: { k: 'stop', at: 'gum', nf: 4500, nq: 1 }, d: { k: 'stop', at: 'gum', voiced: true, nf: 4000, nq: 1 },
+  k: { k: 'stop', at: 'soft', nf: 2300, nq: 2 }, g: { k: 'stop', at: 'soft', voiced: true, nf: 2200, nq: 2 },
+  f: { k: 'fric', at: 'lips', n: 0.15, nf: 5000, nq: 0.6, len: 0.07 }, v: { k: 'fric', at: 'lips', voiced: true, n: 0.15, nf: 5000, nq: 0.6, len: 0.06 },
+  T: { k: 'fric', at: 'teeth', n: 0.12, nf: 5500, nq: 0.6, len: 0.07 }, D: { k: 'fric', at: 'teeth', voiced: true, n: 0.12, nf: 5500, nq: 0.6, len: 0.05 },
+  s: { k: 'fric', at: 'gum', n: 0.35, nf: 6500, nq: 1.5, len: 0.09 }, z: { k: 'fric', at: 'gum', voiced: true, n: 0.35, nf: 6500, nq: 1.5, len: 0.07 },
+  S: { k: 'fric', at: 'roof', n: 0.4, nf: 2700, nq: 2, len: 0.09 }, Z: { k: 'fric', at: 'roof', voiced: true, n: 0.4, nf: 2700, nq: 2, len: 0.07 },
+  h: { k: 'h' }, C: { k: 'affricate' }, J: { k: 'affricate', voiced: true },
 };
 
-// Spelling -> [startVowel, endVowel?]. Rough, but it makes the robot sing words.
-export function vowelOf(syllable) {
-  const s = String(syllable || '').toLowerCase().replace(/[^a-z]/g, '');
-  if (!s) return ['uh'];
-  const rules = [
-    [/igh|^i$|^my$|^by$|^fly|^sky|^why|^try|^cry|^dry|y$(?<=^[^aeiou]+y)/, ['a', 'i']],
-    [/ee|ea|ie(?!r)|ey$|^he$|^she$|^we$|^me$|^be$/, ['i']],
-    [/oo|ue|ew|ou(?=ld)|^do$|^you$|^to$|^who$|^two$/, ['u']],
-    [/ow$|ou|ow(?=n|l|e)/, ['a', 'u']],
-    [/oy|oi/, ['o', 'i']],
-    [/ai|ay|a.e$|ei/, ['ei', 'i']],
-    [/oa|o.e$|^go$|^no$|^so$|^oh$|ow/, ['o', 'u']],
-    [/er|ir|ur|or(?=ld|k)|ear(?=n|th)/, ['er']],
-    [/ar|ah|al(?=m|l)|^a$/, ['a']],
-    [/or|aw|au|al/, ['o']],
-    [/y$/, ['i']],
-  ];
-  for (const [re, v] of rules) if (re.test(s)) return v;
-  const m = /[aeiouy]/.exec(s);
-  if (!m) return ['uh'];
-  return [{ a: 'ae', e: 'e', i: 'I', o: 'o', u: 'uh', y: 'I' }[m[0]]];
+// Where the tongue or lips close bends the next vowel's formants (locus).
+function locus(at, vf) {
+  if (at === 'lips') return [260, 0.7 * vf[1] + 150, 0.9 * vf[2]];
+  if (at === 'teeth') return [280, 0.4 * vf[1] + 950, 2650];
+  if (at === 'gum') return [260, 0.4 * vf[1] + 1050, 2700];
+  if (at === 'roof') return [280, 0.3 * vf[1] + 1500, 2600];
+  return [260, 0.9 * vf[1] + 250, Math.min(3000, 0.9 * vf[1] + 550)]; // soft palate (k, g, ng)
 }
 
-function onsetOf(syllable) {
-  const s = String(syllable || '').toLowerCase().replace(/[^a-z]/g, '');
-  const m = /^(sh|ch|th|wh|[bcdfghjklmnpqrstvwxyz]+)/.exec(s);
-  if (!m) return null;
-  const c = m[1];
-  if (/^(s|sh|ch|z|x)/.test(c)) return { kind: 'hiss', freq: c.startsWith('sh') || c.startsWith('ch') ? 3000 : 6000, len: 0.07 };
-  if (/^(f|th|h|wh)/.test(c)) return { kind: 'hiss', freq: 2500, len: 0.05 };
-  if (/^(t|k|c|p|q)/.test(c)) return { kind: 'tick', freq: c[0] === 't' ? 4500 : 2000, len: 0.025 };
-  if (/^(b|d|g)/.test(c)) return { kind: 'thump', len: 0.03 };
-  return { kind: 'hum', len: 0.04 }; // l, m, n, r, w, y, v, j
+const SEG = { f: null, damp: 1, v: 0, n: 0, nf: 3000, nq: 1, a: 0, tr: 0.03 };
+const seg = (o) => ({ ...SEG, ...o });
+
+// One consonant as timed segments. vf: formants of the vowel it leans on.
+function consonantSegs(p, coda, vf, prev) {
+  const c = CONSONANTS[p];
+  if (!c) return [];
+  const voice = c.voiced ? 0.45 : 0;
+  switch (c.k) {
+    case 'glide': return [seg({ f: c.f, damp: c.damp, v: c.v, len: coda ? 0.08 : 0.05 })];
+    case 'nasal': return [seg({ f: [250, ...locus(c.at, vf).slice(1)], damp: 3, v: 0.6, len: coda ? 0.09 : 0.06, tr: 0.02 })];
+    case 'h': return [seg({ f: vf, a: 0.35, len: 0.06, tr: 0.01 })];
+    case 'fric': return [seg({ f: locus(c.at, vf), damp: 2, v: voice, n: c.n * (c.voiced ? 0.6 : 1), nf: c.nf, nq: c.nq, len: c.len + (coda ? 0.02 : 0), tr: 0.02 })];
+    case 'affricate': {
+      const fr = CONSONANTS[c.voiced ? 'Z' : 'S'];
+      const f = locus('roof', vf);
+      return [
+        seg({ f, damp: 3, v: c.voiced ? 0.2 : 0, len: 0.04, tr: 0.015 }),
+        seg({ f, damp: 2, v: voice, n: fr.n * (c.voiced ? 0.6 : 1), nf: fr.nf, nq: fr.nq, len: 0.07, tr: 0.015 }),
+      ];
+    }
+    case 'stop': {
+      const f = locus(c.at, vf);
+      const out = [
+        seg({ f, damp: 3, v: c.voiced ? 0.2 : 0, len: c.voiced ? 0.035 : 0.05, tr: 0.015 }),
+        seg({ f, v: c.voiced ? 0.3 : 0, n: (c.voiced ? 0.25 : 0.45) * (coda ? 0.6 : 1), nf: c.nf, nq: c.nq, len: 0.012, tr: 0.005 }),
+      ];
+      // "pin" breathes after the p; "spin" doesn't.
+      if (!coda && !c.voiced && prev !== 's') out.push(seg({ f: vf, a: 0.35, len: 0.035, tr: 0.02 }));
+      return out;
+    }
+    default: return [];
+  }
+}
+
+// The voice: a glottal pulse (Rosenberg), its harmonics cached per context.
+const glottalWaves = new WeakMap();
+function glottalWave(ctx) {
+  if (glottalWaves.has(ctx)) return glottalWaves.get(ctx);
+  const N = 1024;
+  const H = 64;
+  const open = 0.4;
+  const close = 0.16;
+  const flow = new Float32Array(N);
+  for (let i = 0; i < N; i += 1) {
+    const x = i / N;
+    if (x < open) flow[i] = 0.5 * (1 - Math.cos(Math.PI * x / open));
+    else if (x < open + close) flow[i] = Math.cos(Math.PI * (x - open) / (2 * close));
+  }
+  // Lips radiate the derivative of the airflow.
+  const d = flow.map((v, i) => v - flow[(i + N - 1) % N]);
+  const real = new Float32Array(H + 1);
+  const imag = new Float32Array(H + 1);
+  for (let h = 1; h <= H; h += 1) {
+    let re = 0;
+    let im = 0;
+    for (let i = 0; i < N; i += 1) {
+      re += d[i] * Math.cos(2 * Math.PI * h * i / N);
+      im += d[i] * Math.sin(2 * Math.PI * h * i / N);
+    }
+    real[h] = re;
+    imag[h] = im;
+  }
+  const wave = ctx.createPeriodicWave(real, imag);
+  glottalWaves.set(ctx, wave);
+  return wave;
+}
+
+// Formant bandwidths (Hz) for F1-F3, and a lowpass biquad's Q (in dB) for a
+// resonator of that bandwidth: its peak is about F / B above the 0 Hz level.
+const BANDWIDTHS = [70, 90, 150];
+const resonance = (f, bw) => Math.max(0, 20 * Math.log10(f / bw));
+
+// The robot voice's balance: hiss and breath levels, consonant lengths and a
+// formant scale. Tuned by rendering test lines and scoring them with a speech
+// recognizer; exported so that can be done again.
+export const ROBO = { hiss: 1.5, breath: 1.5, cons: 1, formants: 1 };
+
+// Automate a param through [time, value] keys (times ascending).
+function follow(param, keys) {
+  let last = -Infinity;
+  keys.forEach(([t, v], i) => {
+    const at = Math.max(t, last + 1e-4);
+    if (i === 0) param.setValueAtTime(v, at);
+    else param.linearRampToValueAtTime(v, at);
+    last = at;
+  });
 }
 
 // ------------------------------------------------------------- instruments
@@ -702,81 +785,147 @@ const INSTRUMENTS = {
       return end + 0.05;
     },
   },
-  // The robot singer: a buzzing source shaped by vowel formants, with a
-  // consonant noise at the start of each syllable.
+  // The robot singer: a glottal buzz through moving formants, with real
+  // consonants (see "phones" above). A note sings its share of a syllable:
+  // the first note brings the onset ("tw" of "twin"), the last the coda.
   robo: {
-    play(sy, { voice, out: voiceOut, freq, t, dur, vel, text, first }) {
+    play(sy, { voice, out: voiceOut, freq, t, dur, vel, text, first, last, ph }) {
       const ctx = sy.ctx;
-      const end = t + dur + 0.1;
-      // The consonant goes straight to the voice output; the vowel gets the envelope.
-      voiceOut.gain.value = 1;
-      const out = sy.gain(0);
-      out.connect(voiceOut);
-      const vowels = vowelOf(text);
-      const v0 = VOWELS[vowels[0]] || VOWELS.uh;
-      const v1 = VOWELS[vowels[1] || vowels[0]] || v0;
+      const p = ph || syllablePhones(text || 'la', [text || 'la'])[0];
+      const nu = [...(p.nu || '^')];
+      const vowels = nu.filter(isVowelPhone);
+      const v0 = vowels[0] || '^';
+      const vN = vowels[vowels.length - 1] || v0;
+      const on = [];
+      const co = [];
+      if (first) [...p.on].forEach((c, i, all) => on.push(...consonantSegs(c, false, vowelStart(v0), all[i - 1])));
+      if (last) [...p.co].forEach((c, i, all) => co.push(...consonantSegs(c, true, vowelEnd(vN), all[i - 1])));
+      // Inside a melisma, notes before the last hold the first vowel; the last
+      // one finishes the nucleus (the glide of "my", the "r" of "fire").
+      const nuc = [];
+      const seq = last ? nu : [v0];
+      seq.forEach((x, i) => {
+        if (!isVowelPhone(x)) {
+          const next = seq.slice(i + 1).find(isVowelPhone) || vN;
+          nuc.push(...consonantSegs(x, false, vowelStart(next), seq[i - 1]));
+          return;
+        }
+        const w = i === 0 ? 1.5 : 1;
+        const vw = VOWELS[x] || VOWELS['^'];
+        if (vw.to && last) {
+          nuc.push(seg({ f: vw.f, v: 1, w: w * 0.55, tr: 0.045 }), seg({ f: vw.to, v: 1, w: w * 0.45, glide: true }));
+        } else {
+          nuc.push(seg({ f: vw.f, v: 1, w, tr: 0.045 }));
+        }
+      });
+
+      // Timing: the onset starts a little before the beat so the vowel lands
+      // on it, as singers do; consonants never take more than half the note.
+      const lenOf = (list) => list.reduce((a, s) => a + (s.len || 0) * ROBO.cons, 0);
+      const onLen = lenOf(on);
+      const pre = on.length ? Math.min(onLen * 0.6, 0.07, Math.max(0, t - ctx.currentTime - 0.01)) : 0;
+      const start = t - pre;
+      const span = dur + pre;
+      const consLen = onLen + lenOf(co) + lenOf(nuc);
+      const k = consLen > span * 0.55 ? (span * 0.55) / consLen : 1;
+      const vowelTime = span - consLen * k;
+      const weights = nuc.reduce((a, s) => a + (s.w || 0), 0) || 1;
+      const segs = [...on, ...nuc, ...co];
+      let at = start;
+      for (const s of segs) {
+        s.s = at;
+        at += s.w ? vowelTime * (s.w / weights) : s.len * ROBO.cons * k;
+        s.e = at;
+      }
+
+      // Sources: the buzz (with a scoop and vibrato) and one noise for hiss and breath.
       const src = ctx.createOscillator();
-      src.type = 'sawtooth';
-      src.frequency.setValueAtTime(freq, t);
-      // Little scoop into the note, then vibrato.
+      src.setPeriodicWave(glottalWave(ctx));
+      src.frequency.setValueAtTime(freq, start);
       if (first) {
         src.frequency.setValueAtTime(freq * 0.97, t);
         src.frequency.exponentialRampToValueAtTime(freq, t + 0.05);
       }
       const vib = ctx.createOscillator();
       vib.frequency.value = 5.5;
-      const vg = sy.gain(0);
-      vg.gain.setValueAtTime(0, t);
-      vg.gain.linearRampToValueAtTime(freq * 0.01, t + Math.min(0.5, dur));
-      vib.connect(vg);
-      vg.connect(src.frequency);
-      const pre = sy.filter('lowpass', 5000, 0.5);
-      src.connect(pre);
+      const vibDepth = sy.gain(0);
+      vibDepth.gain.setValueAtTime(0, t);
+      vibDepth.gain.linearRampToValueAtTime(freq * 0.01, t + Math.min(0.5, dur));
+      vib.connect(vibDepth);
+      vibDepth.connect(src.frequency);
+      const end = t + dur + 0.1;
+
+      // The vocal tract: resonators in series, like a Klatt synthesizer. A
+      // resonant lowpass biquad is a resonator with unity gain at 0 Hz, so the
+      // vowel's spectrum comes out balanced by itself. F4 and F5 stay put.
+      const voicing = sy.gain(0);
+      src.connect(voicing);
+      const tractIn = sy.gain(1);
+      voicing.connect(tractIn);
+      const tract = [0, 1, 2, 3, 4].map((j) => sy.filter('lowpass', [500, 1500, 2500, 3300, 3850][j], 0));
+      tract.reduce((a, b) => { a.connect(b); return b; }, tractIn);
+      tract[3].Q.value = resonance(3300, 250);
+      tract[4].Q.value = resonance(3850, 300);
       const sum = sy.gain(1);
-      const gains = [1, 0.55, 0.3];
-      for (let i = 0; i < 3; i += 1) {
-        const bp = sy.filter('bandpass', v0[i], [9, 12, 14][i]);
-        if (v1 !== v0) {
-          bp.frequency.setValueAtTime(v0[i], t + dur * 0.35);
-          bp.frequency.linearRampToValueAtTime(v1[i], t + dur * 0.9);
-        }
-        const g = sy.gain(gains[i] * 3);
-        pre.connect(bp);
-        bp.connect(g);
-        g.connect(sum);
+      tract[4].connect(sum);
+
+      const noisy = segs.some((s) => s.n > 0 || s.a > 0);
+      let breath = null;
+      let hiss = null;
+      let hissGain = null;
+      if (noisy) {
+        const noiseIn = sy.gain(1);
+        sy.noiseSrc(voice, start, end, noiseIn);
+        breath = sy.gain(0);
+        noiseIn.connect(breath);
+        breath.connect(tractIn);
+        hiss = sy.filter('bandpass', 3000, 1);
+        hissGain = sy.gain(0);
+        noiseIn.connect(hiss);
+        hiss.connect(hissGain);
+        hissGain.connect(sum);
       }
-      // A little of the raw buzz, lowpassed, keeps the fundamental clear.
-      const body = sy.filter('lowpass', Math.min(1200, freq * 1.6), 0.7);
-      const bodyGain = sy.gain(0.9);
-      src.connect(body);
-      body.connect(bodyGain);
-      bodyGain.connect(sum);
+
+      // Every segment is a target: formants glide, levels move quickly.
+      const formantKeys = [[], [], []];
+      const qKeys = [[], [], []];
+      const levelKeys = { v: [], n: [], a: [], nf: [], nq: [] };
+      segs.forEach((s, i) => {
+        const reachF = i === 0 ? s.s : s.glide ? s.e : s.s + Math.min(s.tr, (s.e - s.s) * 0.6);
+        const reachL = i === 0 ? s.s : s.s + Math.min(0.008, (s.e - s.s) / 2);
+        for (let j = 0; j < 3; j += 1) {
+          const f = s.f[j] * ROBO.formants;
+          const q = resonance(f, BANDWIDTHS[j] * s.damp);
+          formantKeys[j].push([reachF, f], [s.e, f]);
+          qKeys[j].push([reachF, q], [s.e, q]);
+        }
+        const lv = { v: s.v, n: s.n * ROBO.hiss, a: s.a * ROBO.breath, nf: s.nf, nq: s.nq };
+        for (const key of Object.keys(lv)) levelKeys[key].push([reachL, lv[key]], [s.e, lv[key]]);
+      });
+      for (let j = 0; j < 3; j += 1) {
+        follow(tract[j].frequency, formantKeys[j]);
+        follow(tract[j].Q, qKeys[j]);
+      }
+      follow(voicing.gain, levelKeys.v);
+      if (noisy) {
+        follow(breath.gain, levelKeys.a);
+        follow(hissGain.gain, levelKeys.n);
+        follow(hiss.frequency, levelKeys.nf);
+        follow(hiss.Q, levelKeys.nq);
+      }
+
+      voiceOut.gain.value = 1;
+      const out = sy.gain(0);
       sum.connect(out);
-      src.start(t);
+      out.connect(voiceOut);
+      const peak = 0.32 * vel; // as loud as the old robot voice
+      follow(out.gain, [[start, 0], [start + (first ? 0.006 : 0.02), peak], [t + dur, peak], [t + dur + 0.05, 0]]);
+
+      src.start(start);
       src.stop(end);
-      vib.start(t);
+      vib.start(start);
       vib.stop(end);
       voice.srcs.push(src, vib);
-      let a = 0.03;
-      if (first) {
-        const on = onsetOf(text);
-        if (on && (on.kind === 'hiss' || on.kind === 'tick')) {
-          const bp = sy.filter(on.kind === 'hiss' ? 'highpass' : 'bandpass', on.freq, 1);
-          const ng = sy.gain(0);
-          ng.gain.setValueAtTime(0, t);
-          ng.gain.linearRampToValueAtTime(on.kind === 'hiss' ? 0.18 : 0.3, t + 0.005);
-          ng.gain.linearRampToValueAtTime(0, t + on.len);
-          bp.connect(ng);
-          ng.connect(voiceOut);
-          sy.noiseSrc(voice, t, t + on.len + 0.02, bp);
-          a = on.len * 0.8;
-        } else if (on && on.kind === 'thump') {
-          a = 0.02;
-        } else if (on) {
-          a = 0.06;
-        }
-      }
-      env(out.gain, t, dur * 0.97, { a, d: 0.1, s: 0.9, r: 0.08, peak: 0.5 * vel });
       return end + 0.05;
     },
   },

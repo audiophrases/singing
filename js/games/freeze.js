@@ -11,12 +11,12 @@ import { sfx } from '../sfx.js';
 export const ACTIONS = [
   ['Jump!', '🦘'], ['Clap your hands!', '👏'], ['Turn around!', '🔄'], ['Wave!', '👋'], ['Stomp your feet!', '🦶'],
   ['Touch your toes!', '🙇'], ['Hands up!', '🙌'], ['Dance like a robot!', '🤖'], ['Swim!', '🏊'], ['Fly like a bird!', '🦅'],
-  ['Hop on one foot!', '🦩'], ['Shake your body!', '🫨'], ['Walk like a penguin!', '🐧'], ['March!', '💂'], ['Be a monkey!', '🐒'],
+  ['Hop on one foot!', '🦩'], ['Shake your body!', '🕺'], ['Walk like a penguin!', '🐧'], ['March!', '💂'], ['Be a monkey!', '🐒'],
   ['Wiggle your fingers!', '🖐️'], ['Nod your head!', '🙂‍↕️'], ['Row your boat!', '🚣'], ['Play the guitar!', '🎸'], ['Be a tree!', '🌳'],
   ['Clap above your head!', '👏'], ['Spin like a ballerina!', '🩰'], ['Run on the spot!', '🏃'], ['Be a cat!', '🐱'], ['Make a big circle!', '⭕'],
 ];
 
-const ACTION_WORDS = { clap: '👏', jump: '🦘', stomp: '🦶', wave: '👋', dance: '💃', swim: '🏊', fly: '🦅', row: '🚣', spin: '🌀', turn: '🔄', sleep: '😴', shake: '🫨', march: '💂', run: '🏃', sing: '🎤', swish: '🌧️', roar: '🦁', scream: '😱', shiver: '🥶', laugh: '😂' };
+const ACTION_WORDS = { clap: '👏', jump: '🦘', stomp: '🦶', wave: '👋', dance: '💃', swim: '🏊', fly: '🦅', row: '🚣', spin: '🌀', turn: '🔄', sleep: '😴', shake: '🕺', march: '💂', run: '🏃', sing: '🎤', swish: '🌧️', roar: '🦁', scream: '😱', shiver: '🥶', laugh: '😂' };
 
 export async function start(ctx) {
   const { track, timeline, main } = ctx;

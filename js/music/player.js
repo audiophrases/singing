@@ -124,7 +124,7 @@ export class SynthTrack extends Emitter {
   fire(e, when) {
     const dur = e.d ? e.d * (60 / this.effBpm) : 0;
     if (e.drum) this.synth.drum(e.drum, when, e.vel, e.bus === 'lead' ? 'lead' : e.bus === 'fx' ? 'fx' : 'drums');
-    else this.synth.note(e.inst, { midi: e.midi, time: when, dur, vel: e.vel, bus: e.bus, text: e.text, first: e.first });
+    else this.synth.note(e.inst, { midi: e.midi, time: when, dur, vel: e.vel, bus: e.bus, text: e.text, first: e.first, last: e.last, ph: e.ph });
   }
 
   tick() {
