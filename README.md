@@ -136,7 +136,8 @@ js/lyrics/            word lists, grammar spotter, rhymes, syllables, gaps & dis
 js/games/             one module per activity
 js/views/             library, song, stage, studio, song maker, remix, print, party, help, card
 js/data/songs/        the songbook
-tests/                unit tests (94)
+lab/karaoke.html      prototype: make a karaoke version in the browser (Demucs v4 on WebGPU, js/media/separate*.js)
+tests/                unit tests (99)
 ```
 
 ### Song format (built-in band)

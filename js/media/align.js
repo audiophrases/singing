@@ -11,6 +11,8 @@
  * starts (onsets). The audio is read at 11025 Hz, plenty for voices.
  */
 
+import { makeFft } from './fft.js';
+
 export const RATE = 11025;
 const N = 2048;
 const HOP = 256;
@@ -38,42 +40,6 @@ export function toMono(channels) {
   for (const ch of channels) for (let i = 0; i < out.length; i += 1) out[i] += ch[i] / channels.length;
   if (channels.length > 1 && rms(out) < 0.1 * rms(channels[0])) return Float32Array.from(channels[0]);
   return out;
-}
-
-// In-place radix-2 FFT of re/im (length N).
-function makeFft(n) {
-  const levels = Math.log2(n);
-  const rev = new Uint32Array(n);
-  for (let i = 0; i < n; i += 1) {
-    let r = 0;
-    for (let b = 0; b < levels; b += 1) r |= ((i >> b) & 1) << (levels - 1 - b);
-    rev[i] = r;
-  }
-  const cos = new Float64Array(n / 2);
-  const sin = new Float64Array(n / 2);
-  for (let i = 0; i < n / 2; i += 1) { cos[i] = Math.cos((2 * Math.PI * i) / n); sin[i] = -Math.sin((2 * Math.PI * i) / n); }
-  return (re, im) => {
-    for (let i = 0; i < n; i += 1) {
-      const j = rev[i];
-      if (j > i) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
-    }
-    for (let size = 2; size <= n; size *= 2) {
-      const half = size / 2;
-      const step = n / size;
-      for (let i = 0; i < n; i += size) {
-        for (let k = 0; k < half; k += 1) {
-          const a = i + k;
-          const b = a + half;
-          const wr = cos[k * step];
-          const wi = sin[k * step];
-          const tr = re[b] * wr - im[b] * wi;
-          const ti = re[b] * wi + im[b] * wr;
-          re[b] = re[a] - tr; im[b] = im[a] - ti;
-          re[a] += tr; im[a] += ti;
-        }
-      }
-    }
-  };
 }
 
 /*
@@ -244,5 +210,8 @@ export function alignRecordings(songFeat, otherFeat, { range = 30 } = {}) {
     return bl * FRAME;
   };
   const drift = Math.abs(local(half, x.length) - local(0, half));
-  return { offset, corr: bestC, second, drift, confident: bestC >= 0.2 && bestC >= second * 1.2 && drift <= 0.12 };
+  // Music that repeats every beat scores almost as well one beat off, so a
+  // strong match counts even when the runner-up is close.
+  const clear = bestC >= second * 1.2 || bestC >= 0.5;
+  return { offset, corr: bestC, second, drift, confident: bestC >= 0.2 && clear && drift <= 0.12 };
 }

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Karaoke Maker Lab</title>
+  <link rel="icon" href="../favicon.svg">
+  <link rel="stylesheet" href="../css/singing.css">
+  <style>
+    .lab { max-width: 760px; margin: 1.5rem auto; padding: 0 16px; }
+    .lab-bar { height: 12px; border-radius: 6px; background: var(--line, #e3e6ef); overflow: hidden; margin: .6rem 0; }
+    .lab-bar > div { height: 100%; width: 0; background: var(--primary, #605dff); transition: width .2s; }
+    .lab-log { font: 0.85rem/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; background: rgba(96, 93, 255, 0.06); border-radius: .6rem; padding: .7rem .9rem; min-height: 4rem; }
+    .lab audio { width: 100%; margin: .3rem 0 .8rem; }
+    .lab-result { display: none; }
+    .lab-result.on { display: block; }
+  </style>
+</head>
+<body>
+  <main class="lab">
+    <section class="card">
+      <h1 class="page-title">🧪 Karaoke maker (lab)</h1>
+      <p class="muted">Takes the singer out of a song with Demucs v4, on this computer's graphics card. Nothing is uploaded; the model (126–180 MB) downloads once and stays in this browser.</p>
+      <p class="small" id="gpu">Checking the graphics card…</p>
+      <div class="row">
+        <input type="file" id="file" accept="audio/*">
+        <select id="model" aria-label="Model">
+          <option value="auto">Model: automatic</option>
+          <option value="fp16">fp16 (126 MB, needs shader-f16)</option>
+          <option value="fp32">fp32 (180 MB, any WebGPU card)</option>
+        </select>
+        <select id="backend" aria-label="Runs on">
+          <option value="webgpu">Graphics card (WebGPU)</option>
+          <option value="wasm">Processor only (very slow)</option>
+        </select>
+        <button class="btn primary" id="go" type="button" disabled>✨ Make the karaoke version</button>
+      </div>
+      <div class="lab-bar"><div id="bar"></div></div>
+      <div class="lab-log" id="log"></div>
+      <div class="lab-result" id="result">
+        <h3 class="section-title">🎤 Karaoke version</h3>
+        <audio id="karaoke" controls></audio>
+        <a class="btn btn-sm" id="karaokeDl" download>⬇️ Download</a>
+        <h3 class="section-title">🗣️ Vocals only</h3>
+        <audio id="vocals" controls></audio>
+        <a class="btn btn-sm" id="vocalsDl" download>⬇️ Download</a>
+      </div>
+    </section>
+  </main>
+  <script type="module">
+    import { karaokeSupport, makeKaraoke } from '../js/media/karaoke-maker.js';
+
+    const $ = (id) => document.getElementById(id);
+    const log = (text) => { $('log').textContent += `${$('log').textContent ? '\n' : ''}${text}`; };
+    const secs = (s) => (s >= 60 ? `${Math.floor(s / 60)} min ${Math.round(s % 60)} s` : `${s.toFixed(1)} s`);
+    window.__lab = { state: 'idle' };
+
+    const support = await karaokeSupport();
+    $('gpu').textContent = support.ok
+      ? `✅ WebGPU: ${support.gpu || 'graphics card found'} · ${support.f16 ? 'fp16 supported' : 'no fp16, so the fp32 model'}`
+      : `⚠️ ${support.reason}`;
+    window.__lab.support = support;
+    $('file').addEventListener('change', () => { $('go').disabled = !$('file').files[0]; });
+
+    $('go').addEventListener('click', async () => {
+      const file = $('file').files[0];
+      if (!file) return;
+      $('go').disabled = true;
+      $('result').classList.remove('on');
+      $('log').textContent = '';
+      $('bar').style.width = '0';
+      window.__lab = { state: 'running', support };
+      const t0 = performance.now();
+      let segStart = 0;
+      try {
+        const res = await makeKaraoke(file, {
+          model: $('model').value,
+          backend: $('backend').value,
+          onStatus: (text) => log(`[${secs((performance.now() - t0) / 1000)}] ${text}`),
+          onDownload: (loaded, total) => { $('bar').style.width = `${Math.min(100, (loaded / total) * 100)}%`; },
+          onProgress: (done, total) => {
+            const now = performance.now();
+            if (done === 1) log(`[${secs((now - t0) / 1000)}] first piece of 7.8 s took ${secs((now - (segStart || now)) / 1000)}`);
+            segStart = now;
+            $('bar').style.width = `${(done / total) * 100}%`;
+            window.__lab.progress = [done, total];
+          },
+        });
+        const i = res.info;
+        log(`\n✅ Done with the ${i.model} model on ${i.backend}.`);
+        log(`Model ready in ${secs(i.loadSecs)} · separation ${secs(i.runSecs)} for a ${secs(i.songSecs)} song (${(i.songSecs / i.runSecs).toFixed(1)}× real time) · total ${secs(i.totalSecs)}.`);
+        const base = file.name.replace(/\.[^.]+$/, '');
+        for (const [id, blob, name] of [['karaoke', res.karaoke, `${base} (Karaoke).wav`], ['vocals', res.vocals, `${base} (Vocals).wav`]]) {
+          const url = URL.createObjectURL(blob);
+          $(id).src = url;
+          $(`${id}Dl`).href = url;
+          $(`${id}Dl`).download = name;
+        }
+        $('result').classList.add('on');
+        window.__lab = { state: 'done', support, info: i, raw: res.raw, blobs: { karaoke: res.karaoke, vocals: res.vocals } };
+      } catch (e) {
+        log(`\n❌ ${e.message}`);
+        window.__lab = { state: 'error', support, error: e.message };
+      }
+      $('go').disabled = false;
+    });
+  </script>
+</body>
+</html>
