@@ -7,13 +7,15 @@
   <link rel="icon" href="../favicon.svg">
   <link rel="stylesheet" href="../css/singing.css">
   <style>
-    .lab { max-width: 760px; margin: 1.5rem auto; padding: 0 16px; }
+    .lab { max-width: 760px; margin: 1.5rem auto; padding: 0 16px; display: grid; gap: 1rem; }
     .lab-bar { height: 12px; border-radius: 6px; background: var(--line, #e3e6ef); overflow: hidden; margin: .6rem 0; }
     .lab-bar > div { height: 100%; width: 0; background: var(--primary, #605dff); transition: width .2s; }
     .lab-log { font: 0.85rem/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; background: rgba(96, 93, 255, 0.06); border-radius: .6rem; padding: .7rem .9rem; min-height: 4rem; }
     .lab audio { width: 100%; margin: .3rem 0 .8rem; }
     .lab-result { display: none; }
     .lab-result.on { display: block; }
+    .lab-off { display: none !important; }
+    .lab-list { margin: .4rem 0 0; padding-left: 1.2rem; }
   </style>
 </head>
 <body>
@@ -38,7 +40,7 @@
       <div class="lab-bar"><div id="bar"></div></div>
       <div class="lab-log" id="log"></div>
       <div class="lab-result" id="result">
-        <h3 class="section-title">🎤 Karaoke version</h3>
+        <h3 class="section-title">🎤 Karaoke version (instrumental)</h3>
         <audio id="karaoke" controls></audio>
         <a class="btn btn-sm" id="karaokeDl" download>⬇️ Download</a>
         <h3 class="section-title">🗣️ Vocals only</h3>
@@ -46,11 +48,26 @@
         <a class="btn btn-sm" id="vocalsDl" download>⬇️ Download</a>
       </div>
     </section>
+
+    <section class="card">
+      <h2 class="section-title">📁 Watch a folder</h2>
+      <p class="muted small">Songs you put in the folder are made automatically, one after another, into its <b>Karaoke versions</b> folder: <i>Song (Instrumental).wav</i> and <i>Song (Vocals).wav</i>. Songs that already have both are skipped. Keep this page open while it works; the folder is remembered for next time.</p>
+      <div class="row">
+        <button class="btn" id="pick" type="button">📁 Choose a folder…</button>
+        <button class="btn primary lab-off" id="resume" type="button">▶️ Keep watching</button>
+        <button class="btn lab-off" id="stopWatch" type="button">⏹ Stop watching</button>
+      </div>
+      <p class="small" id="watchStatus"></p>
+      <ul class="small lab-list" id="watchList"></ul>
+    </section>
   </main>
   <script type="module">
     import { karaokeSupport, makeKaraoke } from '../js/media/karaoke-maker.js';
+    import { FolderWatcher, OUT_DIR, outputNames } from '../js/media/folder-watch.js';
+    import { putMedia, getMedia, deleteMedia } from '../js/media/store.js';
 
     const $ = (id) => document.getElementById(id);
+    const show = (id, on) => $(id).classList.toggle('lab-off', !on);
     const log = (text) => { $('log').textContent += `${$('log').textContent ? '\n' : ''}${text}`; };
     const secs = (s) => (s >= 60 ? `${Math.floor(s / 60)} min ${Math.round(s % 60)} s` : `${s.toFixed(1)} s`);
     window.__lab = { state: 'idle' };
@@ -60,18 +77,23 @@
       ? `✅ WebGPU: ${support.gpu || 'graphics card found'} · ${support.f16 ? 'fp16 supported' : 'no fp16, so the fp32 model'}`
       : `⚠️ ${support.reason}`;
     window.__lab.support = support;
-    $('file').addEventListener('change', () => { $('go').disabled = !$('file').files[0]; });
 
-    $('go').addEventListener('click', async () => {
-      const file = $('file').files[0];
-      if (!file) return;
-      $('go').disabled = true;
+    // One song at a time: the button and the folder watcher share the graphics card.
+    let busy = false;
+    const refreshGo = () => { $('go').disabled = busy || !$('file').files[0]; };
+    $('file').addEventListener('change', refreshGo);
+    window.addEventListener('beforeunload', (e) => { if (busy) e.preventDefault(); });
+
+    async function run(file) {
+      busy = true;
+      refreshGo();
       $('result').classList.remove('on');
       $('log').textContent = '';
       $('bar').style.width = '0';
-      window.__lab = { state: 'running', support };
+      window.__lab = { state: 'running', support, file: file.name };
       const t0 = performance.now();
       let segStart = 0;
+      log(`🎵 ${file.name}`);
       try {
         const res = await makeKaraoke(file, {
           model: $('model').value,
@@ -89,8 +111,8 @@
         const i = res.info;
         log(`\n✅ Done with the ${i.model} model on ${i.backend}.`);
         log(`Model ready in ${secs(i.loadSecs)} · separation ${secs(i.runSecs)} for a ${secs(i.songSecs)} song (${(i.songSecs / i.runSecs).toFixed(1)}× real time) · total ${secs(i.totalSecs)}.`);
-        const base = file.name.replace(/\.[^.]+$/, '');
-        for (const [id, blob, name] of [['karaoke', res.karaoke, `${base} (Karaoke).wav`], ['vocals', res.vocals, `${base} (Vocals).wav`]]) {
+        const names = outputNames(file.name);
+        for (const [id, blob, name] of [['karaoke', res.karaoke, names.karaoke], ['vocals', res.vocals, names.vocals]]) {
           const url = URL.createObjectURL(blob);
           $(id).src = url;
           $(`${id}Dl`).href = url;
@@ -98,12 +120,98 @@
         }
         $('result').classList.add('on');
         window.__lab = { state: 'done', support, info: i, raw: res.raw, blobs: { karaoke: res.karaoke, vocals: res.vocals } };
+        return res;
       } catch (e) {
         log(`\n❌ ${e.message}`);
         window.__lab = { state: 'error', support, error: e.message };
+        throw e;
+      } finally {
+        busy = false;
+        refreshGo();
       }
-      $('go').disabled = false;
+    }
+
+    $('go').addEventListener('click', () => {
+      const file = $('file').files[0];
+      if (file && !busy) run(file).catch(() => {});
     });
+
+    // ------------------------------------------------------------ folder watch
+    const FOLDER_KEY = 'lab:watch-folder';
+    let watcher = null;
+    let madeCount = 0;
+    const listItem = (text) => {
+      const li = document.createElement('li');
+      li.textContent = text;
+      $('watchList').prepend(li);
+    };
+    const status = (text) => { $('watchStatus').textContent = text; };
+    const idleStatus = () => status(`👀 Watching “${watcher.dir.name}” (checks every 5 s) · ${madeCount} made since this page opened.`);
+
+    function startWatching(dir) {
+      if (watcher) watcher.stop();
+      watcher = new FolderWatcher(dir, {
+        make: (file) => run(file),
+        canRun: () => !busy,
+        onEvent: (e) => {
+          if (e.type === 'start') status(`⏳ Making “${e.name}”…`);
+          else if (e.type === 'done') { madeCount += 1; listItem(`✅ ${e.name} → ${OUT_DIR}/${e.files.join(', ')}`); idleStatus(); }
+          else if (e.type === 'error') { listItem(`❌ ${e.name || dir.name}: ${e.error.message}`); idleStatus(); }
+        },
+      });
+      window.__lab.watcher = watcher;
+      show('resume', false);
+      show('stopWatch', true);
+      $('pick').textContent = '📁 Choose another folder…';
+      idleStatus();
+      watcher.start();
+    }
+
+    async function permitted(dir, ask) {
+      const opts = { mode: 'readwrite' };
+      if (await dir.queryPermission(opts) === 'granted') return true;
+      return ask && await dir.requestPermission(opts) === 'granted';
+    }
+
+    if (!window.showDirectoryPicker) {
+      $('pick').disabled = true;
+      status('⚠️ This browser cannot watch folders. Chrome or Edge can.');
+    } else {
+      const saved = await getMedia(FOLDER_KEY).catch(() => null);
+      if (saved) {
+        if (await permitted(saved, false)) startWatching(saved);
+        else {
+          // Browsers ask again after a restart; one click lets it carry on.
+          $('resume').textContent = `▶️ Keep watching “${saved.name}”`;
+          show('resume', true);
+          status('The browser needs your OK to open the folder again (choose "Allow on every visit" to skip this next time).');
+        }
+        $('resume').addEventListener('click', async () => {
+          if (await permitted(saved, true)) startWatching(saved);
+          else status('⚠️ No permission for that folder.');
+        });
+      }
+      $('pick').addEventListener('click', async () => {
+        let dir;
+        try {
+          dir = await window.showDirectoryPicker({ id: 'karaoke-watch', mode: 'readwrite' });
+        } catch {
+          return; // cancelled
+        }
+        if (!await permitted(dir, true)) { status('⚠️ No permission for that folder.'); return; }
+        await putMedia(FOLDER_KEY, dir);
+        startWatching(dir);
+      });
+      $('stopWatch').addEventListener('click', async () => {
+        if (watcher) watcher.stop();
+        watcher = null;
+        await deleteMedia(FOLDER_KEY);
+        show('stopWatch', false);
+        show('resume', false);
+        $('pick').textContent = '📁 Choose a folder…';
+        status('Stopped. The folder is forgotten.');
+      });
+    }
   </script>
 </body>
 </html>

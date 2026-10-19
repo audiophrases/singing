@@ -137,8 +137,9 @@ js/lyrics/            word lists, grammar spotter, rhymes, syllables, phonemes (
 js/games/             one module per activity
 js/views/             library, song, stage, studio, song maker, remix, print, party, help, card
 js/data/songs/        the songbook
-lab/karaoke.html      prototype: make a karaoke version in the browser (Demucs v4 on WebGPU, js/media/separate*.js)
-tests/                unit tests (104)
+lab/karaoke.html      prototype: make a karaoke version in the browser (Demucs v4 on WebGPU, js/media/separate*.js);
+                      can watch a folder and make every new song (js/media/folder-watch.js)
+tests/                unit tests (108)
 tools/                build-phonedict.mjs: regenerates js/lyrics/phonedict.js from CMUdict
 ```
 
