@@ -81,6 +81,22 @@ test('a new song is made once its size stops changing, then never again', async 
   assert.deepEqual(made, ['song.mp3']);
 });
 
+test('results are saved in the chosen format, and either format counts as done', async () => {
+  const dir = fakeDir();
+  const made = [];
+  const w = new FolderWatcher(dir, { make: async (f) => { made.push(f.name); return { karaoke: 'k', vocals: 'v', ext: 'mp3' }; } });
+  dir.put('Sia - Chandelier.mp3');
+  dir.put('Old Song.mp3');
+  dir.put('Old Song (Karaoke).wav');
+  dir.put('Old Song (Vocals).wav');
+  await w.scan();
+  assert.equal(await w.scan(), 1);
+  assert.deepEqual(made, ['Sia - Chandelier.mp3']);
+  assert.ok(dir.files.has('Sia - Chandelier (Karaoke).mp3'));
+  assert.ok(dir.files.has('Sia - Chandelier (Vocals).mp3'));
+  assert.equal(outputNames('a.flac', 'mp3').vocals, 'a (Vocals).mp3');
+});
+
 test('a failed song is not retried until the file changes', async () => {
   const dir = fakeDir();
   let calls = 0;

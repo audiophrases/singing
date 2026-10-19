@@ -138,8 +138,10 @@ js/games/             one module per activity
 js/views/             library, song, stage, studio, song maker, remix, print, party, help, card
 js/data/songs/        the songbook
 lab/karaoke.html      prototype: make a karaoke version in the browser (Demucs v4 on WebGPU, js/media/separate*.js);
-                      can watch a folder and make every new song (js/media/folder-watch.js)
-tests/                unit tests (108)
+                      can watch a folder and make every new song (js/media/folder-watch.js);
+                      saves MP3 (lamejs, js/media/mp3*.js) or WAV
+js/vendor/lamejs/     MP3 encoder, unmodified, LGPL 3.0
+tests/                unit tests (109)
 tools/                build-phonedict.mjs: regenerates js/lyrics/phonedict.js from CMUdict
 ```
 
