@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FolderWatcher, OUT_DIR, outputNames } from '../js/media/folder-watch.js';
+import { FolderWatcher, outputNames, isResult } from '../js/media/folder-watch.js';
 
 // A folder in memory with the File System Access calls the watcher uses.
 function fakeDir() {
@@ -50,7 +50,11 @@ const fakeMake = (log) => async (file) => {
 };
 
 test('output names', () => {
-  assert.deepEqual(outputNames('My Song.mp3'), { karaoke: 'My Song (Instrumental).wav', vocals: 'My Song (Vocals).wav' });
+  assert.deepEqual(outputNames('Sia - Chandelier.mp3'), { karaoke: 'Sia - Chandelier (Karaoke).wav', vocals: 'Sia - Chandelier (Vocals).wav' });
+  assert.ok(isResult('Sia - Chandelier (Karaoke).wav'));
+  assert.ok(isResult('Sia - Chandelier (vocals).WAV'));
+  assert.ok(!isResult('Sia - Chandelier.mp3'));
+  assert.ok(!isResult('Karaoke Night.mp3'));
 });
 
 test('a new song is made once its size stops changing, then never again', async () => {
@@ -64,10 +68,12 @@ test('a new song is made once its size stops changing, then never again', async 
   assert.equal(await w.scan(), 0);
   assert.equal(await w.scan(), 1); // stable now
   assert.deepEqual(made, ['song.mp3']);
-  const out = dir.dirs.get(OUT_DIR);
-  assert.equal(out.files.get('song (Instrumental).wav').data, 'inst:song.mp3');
-  assert.equal(out.files.get('song (Vocals).wav').data, 'voc:song.mp3');
+  // Results sit next to the song, and are not taken as new songs.
+  assert.equal(dir.files.get('song (Karaoke).wav').data, 'inst:song.mp3');
+  assert.equal(dir.files.get('song (Vocals).wav').data, 'voc:song.mp3');
   assert.equal(await w.scan(), 0);
+  assert.equal(await w.scan(), 0);
+  assert.deepEqual(made, ['song.mp3']);
   // A new session (new watcher) finds the results and skips the song.
   const again = new FolderWatcher(dir, { make: fakeMake(made) });
   await again.scan();

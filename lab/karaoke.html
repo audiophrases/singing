@@ -40,7 +40,7 @@
       <div class="lab-bar"><div id="bar"></div></div>
       <div class="lab-log" id="log"></div>
       <div class="lab-result" id="result">
-        <h3 class="section-title">🎤 Karaoke version (instrumental)</h3>
+        <h3 class="section-title">🎤 Karaoke version</h3>
         <audio id="karaoke" controls></audio>
         <a class="btn btn-sm" id="karaokeDl" download>⬇️ Download</a>
         <h3 class="section-title">🗣️ Vocals only</h3>
@@ -51,7 +51,7 @@
 
     <section class="card">
       <h2 class="section-title">📁 Watch a folder</h2>
-      <p class="muted small">Songs you put in the folder are made automatically, one after another, into its <b>Karaoke versions</b> folder: <i>Song (Instrumental).wav</i> and <i>Song (Vocals).wav</i>. Songs that already have both are skipped. Keep this page open while it works; the folder is remembered for next time.</p>
+      <p class="muted small">Songs you put in the folder are made automatically, one after another, and saved next to them: <i>Sia - Chandelier.mp3</i> gets <i>Sia - Chandelier (Karaoke).wav</i> and <i>Sia - Chandelier (Vocals).wav</i>. Songs that already have both are skipped. Keep this page open while it works; the folder is remembered for next time.</p>
       <div class="row">
         <button class="btn" id="pick" type="button">📁 Choose a folder…</button>
         <button class="btn primary lab-off" id="resume" type="button">▶️ Keep watching</button>
@@ -63,7 +63,7 @@
   </main>
   <script type="module">
     import { karaokeSupport, makeKaraoke } from '../js/media/karaoke-maker.js';
-    import { FolderWatcher, OUT_DIR, outputNames } from '../js/media/folder-watch.js';
+    import { FolderWatcher, outputNames } from '../js/media/folder-watch.js';
     import { putMedia, getMedia, deleteMedia } from '../js/media/store.js';
 
     const $ = (id) => document.getElementById(id);
@@ -155,7 +155,7 @@
         canRun: () => !busy,
         onEvent: (e) => {
           if (e.type === 'start') status(`⏳ Making “${e.name}”…`);
-          else if (e.type === 'done') { madeCount += 1; listItem(`✅ ${e.name} → ${OUT_DIR}/${e.files.join(', ')}`); idleStatus(); }
+          else if (e.type === 'done') { madeCount += 1; listItem(`✅ ${e.name} → ${e.files.join(', ')}`); idleStatus(); }
           else if (e.type === 'error') { listItem(`❌ ${e.name || dir.name}: ${e.error.message}`); idleStatus(); }
         },
       });

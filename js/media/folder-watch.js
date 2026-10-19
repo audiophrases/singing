@@ -5,18 +5,21 @@
  *   w.start();
  *
  * dirHandle comes from showDirectoryPicker() (File System Access, Chrome and
- * Edge). Results go to a "Karaoke versions" folder inside it:
- * "Song (Instrumental).wav" and "Song (Vocals).wav". A song counts as done
- * when both are there, so nothing is made twice, even after a restart. A
- * file is only taken once its size has stopped changing (still copying).
+ * Edge). Results go next to the song: "Sia - Chandelier.mp3" gets
+ * "Sia - Chandelier (Karaoke).wav" and "Sia - Chandelier (Vocals).wav". A
+ * song counts as done when both are there, so nothing is made twice, even
+ * after a restart; results are never taken as new songs. A file is only
+ * taken once its size has stopped changing (still copying).
  */
-export const OUT_DIR = 'Karaoke versions';
 export const AUDIO = /\.(mp3|wav|m4a|aac|ogg|oga|flac|opus|webm|mp4)$/i;
+const RESULT = /\((karaoke|vocals|instrumental)\)\.[^.]+$/i;
 
 export function outputNames(name) {
   const base = name.replace(/\.[^.]+$/, '');
-  return { karaoke: `${base} (Instrumental).wav`, vocals: `${base} (Vocals).wav` };
+  return { karaoke: `${base} (Karaoke).wav`, vocals: `${base} (Vocals).wav` };
 }
+
+export const isResult = (name) => RESULT.test(name);
 
 async function exists(dir, name) {
   try {
@@ -58,20 +61,18 @@ export class FolderWatcher {
 
   // Songs ready to make now (stable since the last scan, results missing).
   async pending() {
-    let out = null;
     const ready = [];
     const present = new Set();
     for await (const entry of this.dir.values()) {
-      if (entry.kind !== 'file' || !AUDIO.test(entry.name)) continue;
+      if (entry.kind !== 'file' || !AUDIO.test(entry.name) || isResult(entry.name)) continue;
       present.add(entry.name);
       const file = await entry.getFile();
       const stamp = `${file.size}|${file.lastModified}`;
       const before = this.seen.get(entry.name);
       this.seen.set(entry.name, stamp);
       if (!file.size || before !== stamp || this.failed.has(`${entry.name}|${stamp}`)) continue;
-      if (!out) out = await this.dir.getDirectoryHandle(OUT_DIR, { create: true });
       const names = outputNames(entry.name);
-      if (await exists(out, names.karaoke) && await exists(out, names.vocals)) continue;
+      if (await exists(this.dir, names.karaoke) && await exists(this.dir, names.vocals)) continue;
       ready.push({ entry, stamp });
     }
     for (const name of this.seen.keys()) if (!present.has(name)) this.seen.delete(name);
@@ -92,10 +93,9 @@ export class FolderWatcher {
         this.onEvent({ type: 'start', name: entry.name });
         try {
           const res = await this.make(await entry.getFile());
-          const out = await this.dir.getDirectoryHandle(OUT_DIR, { create: true });
           const names = outputNames(entry.name);
-          await writeFile(out, names.karaoke, res.karaoke);
-          await writeFile(out, names.vocals, res.vocals);
+          await writeFile(this.dir, names.karaoke, res.karaoke);
+          await writeFile(this.dir, names.vocals, res.vocals);
           made += 1;
           this.onEvent({ type: 'done', name: entry.name, files: [names.karaoke, names.vocals], info: res.info });
         } catch (e) {
