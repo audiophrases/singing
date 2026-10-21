@@ -102,10 +102,24 @@ guess them), 24 semantically unpredictable sentences sung by the song maker
 ("The heavy rabbit paints the window", the standard test for synthetic speech,
 because context cannot help), and every consonant in "uh-Ca" and "aC".
 
-RESULTS_TABLE
+Final run (2026-10-21; 42 song lines and 24 sentences, each sung alone and
+with the band; Whisper word error rate, lower is better):
+
+| | Original | Robot singer | Clear English |
+| --- | --- | --- | --- |
+| Alone: song lines | 74.4% | 41.1% | **21.3%** |
+| Alone: unpredictable sentences | 75.6% | 29.8% | **11.9%** |
+| With the band: all lines | 95.3% | 57.5% | **23.0%** |
+| Consonant errors, alone (phoneme recognizer) | 75.4% | 56.9% | **38.0%** |
+| Syllable-initial consonants identified ("uh-Ca") | 4/69 | **26/69** | 18/69 |
+| Highest peak, with the band | +0.6 dBFS* | −0.1 dBFS | −0.1 dBFS |
+| Render time (share of real time) | 7–10% | 9–12% | 9–12% |
+
+\* Before the master ceiling; with it, every voice stays below full scale.
 
 Recognizers are not learners: these numbers are a consistent, repeatable
 proxy, not a substitute for listening. Two notes from tuning:
+
 - The phoneme recognizer mishears even espeak-ng's "uh-gah", so it is only
   good for large effects; word errors on unpredictable sentences were the
   main guide.
