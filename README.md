@@ -37,8 +37,9 @@ Web Audio band. Nothing is a recording, so any song can be:
   dictionary (from CMUdict) and guesses the rest from their spelling. It can also be a flute,
   piano, whistle, synth or bells, or switched off for real karaoke.
 - **Robot · clear English**: the same melody and rhythm, sung for pronunciation
-  rather than realism: longer, stronger consonants, no vibrato, fully released
-  final consonants and a short break before words that start with a vowel.
+  rather than realism: in a speaking voice's range (often an octave lower),
+  no vibrato, fully released final consonants, a short break before words
+  that start with a vowel, and a band that makes more room.
   The original robot singer is still in the menu, and the **🔬 Voice lab**
   (in the Studio) compares the voices on identical notes, volume-matched, with
   a blind listening test. `tools/robo-eval.mjs` measures them with local speech

@@ -57,10 +57,17 @@ export async function renderEvents(events, { from = 0, to, beatSec, room = 0, sa
       fireEvent(synth, ev, when, beatSec);
     }
   };
+  // Browsers without OfflineAudioContext.suspend() get every note at once
+  // (fine for a few lines).
   const STEP = 1;
+  const all = () => scheduleUntil(Infinity);
   scheduleUntil(STEP + 0.5);
-  for (let t = STEP; t < seconds - 0.1; t += STEP) {
-    ctx.suspend(t).then(() => { scheduleUntil(t + STEP + 0.5); ctx.resume(); });
+  try {
+    for (let t = STEP; t < seconds - 0.1; t += STEP) {
+      ctx.suspend(t).then(() => { scheduleUntil(t + STEP + 0.5); ctx.resume(); }, all);
+    }
+  } catch {
+    all();
   }
   const buf = await ctx.startRendering();
   fadeOut(buf, Math.min(0.4, tail));

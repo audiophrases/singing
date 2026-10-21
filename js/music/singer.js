@@ -18,10 +18,11 @@
  *  - The mix. Its own EQ (presence, no rumble) and less reverb, and the band
  *    makes room around 3 kHz (Synth.setVoiceRoom).
  *
- * Two profiles: "sing" (the robot singer) and "clear" (Clear English): longer
- * and stronger consonants, wider vowels, no vibrato or scoops, fully released
- * final consonants, a short break before a word that starts with a vowel.
- * The melody, rhythm and timing are the same in all of them.
+ * Two profiles: "sing" (the robot singer) and "clear" (Clear English): a
+ * speaking voice's range (band.js GUIDES), a little longer consonants, no
+ * vibrato or scoops, fully released final consonants, a short break before a
+ * word that starts with a vowel, more room in the band. The melody, rhythm
+ * and timing are the same in all of them.
  *
  * A note also gets (from band.js melodyEvents, in seconds by fireEvent):
  *   stress 0|1|2, nextIn / nextOn / nextWord (the next note, when one follows
@@ -89,16 +90,19 @@ export const PROFILES = {
     cons: 1, share: 0.6, lead: 0.8, leadMax: 0.11,
     stressGain: [0.8, 0.9, 1], stressCons: [0.85, 0.95, 1], spread: 1.04,
     vib: 0.009, vibDelay: 0.25, scoop: 0.02, glide: 0.05, drift: 0.003, air: 0.025,
-    gap: 0, release: 0.07, xfade: 0.015, level: 0.36, bright: 8, brightAt: 2400,
+    gap: 0, release: 0.07, xfade: 0.015, level: 0.36, bright: 12, brightAt: 2200,
     vox: { hp: 90, at: 3000, db: 3, q: 0.9, send: 0.15 },
   },
+  // Measured against "sing": louder consonant noise and wider vowels than
+  // these made words harder to recognise, not easier; the break between
+  // words and the low register (GUIDES.roboclear.speech) helped.
   clear: {
-    hiss: 2.8, burst: 3, breath: 1.9, vot: 0.065, votWeak: 0.045, coda: 1, codaAsp: 0.03,
-    cons: 1.2, share: 0.66, lead: 0.85, leadMax: 0.14,
-    stressGain: [0.74, 0.85, 1], stressCons: [1, 1, 1], spread: 1.12,
-    vib: 0, vibDelay: 0, scoop: 0, glide: 0.04, drift: 0.002, air: 0,
-    gap: 0.035, release: 0.06, xfade: 0.012, level: 0.4, bright: 10, brightAt: 2200,
-    vox: { hp: 110, at: 2800, db: 5, q: 0.8, send: 0.05 },
+    hiss: 2.2, burst: 2.5, breath: 1.6, vot: 0.055, votWeak: 0.03, coda: 1, codaAsp: 0.02,
+    cons: 1.1, share: 0.62, lead: 0.8, leadMax: 0.12,
+    stressGain: [0.8, 0.9, 1], stressCons: [0.9, 1, 1], spread: 1.04,
+    vib: 0, vibDelay: 0, scoop: 0, glide: 0.04, drift: 0.002, air: 0.015,
+    gap: 0.035, release: 0.06, xfade: 0.012, level: 0.4, bright: 12, brightAt: 2200,
+    vox: { hp: 70, at: 2800, db: 4, q: 0.8, send: 0.05 },
   },
 };
 

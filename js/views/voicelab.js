@@ -3,7 +3,8 @@
  *
  *   A  the original robot singer (as it was before the clarity work)
  *   B  the robot singer now
- *   C  Clear English (pronunciation before singing realism)
+ *   C  Clear English (pronunciation before singing realism; same melody and
+ *      rhythm, but in a speaking voice's range, so often an octave lower)
  *
  * Compare: each lyric clip is rendered once per voice (music/render.js), with
  * identical lyrics, melody, tempo and timing, then all versions play together
@@ -27,7 +28,7 @@ import { wordsHeard } from '../lyrics/text.js';
 const VOICES = [
   { key: 'A', guide: 'roboclassic', name: 'Original', desc: 'the robot singer before the clarity work' },
   { key: 'B', guide: 'robo', name: 'Improved', desc: 'the robot singer now' },
-  { key: 'C', guide: 'roboclear', name: 'Clear English', desc: 'clearer words over singing realism' },
+  { key: 'C', guide: 'roboclear', name: 'Clear English', desc: 'words before singing realism, in a speaking voice’s range (often an octave lower)' },
 ];
 const LEAD = 0.3; // seconds of render before the clip's first beat (render.js)
 const RESULTS_KEY = 'singing.voicelab.v1';
@@ -464,7 +465,7 @@ export async function render(el, params = {}) {
   el.append(
     h('section', { class: 'card' },
       h('h1', { class: 'page-title' }, '🔬 Voice lab'),
-      h('p', { class: 'muted' }, 'Compare the robot singers on the very same notes: identical lyrics, melody, tempo and timing, at the same loudness. Only the voice changes. Listen for the words: can you make out each one?'),
+      h('p', { class: 'muted' }, 'Compare the robot singers on the very same notes: identical lyrics, melody, tempo and timing, at the same loudness. Only the voice changes (and Clear English may sing it an octave lower). Listen for the words: can you make out each one?'),
       h('div', { class: 'lab-legend' }, VOICES.map((v) => h('div', null, h('b', null, `${v.key} · ${v.name}`), ` — ${v.desc}`))),
       h('div', { class: 'studio-grid top-space' },
         h('div', { class: 'studio-field' }, h('label', null, 'Song'), songSel),

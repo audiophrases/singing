@@ -160,10 +160,15 @@ export const STYLES = {
   },
 };
 
-// room: how many dB the band dips around 3 kHz for that singer's consonants.
+/*
+ * room: how the band makes way for that singer (Synth.setVoiceRoom): dip, dB
+ * less around 3 kHz where consonants live; duck, dB quieter overall.
+ * speech: sing in a speaking voice's range, octaves below the melody when it
+ * is high (a low voice's vowels are much easier to tell apart).
+ */
 export const GUIDES = {
-  robo: { name: 'Robot singer', emoji: '🤖', inst: 'robo', room: 2 },
-  roboclear: { name: 'Robot · clear English', emoji: '🗣️', inst: 'roboClear', room: 5 },
+  robo: { name: 'Robot singer', emoji: '🤖', inst: 'robo', room: { dip: 3, duck: 5 } },
+  roboclear: { name: 'Robot · clear English', emoji: '🗣️', inst: 'roboClear', room: { dip: 6, duck: 8 }, speech: true },
   flute: { name: 'Flute', emoji: '🎶', inst: 'flute' },
   piano: { name: 'Piano', emoji: '🎹', inst: 'piano' },
   whistle: { name: 'Whistle', emoji: '😗', inst: 'whistle' },
@@ -448,6 +453,15 @@ function voiceOf(line) {
   return v;
 }
 
+// Octaves down until the melody's middle note is at most A3 (220 Hz).
+export function speechShift(compiled, transpose = 0) {
+  const notes = compiled.melody.filter((m) => m.midi !== null && !m.hit).map((m) => m.midi + transpose).sort((a, b) => a - b);
+  if (!notes.length) return 0;
+  let shift = 0;
+  while (notes[notes.length >> 1] + shift > 57) shift -= 12;
+  return shift;
+}
+
 // Which of the song's syllables of a word is stressed: the dictionary's
 // stressed vowel, found in the syllable that sings it; or a guess by rule.
 function stressedSyllable(word, parts, phones) {
@@ -469,6 +483,7 @@ export function melodyEvents(compiled, guide = 'robo', opts = {}) {
   const robo = !!g && g.inst.startsWith('robo');
   const out = [];
   const sung = [];
+  const register = g && g.speech ? speechShift(compiled, transpose + (opts.octave || 0) * 12) : 0;
   for (const m of compiled.melody) {
     if (m.hit) {
       const line = compiled.lines[m.line];
@@ -484,7 +499,7 @@ export function melodyEvents(compiled, guide = 'robo', opts = {}) {
     const first = !syl || syl.notes[0] === m;
     const last = !syl || syl.notes[syl.notes.length - 1] === m;
     const e = {
-      t: m.start, d: m.beats * 0.98, inst: g.inst, midi: m.midi + transpose + (opts.octave || 0) * 12,
+      t: m.start, d: m.beats * 0.98, inst: g.inst, midi: m.midi + transpose + (opts.octave || 0) * 12 + register,
       vel: 0.85, bus: 'lead', text: syl ? syl.text : 'la', first, last,
       ph: robo && syl ? voiceOf(line).ph[m.syl] || null : null,
     };

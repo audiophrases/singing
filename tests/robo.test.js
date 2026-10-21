@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compileSong } from '../js/music/score.js';
-import { melodyEvents, linkNotes, GUIDES } from '../js/music/band.js';
+import { melodyEvents, linkNotes, speechShift, GUIDES } from '../js/music/band.js';
 import { INSTRUMENT_NAMES, makeCeilingCurve } from '../js/music/synth.js';
 import { onsetLead, PROFILES } from '../js/music/singer.js';
 import { loudness, matchGains } from '../js/media/loudness.js';
@@ -52,6 +52,17 @@ test('robot notes know their neighbours, so they can hand over', () => {
   // Other guides get none of this; the original robot keeps its phones.
   assert.equal(melodyEvents(compileSong(twinkle), 'flute')[0].nt, undefined);
   assert.equal(melodyEvents(compileSong(twinkle), 'roboclassic')[0].ph.on, 'tw');
+});
+
+test('Clear English sings in a speaking range, same melody', () => {
+  const c = compileSong({ ...twinkle, lines: [{ ...twinkle.lines[0], n: 'C4 C4 G4 G4 A4 A4 G4:2' }] });
+  const sing = melodyEvents(c, 'robo');
+  const clear = melodyEvents(c, 'roboclear');
+  assert.deepEqual(clear.map((e) => e.midi), sing.map((e) => e.midi - 12));
+  assert.deepEqual(clear.map((e) => e.t), sing.map((e) => e.t));
+  // Already low: left alone. The key knob moves it first.
+  assert.equal(speechShift(compileSong({ ...twinkle, lines: [{ t: 'low low low', n: 'C3 D3 E3' }] })), 0);
+  assert.equal(speechShift(c, 12), -24);
 });
 
 test('a rest breaks the hand-over', () => {
