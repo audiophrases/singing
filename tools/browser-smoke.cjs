@@ -212,6 +212,7 @@ const assert = require('node:assert/strict');
   assert.equal(await legacy.evaluate(async () => !!await (await import('/js/media/store.js')).getMedia('old-host-audio')), true);
   await teacher.keyboard.press('Escape');
   console.log('Audio-inclusive backup migrates between app origins and preserves the old browser files');
+  await require('./browser-timing.cjs')(teacher, base);
   assert.deepEqual(errors, []);
   await teacher.setViewportSize({ width: 390, height: 844 });
   await teacher.goto(assignmentUrl);

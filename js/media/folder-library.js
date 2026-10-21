@@ -5,6 +5,7 @@ import { parseLyrics } from '../lyrics/lines.js';
 import { AUDIO_FILE, LYRICS_FILE, filePath, fileStamp, groupSongFiles } from './song-files.js';
 import { saveCloudSong } from '../cloud/library.js';
 import { requireTeacher } from '../cloud/session.js';
+import { alignSongLyrics, lyricAudio, lyricAlignmentMessage, lyricsSignature } from './lyric-alignment.js';
 
 const FOLDER_KEY = 'library-folder-v1';
 const listeners = new Set();
@@ -47,9 +48,10 @@ export async function stableSongFiles(files, previous) {
 // Components have separate stamps: adding a karaoke file must keep edited lyrics.
 export async function importSongFiles(files, sourceId, {
   listSongs = userSongs, saveSong = saveUserSong, putFile = putMedia, removeFile = deleteMedia,
+  readFeatures, onProgress = () => {},
 } = {}) {
   const groups = await groupSongFiles(files);
-  const result = { added: 0, updated: 0, unchanged: 0, errors: [] };
+  const result = { added: 0, updated: 0, unchanged: 0, errors: [], warnings: [] };
   for (const group of groups) {
     const created = [];
     try {
@@ -64,6 +66,8 @@ export async function importSongFiles(files, sourceId, {
       };
       const stamps = { ...existing?.folderImport?.stamps };
       let changed = false;
+      let audioChanged = false;
+      let lyricsChanged = false;
       for (const role of ['audio', 'karaoke', 'vocals']) {
         const file = group[role];
         if (!file || stamps[role] === fileStamp(file)) continue;
@@ -73,11 +77,13 @@ export async function importSongFiles(files, sourceId, {
         song[role] = { mediaId, name: file.name, ...(role === 'audio' ? {} : { offset: 0 }) };
         stamps[role] = fileStamp(file);
         changed = true;
+        if (role === 'audio') audioChanged = true;
       }
       if (group.lyrics && stamps.lyrics !== fileStamp(group.lyrics)) {
         song.synced = group.timing.format === 'text' ? parseLyrics(group.text.trim()) : group.timing.lines;
         stamps.lyrics = fileStamp(group.lyrics);
         changed = true;
+        lyricsChanged = true;
       }
       // A pair of stems is playable even without the original recording.
       if (!stamps.audio && (song.karaoke || song.vocals)) {
@@ -87,7 +93,20 @@ export async function importSongFiles(files, sourceId, {
       }
       if (song.audio) song.source = 'audio';
       if (!changed) { result.unchanged += 1; continue; }
-      song.folderImport = { sourceId, key: group.key, stamps };
+      song.folderImport = { ...song.folderImport, sourceId, key: group.key, stamps };
+      const referenceAdded = !lyricAudio(existing) && lyricAudio(song);
+      if (lyricsChanged || audioChanged || referenceAdded) {
+        const previousSignature = existing?.folderImport?.timing?.signature;
+        const edited = existing && !lyricsChanged && (!previousSignature || previousSignature !== await lyricsSignature(existing.synced));
+        if (edited) {
+          result.warnings.push(`${group.base}: Lyrics kept with your edits. Open Studio to check or repair their timing.`);
+        } else {
+          const aligned = await alignSongLyrics(song, { readFeatures, onProgress: (message) => onProgress(`${song.title}: ${message}`) });
+          song.synced = aligned.synced;
+          song.folderImport.timing = { signature: await lyricsSignature(song.synced), status: aligned.status };
+          if (['uncertain', 'error'].includes(aligned.status)) result.warnings.push(`${group.base}: ${lyricAlignmentMessage(aligned)}`);
+        }
+      }
       await saveSong(song);
       result[existing ? 'updated' : 'added'] += 1;
     } catch (error) {
@@ -104,6 +123,7 @@ function report(result) {
   if (result.updated) parts.push(`${result.updated} updated`);
   if (!parts.length) parts.push('No new or changed songs');
   if (result.errors.length) parts.push(`${result.errors.length} could not be imported: ${result.errors[0]}`);
+  if (result.warnings.length) parts.push(`${result.warnings.length} timing checks need attention: ${result.warnings[0]}`);
   update({ message: parts.join(' · '), changed: result.added + result.updated });
   return result;
 }
@@ -204,7 +224,7 @@ export async function importFolderSelection(files) {
 async function importCloudFiles(files, sourceId) {
   requireTeacher();
   if (!uploadRights) throw new Error('Confirm permission to upload these songs.');
-  return importSongFiles(files, sourceId, { saveSong: async (song) => {
+  return importSongFiles(files, sourceId, { onProgress: (message) => update({ message }), saveSong: async (song) => {
     const key = song.folderImport.key;
     const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key));
     const clientId = `folder-${[...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('')}`;

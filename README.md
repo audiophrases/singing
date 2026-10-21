@@ -104,10 +104,14 @@ Singing composes a song for it:
 - **🪄 Auto-align**: an UltraStar file carries the melody, so Singing listens
   to the audio file (chroma, in the browser, about a second) and moves the
   lyrics to where that melody is sung. It runs by itself on import, and only
-  moves anything when the match is clear.
+  moves anything when the match is clear. Studio and folder imports use the same
+  alignment, and saving waits for it to finish. Other lyric formats keep their
+  supplied timing; use *All lines earlier / later* or *Tap to align* to adjust it.
 - **Karaoke version**: add the same recording without the singer (an official
-  instrumental, or the song through a vocal remover). It is lined up with the
-  song automatically (onset correlation) and plays in step with it; the
+  instrumental, or the song through a vocal remover). Use files that share the
+  original recording's timeline, such as Karaoke Studio's Demucs exports.
+  Original, karaoke and vocals stay together; aligning the lyrics once serves
+  all three, without independently shifting the recordings. The
   🎤 *Singer* knob switches between the two. Karaoke starts with the karaoke
   version, Echo's "your turn" and Pitch Pal's "I know it" use it.
 - **Vocals only**: keep an isolated vocals file alongside the original and
@@ -126,6 +130,11 @@ Singing composes a song for it:
   Folder access is read-only. After teacher sign-in and permission confirmation,
   songs upload to the private cloud library. Removing a disk file does not remove
   its cloud copy. Watching runs while the app is open.
+  To fix a previously imported song, open it in Studio and choose **Repair lyric
+  timing** (UltraStar), check playback, then **Save song**. Manual timing edits
+  survive unchanged rescans and companion additions. Replacing a recording also
+  preserves edited timing and asks you to check it. Saving a repair creates a new
+  cloud version; existing assignments keep their pinned version.
 - **Remix**: rewrite any line (new animals, students' names, new verbs). The
   tune bends to fit the new syllables.
 - **Share link**: built-in and lyrics-only songs can travel in a compressed URL.

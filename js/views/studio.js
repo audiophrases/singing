@@ -7,15 +7,15 @@
 import { h, clear, toast, fmtTime, confirmDialog, openModal } from '../ui.js';
 import { getSong, saveUserSong, newSongId, userSongs } from '../store.js';
 import { youtubeId } from '../media/youtube.js';
-import { putMedia, getMedia, newMediaId } from '../media/store.js';
+import { putMedia, newMediaId } from '../media/store.js';
 import { decodeText, readTimingFile, shiftSynced } from '../media/timing.js';
-import { decodeMono, features, alignNotes, alignRecordings } from '../media/align.js';
+import { audioFeatures, alignSongLyrics, lyricAudio, lyricAlignmentMessage } from '../media/lyric-alignment.js';
 import { parseLyrics, lyricsText } from '../lyrics/lines.js';
 import { makeTrack } from '../track.js';
 import { compileSong } from '../music/score.js';
 import { selectAudioFiles, AUDIO_FILE, LYRICS_FILE } from '../media/song-files.js';
 import { folderLibraryControls } from './folder-library.js';
-import { saveCloudSong, cloudMediaBlob } from '../cloud/library.js';
+import { saveCloudSong } from '../cloud/library.js';
 
 const EMOJIS = ['🎵', '🎤', '🎸', '🎹', '🥁', '🎺', '🌟', '❤️', '🌈', '🌍', '🐶', '🚀', '☀️', '🌙', '🎉', '🍕', '⚽', '🦄'];
 
@@ -44,6 +44,17 @@ export async function render(el, { id }) {
   delete song.mine;
   let track = null;
   let sync = null;
+  let saving = false;
+  let disposed = false;
+  let pendingMedia = Promise.resolve();
+  // Include file reads and storage, not just analysis, in the work Save awaits.
+  const queueMedia = (action) => {
+    if (saving || disposed) return pendingMedia;
+    pendingMedia = pendingMedia.then(() => { if (!disposed) return action(); }).catch((error) => {
+      if (!disposed) toast(error.message, 'bad');
+    });
+    return pendingMedia;
+  };
 
   if (song.source === 'band') return renderBand(el, song);
 
@@ -68,12 +79,9 @@ export async function render(el, { id }) {
   const rightsIn = h('input', { type: 'checkbox', checked: !!song.cloud });
   const vocIn = h('input', { type: 'file', accept: 'audio/*', 'aria-label': 'Vocals only file' });
   const vocNote = h('div', { class: 'small' }, song.vocals?.name ? `🗣️ ${song.vocals.name}` : '');
-  // Files added in this visit, to listen to them (auto-align) without reading them back.
-  const blobs = {};
   const keepFile = async (f) => {
     const mid = newMediaId();
     await putMedia(mid, f);
-    blobs[mid] = f;
     return mid;
   };
   const setAudioFile = async (f) => {
@@ -106,9 +114,18 @@ export async function render(el, { id }) {
       return false;
     }
   };
-  fileIn.addEventListener('change', async () => { if (fileIn.files[0] && await setAudioFile(fileIn.files[0])) afterMedia({ audio: true }); });
-  karIn.addEventListener('change', async () => { if (karIn.files[0] && await setKaraokeFile(karIn.files[0])) afterMedia({ karaoke: true }); });
-  vocIn.addEventListener('change', async () => { if (vocIn.files[0] && await setVocalsFile(vocIn.files[0])) afterMedia({ vocals: true }); });
+  fileIn.addEventListener('change', () => {
+    const f = fileIn.files[0];
+    if (f) queueMedia(async () => { if (await setAudioFile(f)) await afterMedia({ audio: true }); });
+  });
+  karIn.addEventListener('change', () => {
+    const f = karIn.files[0];
+    if (f) queueMedia(() => setKaraokeFile(f));
+  });
+  vocIn.addEventListener('change', () => {
+    const f = vocIn.files[0];
+    if (f) queueMedia(() => setVocalsFile(f));
+  });
   const dropKaraoke = h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { delete song.karaoke; karIn.value = ''; karNote.textContent = ''; } }, '✕ No karaoke version');
   const dropVocals = h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { delete song.vocals; vocIn.value = ''; vocNote.textContent = ''; } }, '✕ No vocals file');
   const drawSrc = () => {
@@ -120,7 +137,7 @@ export async function render(el, { id }) {
       srcBox.append(field('Original recording (mp3, m4a...)', fileIn), fileNote,
         field('Karaoke version (optional)', karIn), karNote, dropKaraoke,
         field('Vocals only (optional)', vocIn), vocNote, dropVocals,
-        h('p', { class: 'small' }, 'Keep the original song, the instrumental and isolated vocals together. Choose Vocals only in the player to practise with just the singer.'),
+        h('p', { class: 'small' }, 'Keep the original song, the instrumental and isolated vocals together on the same timeline. Sync the lyrics once for all three. Choose Vocals only in the player to practise with just the singer.'),
         h('p', { class: 'small' }, 'Use the same recording without the singer. Original, karaoke and vocals files are saved to your private cloud library. Sign in as a teacher before saving.'));
     }
     if (song.source === 'none') srcBox.append(h('p', { class: 'small' }, 'No music: you sing or play it yourself. The lyrics move at the speed you set when you sync (or at a reading pace).'));
@@ -128,6 +145,8 @@ export async function render(el, { id }) {
   drawSrc();
 
   const lyricsIn = h('textarea', { class: 'studio-lyrics', rows: 14, placeholder: '[Verse 1]\n🌟 First line of the song\nSecond line | translation\n\n[Chorus]\nA: Call...\nB: ...and response' }, lyricsText(song.synced));
+  let timingEdited = !!existing?.synced?.some((line) => Number.isFinite(line.start));
+  lyricsIn.addEventListener('input', () => { timingEdited = true; });
 
   // ---- sync
   const syncList = h('ol', { class: 'sync-list' });
@@ -153,7 +172,7 @@ export async function render(el, { id }) {
     clear(syncList);
     song.synced.forEach((l, i) => {
       // The whole line moves: its end, word times and notes too.
-      const nudge = (d) => { if (Number.isFinite(l.start)) { song.synced[i] = shiftSynced([l], d)[0]; drawSync(active); } };
+      const nudge = (d) => { if (Number.isFinite(l.start)) { timingEdited = true; song.synced[i] = shiftSynced([l], d)[0]; drawSync(active); } };
       syncList.append(h('li', { class: `sync-row${i === active ? ' active' : ''}${Number.isFinite(l.start) ? ' done' : ''}` },
         h('span', { class: 'sync-time' }, Number.isFinite(l.start) ? fmtTime(l.start) + `.${String(Math.floor((l.start % 1) * 10))}` : '—'),
         h('button', { class: 'btn btn-sm', type: 'button', title: '0.1 s earlier', onclick: () => nudge(-0.1) }, '−'),
@@ -183,6 +202,7 @@ export async function render(el, { id }) {
     if (detailed && !(await confirmDialog('Tapping replaces the timing from the imported file, including its word times and notes (Pitch Pal needs the notes). To fix timing that is just early or late, use "All lines earlier / later" instead.', { ok: 'Tap again', title: 'Replace the timing?' }))) return;
     try { await ensureTrack(); } catch { return; }
     song.synced.forEach((l) => { delete l.start; delete l.end; delete l.words; delete l.notes; });
+    timingEdited = true;
     align = null;
     sync = { next: 0 };
     tapBtn.textContent = TAP_LABEL;
@@ -201,84 +221,50 @@ export async function render(el, { id }) {
     collect();
     if (!song.synced.some((l) => Number.isFinite(l.start))) { toast('Nothing is synced yet: import a timing file or tap along first.', 'bad'); return; }
     song.synced = shiftSynced(song.synced, d);
+    timingEdited = true;
     moved = Math.round((moved + d) * 100) / 100;
     syncStatus.textContent = note || (moved ? `All lines moved ${Math.abs(moved)} s ${moved < 0 ? 'earlier' : 'later'}. Press ▶ on a line to check.` : 'All lines back where they were.');
     drawSync();
   };
 
-  // ---- auto-align: listen to the audio files themselves
-  const heard = {};
-  const featuresOf = (mid) => {
-    if (!heard[mid]) {
-      heard[mid] = (async () => {
-        const ref = ['audio', 'karaoke', 'vocals'].map((r) => song[r]).find((r) => r && (r.mediaId || r.assetId) === mid);
-        const blob = blobs[mid] || (ref?.assetId ? await cloudMediaBlob(ref, song) : await getMedia(mid));
-        if (!blob) throw new Error('the audio file is not in this browser any more');
-        return features(await decodeMono(blob));
-      })();
-      heard[mid].catch(() => { delete heard[mid]; });
+  // ---- align the lyrics once to the shared recording timeline
+  const heard = new Map();
+  const featuresOf = (ref, current) => {
+    const key = ref.mediaId || ref.assetId;
+    if (!heard.has(key)) {
+      const listening = audioFeatures(ref, current);
+      heard.set(key, listening);
+      listening.catch(() => heard.delete(key));
     }
-    return heard[mid];
+    return heard.get(key);
   };
-  // Let the message show before the (second-long) listening starts.
-  const working = (el, text) => { el.textContent = text; return new Promise((r) => setTimeout(r, 50)); };
-  const hasAudioFile = () => song.source === 'audio' && song.audio && (song.audio.mediaId || song.audio.assetId);
-
   // The UltraStar melody against the song: move the lyrics to where it is sung.
   async function alignLyrics({ auto = false } = {}) {
     collect();
-    const notes = song.synced.flatMap((l) => l.notes || []);
-    if (!notes.some((n) => Number.isFinite(n[2]))) {
-      if (!auto) toast('Auto-align listens for the melody, so it needs an UltraStar file. For other timing, use Tap to align.', 'bad');
+    const before = JSON.stringify(song.synced);
+    const ref = lyricAudio(song);
+    const res = await alignSongLyrics(song, { readFeatures: featuresOf, onProgress: (message) => { syncStatus.textContent = `🪄 ${message}`; } });
+    if (disposed) return;
+    collect();
+    if (before !== JSON.stringify(song.synced) || ref !== lyricAudio(song)) {
+      syncStatus.textContent = 'Lyrics changed while listening. Your edits were kept; use the alignment controls below to check again.';
       return;
     }
-    if (!hasAudioFile()) {
-      if (!auto) toast('Auto-align listens to the audio file: add one first. (YouTube cannot be listened to: use Tap to align.)', 'bad');
-      return;
-    }
-    await working(syncStatus, '🪄 Listening for the melody in your audio…');
-    let res;
-    try {
-      res = alignNotes(await featuresOf(song.audio.mediaId || song.audio.assetId), notes);
-    } catch (e) {
-      syncStatus.textContent = `Could not listen to the audio: ${e.message}.`;
-      return;
-    }
-    if (!res.confident) {
-      syncStatus.textContent = '🪄 Could not find the melody in this recording for sure, so nothing moved. Press ▶ on a line to check by ear, and Tap to align if it is off.';
-    } else if (Math.abs(res.offset) < 0.03) {
-      syncStatus.textContent = '🪄 Checked against your audio: the lyrics are already in time ✓';
-    } else {
-      shiftAll(res.offset, `🪄 Lined up with your audio: all lines moved ${Math.abs(res.offset).toFixed(2)} s ${res.offset < 0 ? 'earlier' : 'later'}. Press ▶ on a line to check.`);
+    if (['no-notes', 'no-audio'].includes(res.status) && auto) return;
+    syncStatus.textContent = lyricAlignmentMessage(res);
+    if (res.status === 'aligned') {
+      song.synced = res.synced;
+      moved = Math.round((moved + res.offset) * 100) / 100;
+      drawSync();
     }
   }
 
-  // The karaoke version against the song: how far apart the same music is.
-  async function alignKaraoke() {
-    if (!song.karaoke || !hasAudioFile()) return;
-    const k = song.karaoke;
-    await working(karNote, `🎤 ${k.name}: lining it up with the song…`);
-    let res;
-    try {
-      res = alignRecordings(await featuresOf(song.audio.mediaId || song.audio.assetId), await featuresOf(k.mediaId || k.assetId));
-    } catch (e) {
-      karNote.textContent = `🎤 ${k.name}: could not listen to it (${e.message}).`;
+  async function afterMedia({ audio = false, lyrics = false }) {
+    if (audio && !lyrics && timingEdited) {
+      syncStatus.textContent = 'Recording changed. Your lyric timing was kept; use the alignment controls below to check it.';
       return;
     }
-    if (song.karaoke !== k) return;
-    if (!res.confident) {
-      k.offset = 0;
-      karNote.textContent = `⚠️ ${k.name} does not sound like the same recording as the song (or its speed is different), so the two may not stay together. Use an instrumental of this very recording.`;
-      return;
-    }
-    k.offset = res.offset;
-    const gap = Math.abs(res.offset) >= 0.03 ? ` (its music is ${Math.abs(res.offset).toFixed(2)} s ${res.offset > 0 ? 'later' : 'earlier'} in the file)` : '';
-    karNote.textContent = `🎤 ${k.name}: lined up with the song${gap} ✓`;
-  }
-
-  async function afterMedia({ audio = false, karaoke = false, lyrics = false }) {
     if (audio || lyrics) await alignLyrics({ auto: true });
-    if (audio || karaoke) await alignKaraoke();
   }
 
   async function startAlign() {
@@ -350,6 +336,7 @@ export async function render(el, { id }) {
       if (song.synced.length && !(await confirmDialog(`Replace the lyrics with the text of ${file.name}?`, { ok: 'Replace' }))) return;
       lyricsIn.value = text.trim();
       song.synced = parseLyrics(lyricsIn.value);
+      timingEdited = false;
       importNote.textContent = `📜 Lyrics from ${file.name}. The file has no timing: tap along to sync.`;
       drawSync();
       return false;
@@ -357,6 +344,7 @@ export async function render(el, { id }) {
     if (!res.lines.length) { toast(`No timed lyrics found in ${file.name}.`, 'bad'); return false; }
     if (song.synced.length && !(await confirmDialog(`Replace the lyrics and timing with the ${res.lines.length} lines in ${file.name}?`, { ok: 'Replace' }))) return false;
     song.synced = res.lines;
+    timingEdited = false;
     lyricsIn.value = lyricsText(song.synced);
     if (!titleIn.value.trim() && res.meta.title) titleIn.value = res.meta.title;
     if (!artistIn.value.trim() && res.meta.artist) artistIn.value = res.meta.artist;
@@ -415,13 +403,14 @@ export async function render(el, { id }) {
     if (gotSong || gotKar || gotVocals || gotLyrics) await afterMedia({ audio: gotSong, karaoke: gotKar, vocals: gotVocals, lyrics: gotLyrics });
   }
   const timingIn = h('input', { type: 'file', accept: '.txt,.lrc,.srt,.vtt,text/plain', class: 'hidden' });
-  timingIn.addEventListener('change', async () => {
+  timingIn.addEventListener('change', () => {
     const f = timingIn.files[0];
     timingIn.value = '';
-    if (f && await importTiming(f)) afterMedia({ lyrics: true });
+    if (f) queueMedia(async () => { if (await importTiming(f)) await afterMedia({ lyrics: true }); });
   });
 
   const onKey = (e) => {
+    if (saving) return;
     if (!sync && !align) return;
     if (align) {
       if (e.code === 'Space' && document.activeElement !== lyricsIn) { e.preventDefault(); tap(); }
@@ -438,24 +427,26 @@ export async function render(el, { id }) {
   };
   document.addEventListener('keydown', onKey);
 
-  let saving = false;
   const save = async () => {
     if (saving) return;
-    collect();
-    if (song.source === 'youtube' && !song.youtube.id) { toast('That YouTube link does not look right.', 'bad'); return; }
-    if (!song.synced.length) { toast('Add the lyrics first.', 'bad'); return; }
-    const timed = song.synced.filter((l) => Number.isFinite(l.start)).length;
-    if (song.source !== 'none' && timed < song.synced.length) toast(`${song.synced.length - timed} lines are not synced yet - they get estimated times.`);
     saving = true;
     saveButton.disabled = true;
+    card.inert = true;
     try {
+      await pendingMedia;
+      if (disposed) return;
+      collect();
+      if (song.source === 'youtube' && !song.youtube.id) { toast('That YouTube link does not look right.', 'bad'); return; }
+      if (!song.synced.length) { toast('Add the lyrics first.', 'bad'); return; }
+      const timed = song.synced.filter((l) => Number.isFinite(l.start)).length;
+      if (song.source !== 'none' && timed < song.synced.length) toast(`${song.synced.length - timed} lines are not synced yet - they get estimated times.`);
       const saved = song.source === 'audio' || song.cloud || ['audio', 'karaoke', 'vocals', 'sourceFile'].some((role) => song[role]?.mediaId)
         ? await saveCloudSong(song, { rightsConfirmed: rightsIn.checked, onProgress: (text) => { syncStatus.textContent = text; } })
         : saveUserSong(song);
       toast(saved.cloud ? 'Song saved to your private cloud library ☁' : 'Song saved ⭐', 'ok');
       location.hash = `#/song/${encodeURIComponent(saved.id)}`;
     } catch (e) { syncStatus.textContent = e.message; toast(e.message, 'bad'); }
-    finally { saving = false; saveButton.disabled = false; }
+    finally { saving = false; saveButton.disabled = false; card.inert = false; }
   };
   const saveButton = h('button', { class: 'btn primary btn-lg', type: 'button', onclick: save }, '💾 Save song');
 
@@ -477,13 +468,14 @@ export async function render(el, { id }) {
     h('p', { class: 'small' }, 'One line per line of the song. [Chorus] starts a section · an emoji at the start is the picture · "A: " marks a part · " | " adds a translation.'),
     lyricsIn,
     h('h3', { class: 'section-title' }, '⏱️ Sync'),
-    h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: startSync }, '▶ Start syncing'), tapBtn, h('button', { class: 'btn', type: 'button', onclick: () => track && (track.playing ? track.pause() : track.play()) }, '⏯')),
+    existing?.folderImport ? h('p', { class: 'small' }, 'For a song imported before automatic alignment, choose Repair lyric timing, play a line to check, then Save song. Your cloud copy updates only when you save; existing assignments keep their saved version.') : null,
+    h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: () => queueMedia(startSync) }, '▶ Start syncing'), tapBtn, h('button', { class: 'btn', type: 'button', onclick: () => track && (track.playing ? track.pause() : track.play()) }, '⏯')),
     h('div', { class: 'row sync-shift' },
       h('span', { class: 'small' }, 'All lines earlier / later:'),
       shiftBtn(-1, '−1 s', '1 second earlier'), shiftBtn(-0.1, '−0.1 s', '0.1 seconds earlier'),
       shiftBtn(0.1, '+0.1 s', '0.1 seconds later'), shiftBtn(1, '+1 s', '1 second later'),
-      h('button', { class: 'btn btn-sm', type: 'button', title: 'Play the song and tap once when the first line starts', onclick: startAlign }, '🎯 Tap to align'),
-      h('button', { class: 'btn btn-sm', type: 'button', title: 'Listen to the audio file and find where the UltraStar melody is sung', onclick: () => alignLyrics() }, '🪄 Auto-align')),
+      h('button', { class: 'btn btn-sm', type: 'button', title: 'Play the song and tap once when the first line starts', onclick: () => queueMedia(startAlign) }, '🎯 Tap to align'),
+      h('button', { class: 'btn btn-sm', type: 'button', title: 'Listen to the audio file and find where the UltraStar melody is sung', onclick: () => queueMedia(() => alignLyrics()) }, existing?.folderImport ? '🪄 Repair lyric timing' : '🪄 Auto-align')),
     syncStatus,
     syncList,
     h('div', { class: 'row top-space' },
@@ -497,11 +489,12 @@ export async function render(el, { id }) {
     if (!e.dataTransfer.files.length) return;
     e.preventDefault();
     card.classList.remove('dropping');
-    takeFiles(e.dataTransfer.files);
+    const files = [...e.dataTransfer.files];
+    queueMedia(() => takeFiles(files));
   });
   const folders = folderLibraryControls();
   el.append(folders, card, voiceLabCard(), importExport());
-  return () => { folders.destroy(); clearInterval(follow); document.removeEventListener('keydown', onKey); if (track) track.destroy(); };
+  return () => { disposed = true; folders.destroy(); clearInterval(follow); document.removeEventListener('keydown', onKey); if (track) track.destroy(); };
 }
 
 // Songs played by the band: edit the song file directly (for the curious).
