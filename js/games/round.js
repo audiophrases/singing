@@ -79,15 +79,6 @@ class RoundTrack extends SynthTrack {
     this.extra = [];
   }
 
-  fire(e, when) {
-    if (e.pan !== undefined && e.inst) {
-      const dur = e.d * (60 / this.effBpm);
-      this.synth.note(e.inst, { midi: e.midi, time: when, dur, vel: e.vel, bus: e.bus, text: e.text, first: e.first, last: e.last, ph: e.ph, pan: e.pan });
-      return;
-    }
-    super.fire(e, when);
-  }
-
   // Song time (seconds of the original) for one voice, or null when not singing.
   voiceTime(v) {
     const beat = this.beatNow() - this.voiceOffsets[v];

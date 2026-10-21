@@ -500,7 +500,7 @@ export async function render(el, { id }) {
     takeFiles(e.dataTransfer.files);
   });
   const folders = folderLibraryControls();
-  el.append(folders, card, importExport());
+  el.append(folders, card, voiceLabCard(), importExport());
   return () => { folders.destroy(); clearInterval(follow); document.removeEventListener('keydown', onKey); if (track) track.destroy(); };
 }
 
@@ -532,8 +532,17 @@ function renderBand(el, song) {
           toast('Saved ⭐', 'ok'); location.hash = `#/song/${encodeURIComponent(saved.id)}`;
         } catch (e) { msg.textContent = e.message; }
       } }, '💾 Save'),
-      h('a', { class: 'btn', href: `#/remix/${encodeURIComponent(song.id)}` }, '🪄 Remix words instead'))));
+      h('a', { class: 'btn', href: `#/remix/${encodeURIComponent(song.id)}` }, '🪄 Remix words instead'),
+      h('a', { class: 'btn', href: `#/voicelab?song=${encodeURIComponent(song.id)}` }, '🔬 Compare robot singers'))));
   return null;
+}
+
+// The voice lab: the robot singers side by side (views/voicelab.js).
+function voiceLabCard() {
+  return h('section', { class: 'card' },
+    h('h3', { style: { marginTop: 0 } }, '🔬 Voice lab: compare the robot singers'),
+    h('p', { class: 'small' }, 'Hear the original robot singer (A), the improved one (B) and Clear English (C) sing the same lines with identical melody and timing, matched in volume, with or without the band. Switch instantly, repeat single words, or run a blind listening test.'),
+    h('a', { class: 'btn', href: '#/voicelab' }, '🔬 Open the voice lab'));
 }
 
 // Back up and restore your songs as a file.

@@ -86,6 +86,25 @@ export function checkAnswer(typed, expected) {
   return 'wrong';
 }
 
+/*
+ * A dictation: how many of the expected words were typed, in order (a typo
+ * in a longer word still counts).
+ *   wordsHeard('the heavy rabit', 'The heavy rabbit paints.') -> { right: 3, of: 4 }
+ */
+export function wordsHeard(typed, expected) {
+  const words = (s) => String(s || '').split(/\s+/).map(normWord).filter(Boolean).map((w) => w.replace(/'/g, ''));
+  const a = words(typed);
+  const b = words(expected);
+  const same = (x, y) => x === y || (y.length >= 5 && levenshtein(x, y) <= 1);
+  const m = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      m[i][j] = same(a[i - 1], b[j - 1]) ? m[i - 1][j - 1] + 1 : Math.max(m[i - 1][j], m[i][j - 1]);
+    }
+  }
+  return { right: m[a.length][b.length], of: b.length };
+}
+
 // Letters shown as a hint: "w_ _ _ _ r" style.
 export function hintFor(word, revealed = 1) {
   const chars = [...String(word || '')];

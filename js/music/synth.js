@@ -12,6 +12,7 @@
  */
 import { midiToFreq } from './notes.js';
 import { syllablePhones, isVowelPhone } from '../lyrics/phonemes.js';
+import { singRobo, PROFILES } from './singer.js';
 
 let shared = null;
 
@@ -36,10 +37,11 @@ export async function unlockAudio() {
 const BUSES = ['comp', 'bass', 'drums', 'lead', 'pad', 'fx'];
 
 export class Synth {
-  constructor() {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    this.ctx = new AC({ latencyHint: 'interactive' });
-    const ctx = this.ctx;
+  // ctx: an OfflineAudioContext to render into a buffer (see render.js).
+  constructor(ctx = null) {
+    this.offline = !!ctx && typeof OfflineAudioContext !== 'undefined' && ctx instanceof OfflineAudioContext;
+    this.ctx = ctx || new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+    ctx = this.ctx;
     this.master = ctx.createGain();
     this.master.gain.value = 0.8;
     this.comp = ctx.createDynamicsCompressor();
@@ -51,8 +53,16 @@ export class Synth {
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 2048;
     this.analyser.smoothingTimeConstant = 0.75;
+    // The compressor adds make-up gain, so the odd peak went past full scale
+    // and clipped. A soft ceiling instead: untouched below -0.9 dBFS.
+    this.ceiling = ctx.createWaveShaper();
+    this.ceiling.curve = makeCeilingCurve();
+    const toCeiling = ctx.createGain();
+    toCeiling.gain.value = 1 / CEILING_RANGE;
     this.master.connect(this.comp);
-    this.comp.connect(this.analyser);
+    this.comp.connect(toCeiling);
+    toCeiling.connect(this.ceiling);
+    this.ceiling.connect(this.analyser);
     this.analyser.connect(ctx.destination);
 
     this.reverb = ctx.createConvolver();
@@ -64,11 +74,26 @@ export class Synth {
 
     this.bus = {};
     this.busSend = {};
+    // The band can make room for the singer (setVoiceRoom): a dip around
+    // 3 kHz where consonants live, and a little less band. Flat (and so
+    // silent) until asked.
+    this.room = [];
+    this.bandOut = ctx.createGain();
+    this.bandOut.connect(this.master);
     for (const name of BUSES) {
       const g = ctx.createGain();
       const send = ctx.createGain();
       send.gain.value = name === 'drums' ? 0.08 : name === 'bass' ? 0.04 : 0.3;
-      g.connect(this.master);
+      const out = name === 'lead' || name === 'fx' ? this.master : this.bandOut;
+      if (name === 'comp' || name === 'pad' || name === 'drums') {
+        const dip = this.filter('peaking', 2800, 0.8);
+        dip.gain.value = 0;
+        g.connect(dip);
+        dip.connect(out);
+        this.room.push(dip);
+      } else {
+        g.connect(out);
+      }
       g.connect(send);
       send.connect(this.reverb);
       this.bus[name] = g;
@@ -87,12 +112,13 @@ export class Synth {
     this.driveOut = ctx.createGain();
     this.driveOut.gain.value = 0.55;
     this.drive.connect(this.driveOut);
-    this.driveOut.connect(this.master);
+    this.driveOut.connect(this.bandOut);
     this.driveOut.connect(this.busSend.comp);
 
     this.noise = this.makeNoise(2);
     this.ksCache = new Map();
     this.voices = new Set();
+    this.vox = new Map();
   }
 
   get now() {
@@ -103,8 +129,44 @@ export class Synth {
     const g = this.bus[name];
     if (!g) return;
     const t = this.ctx.currentTime;
-    g.gain.cancelScheduledValues(t);
-    g.gain.setTargetAtTime(Math.max(0, v), t, ramp);
+    const params = [g.gain, ...(name === 'lead' ? [...this.vox.values()].map((c) => c.out.gain) : [])];
+    for (const p of params) {
+      p.cancelScheduledValues(t);
+      p.setTargetAtTime(Math.max(0, v), t, ramp);
+    }
+  }
+
+  // Room for the singer: { dip, duck } dB the band dips around 3 kHz, and
+  // plays quieter (a number: the dip alone).
+  setVoiceRoom(room = 0) {
+    const { dip = 0, duck = 0 } = typeof room === 'number' ? { dip: room } : room || {};
+    const t = this.ctx.currentTime;
+    for (const f of this.room) f.gain.setTargetAtTime(-Math.max(0, dip), t, 0.05);
+    this.bandOut.gain.setTargetAtTime(10 ** (-Math.max(0, duck) / 20), t, 0.05);
+  }
+
+  /*
+   * A singer's own channel: high-pass, presence boost and its own reverb
+   * send, then the lead bus volume (so muting the lead mutes it too).
+   * cfg: { hp, at, db, q, send } (see PROFILES in singer.js).
+   */
+  voxChain(cfg) {
+    let c = this.vox.get(cfg);
+    if (!c) {
+      const hp = this.filter('highpass', cfg.hp, 0.7);
+      const presence = this.filter('peaking', cfg.at, cfg.q);
+      presence.gain.value = cfg.db;
+      const out = this.gain(this.bus.lead.gain.value);
+      const send = this.gain(cfg.send);
+      hp.connect(presence);
+      presence.connect(out);
+      out.connect(this.master);
+      out.connect(send);
+      send.connect(this.reverb);
+      c = { input: hp, out };
+      this.vox.set(cfg, c);
+    }
+    return c.input;
   }
 
   setReverb(v) {
@@ -135,6 +197,8 @@ export class Synth {
   }
 
   track(voice, endTime) {
+    // Rendering into a buffer never needs to stop notes early.
+    if (this.offline) return voice;
     this.voices.add(voice);
     const ms = Math.max(0, (endTime - this.ctx.currentTime) * 1000) + 200;
     voice.timer = setTimeout(() => this.voices.delete(voice), ms);
@@ -159,12 +223,15 @@ export class Synth {
 
   destFor(bus, inst) {
     if (bus === 'comp' && inst && inst.drive) return this.drive;
+    if (bus === 'lead' && inst && inst.vox) return this.voxChain(inst.vox);
     return this.bus[bus] || this.bus.comp;
   }
 
   // ---------------------------------------------------------------- notes
 
-  note(inst, { midi, time, dur, vel = 0.8, bus = 'comp', text = '', first = true, last = true, ph = null, pan = 0 }) {
+  // Anything else in the options (the robot singer's stress, next note...)
+  // goes through to the instrument.
+  note(inst, { midi, time, dur, vel = 0.8, bus = 'comp', text = '', first = true, last = true, ph = null, pan = 0, ...more }) {
     const def = INSTRUMENTS[inst] || INSTRUMENTS.piano;
     const t = Math.max(time, this.ctx.currentTime);
     const out = this.ctx.createGain();
@@ -178,7 +245,7 @@ export class Synth {
     }
     node.connect(this.destFor(bus, def));
     const voice = { out, srcs: [] };
-    const end = def.play(this, { voice, out, midi, freq: midiToFreq(midi), t, dur: Math.max(0.03, dur), vel, text, first, last, ph });
+    const end = def.play(this, { ...more, voice, out, midi, freq: midiToFreq(midi), t, dur: Math.max(0.03, dur), vel, text, first, last, ph });
     return this.track(voice, end);
   }
 
@@ -266,6 +333,21 @@ export class Synth {
     this.ksCache.set(key, out);
     return out;
   }
+}
+
+// The ceiling's curve covers inputs up to CEILING_RANGE (scaled into the
+// shaper's -1..1): straight up to 0.9, then bending smoothly towards 1.
+const CEILING_RANGE = 4;
+export function makeCeilingCurve(n = 8193) {
+  const curve = new Float32Array(n);
+  const knee = 0.9;
+  for (let i = 0; i < n; i += 1) {
+    const x = ((i / (n - 1)) * 2 - 1) * CEILING_RANGE;
+    const a = Math.abs(x);
+    const y = a <= knee ? a : knee + (1 - knee) * Math.tanh((a - knee) / (1 - knee));
+    curve[i] = Math.sign(x) * y;
+  }
+  return curve;
 }
 
 function makeDriveCurve(amount) {
@@ -785,10 +867,21 @@ const INSTRUMENTS = {
       return end + 0.05;
     },
   },
-  // The robot singer: a glottal buzz through moving formants, with real
-  // consonants (see "phones" above). A note sings its share of a syllable:
-  // the first note brings the onset ("tw" of "twin"), the last the coda.
+  // The robot singer (singer.js), and its Clear English profile. Each has its
+  // own EQ and reverb on the lead bus.
   robo: {
+    vox: PROFILES.sing.vox,
+    play: (sy, args) => singRobo(sy, args, PROFILES.sing),
+  },
+  roboClear: {
+    vox: PROFILES.clear.vox,
+    play: (sy, args) => singRobo(sy, args, PROFILES.clear),
+  },
+  // The original robot singer, unchanged, so the voice lab can compare: a
+  // glottal buzz through moving formants, with real consonants (see "phones"
+  // above). A note sings its share of a syllable: the first note brings the
+  // onset ("tw" of "twin"), the last the coda.
+  roboClassic: {
     play(sy, { voice, out: voiceOut, freq, t, dur, vel, text, first, last, ph }) {
       const ctx = sy.ctx;
       const p = ph || syllablePhones(text || 'la', [text || 'la'])[0];

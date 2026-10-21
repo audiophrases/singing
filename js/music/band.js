@@ -12,7 +12,9 @@
  * feature, not a bug.
  */
 import { chordAt } from './score.js';
-import { syllablePhones } from '../lyrics/phonemes.js';
+import { syllablePhones, cleanWord, stressVowel, isVowelPhone } from '../lyrics/phonemes.js';
+import { stressIndex } from '../lyrics/syllables.js';
+import { STOPWORDS } from '../lyrics/wordlists.js';
 
 const DRUM_KEYS = {
   k: 'kick', s: 'snare', h: 'hat', o: 'openhat', c: 'clap', r: 'rim', t: 'shaker', T: 'tamb',
@@ -158,13 +160,16 @@ export const STYLES = {
   },
 };
 
+// room: how many dB the band dips around 3 kHz for that singer's consonants.
 export const GUIDES = {
-  robo: { name: 'Robot singer', emoji: '🤖', inst: 'robo' },
+  robo: { name: 'Robot singer', emoji: '🤖', inst: 'robo', room: 2 },
+  roboclear: { name: 'Robot · clear English', emoji: '🗣️', inst: 'roboClear', room: 5 },
   flute: { name: 'Flute', emoji: '🎶', inst: 'flute' },
   piano: { name: 'Piano', emoji: '🎹', inst: 'piano' },
   whistle: { name: 'Whistle', emoji: '😗', inst: 'whistle' },
   synth: { name: 'Synth', emoji: '🎛️', inst: 'synthlead' },
   bells: { name: 'Bells', emoji: '🔔', inst: 'bells' },
+  roboclassic: { name: 'Robot singer (original)', emoji: '📼', inst: 'roboClassic' },
 };
 
 function patternFor(style, meter) {
@@ -419,26 +424,51 @@ export function arrange(compiled, styleId = 'pop', opts = {}) {
   return events;
 }
 
-// How each syllable of a line sounds, for the robot singer: { on, nu, co }.
-const linePhones = new WeakMap();
-function phonesOf(line, si) {
-  let ph = linePhones.get(line);
-  if (!ph) {
-    ph = [];
+/*
+ * How each syllable of a line sounds, for the robot singer: its phones
+ * { on, nu, co } and its stress: 2 the stressed syllable of a word, 1 a small
+ * word (the, of, you...), 0 an unstressed syllable.
+ */
+const lineVoices = new WeakMap();
+function voiceOf(line) {
+  let v = lineVoices.get(line);
+  if (!v) {
+    v = { ph: [], stress: [] };
     for (const w of line.words || []) {
       const parts = w.syllables.map((i) => line.syllables[i].text);
-      syllablePhones(parts.join(''), parts).forEach((x, k) => { ph[w.syllables[k]] = x; });
+      const phones = syllablePhones(parts.join(''), parts);
+      phones.forEach((x, k) => { v.ph[w.syllables[k]] = x; });
+      const core = cleanWord(parts.join(''));
+      const st = stressedSyllable(core, parts, phones);
+      const small = STOPWORDS.has(core) || core.length <= 2;
+      w.syllables.forEach((i, k) => { v.stress[i] = k === st ? (small ? 1 : 2) : 0; });
     }
-    linePhones.set(line, ph);
+    lineVoices.set(line, v);
   }
-  return ph[si] || null;
+  return v;
+}
+
+// Which of the song's syllables of a word is stressed: the dictionary's
+// stressed vowel, found in the syllable that sings it; or a guess by rule.
+function stressedSyllable(word, parts, phones) {
+  if (parts.length < 2) return 0;
+  const k = stressVowel(word);
+  if (k === null) return stressIndex(word, parts.map(cleanWord));
+  let seen = 0;
+  for (let i = 0; i < phones.length; i += 1) {
+    seen += [...phones[i].nu].filter(isVowelPhone).length;
+    if (k < seen) return i;
+  }
+  return phones.length - 1;
 }
 
 // The melody, for the guide voice and the claps/stomps on "x" notes.
 export function melodyEvents(compiled, guide = 'robo', opts = {}) {
   const transpose = opts.transpose || 0;
   const g = GUIDES[guide];
+  const robo = !!g && g.inst.startsWith('robo');
   const out = [];
+  const sung = [];
   for (const m of compiled.melody) {
     if (m.hit) {
       const line = compiled.lines[m.line];
@@ -453,13 +483,40 @@ export function melodyEvents(compiled, guide = 'robo', opts = {}) {
     const syl = line && m.syl >= 0 ? line.syllables[m.syl] : null;
     const first = !syl || syl.notes[0] === m;
     const last = !syl || syl.notes[syl.notes.length - 1] === m;
-    out.push({
+    const e = {
       t: m.start, d: m.beats * 0.98, inst: g.inst, midi: m.midi + transpose + (opts.octave || 0) * 12,
       vel: 0.85, bus: 'lead', text: syl ? syl.text : 'la', first, last,
-      ph: g.inst === 'robo' && syl ? phonesOf(line, m.syl) : null,
-    });
+      ph: robo && syl ? voiceOf(line).ph[m.syl] || null : null,
+    };
+    if (robo) {
+      e.stress = syl ? voiceOf(line).stress[m.syl] ?? 2 : 2;
+      e.wordStart = !!(syl && syl.first && first);
+      sung.push([e, m.beats]);
+    }
+    out.push(e);
   }
+  linkNotes(sung);
   return out;
+}
+
+/*
+ * Robot notes know their neighbours when one follows straight on: nt / pt
+ * (beats to the next note, from the one before), the next one's onset and
+ * whether it starts a word. A note then stops where the next one's
+ * consonants begin, and a melisma glides from the note before.
+ *   sung: [[event, beats], ...] in time order.
+ */
+export function linkNotes(sung) {
+  for (let i = 0; i + 1 < sung.length; i += 1) {
+    const [a, beats] = sung[i];
+    const [b] = sung[i + 1];
+    if (Math.abs(b.t - (a.t + beats)) > 0.02) continue;
+    a.nt = b.t - a.t;
+    a.nextOn = b.first && b.ph ? b.ph.on : '';
+    a.nextWord = b.wordStart;
+    b.pt = a.nt;
+    b.prevMidi = a.midi;
+  }
 }
 
 // Woodblock clicks: a bar of count-in, or a metronome.

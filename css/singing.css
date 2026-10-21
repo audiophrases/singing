@@ -1007,3 +1007,29 @@ body.on-stage .yt-dock { bottom: 5.2rem; }
 .maker-status.ok { color: var(--ok); }
 .maker-status.warn { color: var(--warn); }
 .maker-status.bad { color: var(--bad); }
+
+/* Voice lab: the robot singers side by side */
+.lab-legend { display: grid; gap: 0.15rem; font-size: 0.9rem; margin-top: 0.4rem; }
+.lab-voices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+.lab-voice { flex-direction: column; gap: 0.1rem; padding: 0.7rem 0.6rem; border-width: 2px; border-radius: 0.9rem; white-space: normal; }
+.lab-voice .lab-key { font-family: var(--font-fun); font-size: 1.9rem; line-height: 1; font-weight: 700; }
+.lab-voice .lab-level { font-variant-numeric: tabular-nums; min-height: 1.2em; }
+.lab-voice[aria-pressed='true'] { box-shadow: inset 0 0 0 3px rgba(96, 93, 255, 0.35); }
+.lab-voice:focus-visible, .lab-word:focus-visible, .lab-clip:focus-visible { outline: 3px solid rgba(96, 93, 255, 0.5); outline-offset: 2px; }
+.lab-play { min-width: 8.5rem; }
+.lab-status { margin-top: 0.5rem; min-height: 1.3em; }
+.lab-words { font-size: clamp(1.25rem, 3vw, 1.7rem); line-height: 1.7; font-family: var(--font-fun); margin: 0.6rem 0; }
+.lab-word { font: inherit; border: none; background: none; color: inherit; cursor: pointer; padding: 0 0.15rem; border-radius: 0.35rem; }
+.lab-word:hover { background: #f1f3f8; }
+.lab-word.now { background: var(--primary-soft); color: var(--primary-2); }
+.lab-word.looped { outline: 2px dashed var(--primary); }
+.lab-clips { padding-left: 1.4rem; margin: 0.4rem 0 0; max-height: 260px; overflow: auto; }
+.lab-clip { font: inherit; text-align: left; border: none; background: none; cursor: pointer; padding: 0.15rem 0.3rem; border-radius: 0.35rem; color: var(--text); }
+.lab-clip:hover { background: #f1f3f8; }
+.lab-clip.active { background: var(--primary-soft); font-weight: 700; }
+.lab-blind-head { font-weight: 600; }
+.lab-table { width: 100%; border-collapse: collapse; margin-top: 0.8rem; font-size: 0.92rem; }
+.lab-table th, .lab-table td { text-align: left; padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--line); }
+.lab-table td { font-variant-numeric: tabular-nums; }
+.lab-bar { display: inline-block; min-width: 3.5rem; padding: 0.05rem 0.4rem; border-radius: 0.4rem; font-weight: 700; background: linear-gradient(90deg, var(--ok-bg) var(--pct), transparent var(--pct)); border: 1px solid var(--line); }
+#app .lab-blind-head + .row input { flex: 1 1 14rem; width: auto; }

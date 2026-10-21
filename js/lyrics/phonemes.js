@@ -7,6 +7,7 @@
  * One character per phone, ARPAbet without stress:
  */
 import { PHONE_DICT } from './phonedict.js';
+import { STRESS_DICT } from './stressdict.js';
 
 export const ARPA = {
   AA: 'a', AE: '@', AH: '^', AO: 'c', AW: 'W', AY: 'Y', EH: 'E', ER: 'R', EY: 'e', IH: 'I', IY: 'i', OW: 'o', OY: 'O', UH: 'U', UW: 'u',
@@ -17,10 +18,15 @@ export const ARPA = {
 const VOWEL_PHONES = new Set('a@^cWYEReIioOUu');
 export const isVowelPhone = (p) => VOWEL_PHONES.has(p);
 
+// Words of the songs that CMUdict doesn't have and spelling gets wrong.
+const EXTRA = {
+  hooray: 'h^re', baa: 'ba', baabaa: 'baba', onehorse: 'w^nhcrs', "o'er": 'cr', bonjour: 'bcnZur', hallo: 'h^lo', konnichiwa: 'konICiwa',
+};
+
 let dict = null;
 function lookup(w) {
   if (!dict) {
-    dict = new Map();
+    dict = new Map(Object.entries(EXTRA));
     for (const line of PHONE_DICT.split('\n')) {
       const sp = line.indexOf(' ');
       if (sp > 0) dict.set(line.slice(0, sp), line.slice(sp + 1));
@@ -143,6 +149,29 @@ export function phonemes(word) {
   const p = lookup(w) || inflected(w) || spell(w);
   cache.set(w, p);
   return p;
+}
+
+/*
+ * Which vowel of a word carries its stress (0 = the first), from CMUdict:
+ *   stressVowel('banana') -> 1; stressVowel('bananas') -> 1 (its stem's)
+ * null for words the dictionary doesn't know.
+ */
+let stressDict = null;
+export function stressVowel(word) {
+  if (!stressDict) {
+    stressDict = new Map();
+    for (const line of STRESS_DICT.split('\n')) {
+      const sp = line.indexOf(' ');
+      if (sp > 0) stressDict.set(line.slice(0, sp), Number(line.slice(sp + 1)));
+    }
+  }
+  const w = cleanWord(word);
+  // Endings don't move English stress: "babies" is stressed like "baby".
+  const stems = [w, w.replace(/'s$/, ''), w.replace(/ies$/, 'y'), w.replace(/i(?:ed|er|est|ly|ness)$/, 'y'), w.replace(/(?:es|s|ed|ing|ly|ness|ful|er|est)$/, ''), w.replace(/(?:ed|ing|er|est)$/, 'e'), w.replace(/([bdgklmnprtz])\1(?:ed|ing|er|est)$/, '$1')];
+  for (const s of stems) {
+    if (s.length > 1 && lookup(s)) return stressDict.get(s) || 0;
+  }
+  return null;
 }
 
 // Consonant clusters that can start an English syllable (in phone codes).

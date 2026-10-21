@@ -5,6 +5,7 @@
  *   #/song/<id>              a song and its activities
  *   #/play/<id>/<game>?...   a game on the stage (projector)
  *   #/studio[/<id>]          make or edit a song
+ *   #/voicelab[?song=<id>]   compare the robot singers (A/B, blind test)
  *   #/chant                  chant maker
  *   #/party                  class games that need no song
  *   #/remix/<id>             write new verses
@@ -33,6 +34,7 @@ const routes = [
   { re: /^\/song\/([^/]+)$/, view: () => import('./views/song.js'), nav: 'library', keys: ['id'] },
   { re: /^\/play\/([^/]+)\/([^/]+)$/, view: () => import('./views/stage.js'), nav: 'library', keys: ['id', 'game'], stage: true },
   { re: /^\/studio(?:\/([^/]+))?$/, view: () => import('./views/studio.js'), nav: 'studio', keys: ['id'] },
+  { re: /^\/voicelab$/, view: () => import('./views/voicelab.js'), nav: 'studio' },
   { re: /^\/chant$/, view: () => import('./views/chant.js'), nav: 'chant' },
   { re: /^\/party(?:\/([^/]+))?$/, view: () => import('./views/party.js'), nav: 'party', keys: ['game'] },
   { re: /^\/assignments$/, view: () => import('./views/assignments.js'), nav: 'assignments' },

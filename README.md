@@ -36,6 +36,13 @@ Web Audio band. Nothing is a recording, so any song can be:
   words, consonants included. It looks words up in a 16,000-word pronunciation
   dictionary (from CMUdict) and guesses the rest from their spelling. It can also be a flute,
   piano, whistle, synth or bells, or switched off for real karaoke.
+- **Robot · clear English**: the same melody and rhythm, sung for pronunciation
+  rather than realism: longer, stronger consonants, no vibrato, fully released
+  final consonants and a short break before words that start with a vowel.
+  The original robot singer is still in the menu, and the **🔬 Voice lab**
+  (in the Studio) compares the voices on identical notes, volume-matched, with
+  a blind listening test. `tools/robo-eval.mjs` measures them with local speech
+  recognizers (see [the voice notes](docs/ROBOT_SINGER.md)).
 
 All instruments (FM e-piano, Karplus-Strong guitar/ukulele/harp, organ,
 accordion, strings, brass, basses, drum kit, claps, stomps...) are synthesized.

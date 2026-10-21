@@ -9,7 +9,7 @@
  * Built-in songs add setStyle, setTranspose, setGuide, setMute.
  */
 import { compileSong } from './score.js';
-import { arrange, melodyEvents, clickEvents } from './band.js';
+import { arrange, melodyEvents, clickEvents, GUIDES } from './band.js';
 import { getSynth, unlockAudio } from './synth.js';
 import { timelineFromCompiled } from './timeline.js';
 
@@ -64,6 +64,7 @@ export class SynthTrack extends Emitter {
     const melody = melodyEvents(this.compiled, this.guide, { transpose: this.transpose, octave: this.guideOctave });
     this.events = band.concat(melody).sort((a, b) => a.t - b.t);
     this.extra = [];
+    this.synth.setVoiceRoom(GUIDES[this.guide]?.room || 0);
   }
 
   latency() {
@@ -117,14 +118,12 @@ export class SynthTrack extends Emitter {
       if (e.t < from - 16) continue;
       const left = e.t + e.d - from;
       if (left < 0.2) continue;
-      this.fire({ ...e, t: from, d: left, first: false }, this.beatToCtx(from));
+      this.fire({ ...e, t: from, d: left, first: false, nt: e.nt && e.nt - (from - e.t), pt: 0, prevMidi: null }, this.beatToCtx(from));
     }
   }
 
   fire(e, when) {
-    const dur = e.d ? e.d * (60 / this.effBpm) : 0;
-    if (e.drum) this.synth.drum(e.drum, when, e.vel, e.bus === 'lead' ? 'lead' : e.bus === 'fx' ? 'fx' : 'drums');
-    else this.synth.note(e.inst, { midi: e.midi, time: when, dur, vel: e.vel, bus: e.bus, text: e.text, first: e.first, last: e.last, ph: e.ph });
+    fireEvent(this.synth, e, when, 60 / this.effBpm);
   }
 
   tick() {
@@ -238,8 +237,25 @@ export class SynthTrack extends Emitter {
 
   destroy() {
     this.halt(this.pos);
+    this.synth.setVoiceRoom(0);
     this.handlers = {};
   }
+}
+
+// One arranged event on the synth at `when` (seconds on its clock). Shared
+// with the offline renderer so both schedule notes the same way.
+export function fireEvent(synth, e, when, beatSec) {
+  const dur = e.d ? e.d * beatSec : 0;
+  if (e.drum) {
+    synth.drum(e.drum, when, e.vel, e.bus === 'lead' ? 'lead' : e.bus === 'fx' ? 'fx' : 'drums');
+    return;
+  }
+  synth.note(e.inst, {
+    midi: e.midi, time: when, dur, vel: e.vel, bus: e.bus, text: e.text, first: e.first, last: e.last, ph: e.ph, pan: e.pan || 0,
+    // The robot singer's view of its neighbours (see melodyEvents), in seconds.
+    stress: e.stress, wordStart: e.wordStart, nextOn: e.nextOn, nextWord: e.nextWord, prevMidi: e.prevMidi,
+    nextIn: e.nt ? e.nt * beatSec : 0, prevIn: e.pt ? e.pt * beatSec : 0,
+  });
 }
 
 function lowerBound(arr, t) {

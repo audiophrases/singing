@@ -20,6 +20,7 @@ export async function render(el) {
       h('p', null, 'Singing is a toolbox for songs in the English class. Built-in songs play in the browser. Sign in to keep uploaded songs in your private cloud library, assign activities to classes and track results.'),
       h('h2', null, '1. Pick a song'),
       h('p', null, 'The built-in songs are played by Singing\'s own band, so you can change the speed (slow down to learn!), the key (to suit the voices) and even the style - try Twinkle Twinkle as reggae. The robot singer sings the melody; switch it off for real karaoke.'),
+      h('p', null, 'The 🎵 Melody knob chooses who sings. 🗣️ Robot · clear English puts the words first: stronger consonants, no vibrato and a short break before words that start with a vowel, on the same melody and rhythm. 📼 Robot singer (original) is the first version of the robot. The ', h('a', { href: '#/voicelab' }, '🔬 Voice lab'), ' (in the Studio) plays them side by side on the same notes, matched in volume, and has a blind listening test.'),
       h('h2', null, '2. Choose an activity'),
       h('ul', null, GAMES.map((g) => h('li', null, h('b', null, `${g.emoji} ${g.name}: `), g.desc))),
       h('h2', null, '3. Bring your own songs'),
