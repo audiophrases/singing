@@ -8,6 +8,8 @@ if "%~1"=="update" set "SINGING_ACTION=update"
 if "%~1"=="verify" set "SINGING_ACTION=verify"
 if "%~1"=="google" set "SINGING_ACTION=google"
 if not defined SINGING_ACTION exit /b 2
+set "SINGING_CONFIRMATION="
+if "%SINGING_ACTION%"=="update" if "%~2"=="--yes" set "SINGING_CONFIRMATION=--yes"
 pushd "%~dp0.." || exit /b 1
 set "SINGING_EXIT_CODE=1"
 where node >nul 2>nul
@@ -22,7 +24,7 @@ echo Installing the project's locked dependencies...
 call npm ci --include=dev
 if errorlevel 1 goto install_failed
 :run_helper
-node "%~dp0deploy-cli.mjs" "%SINGING_ACTION%"
+node "%~dp0deploy-cli.mjs" "%SINGING_ACTION%" %SINGING_CONFIRMATION%
 set "SINGING_EXIT_CODE=%ERRORLEVEL%"
 goto finish
 :missing_node

@@ -1,5 +1,5 @@
 @echo off
-rem Routine Singing-only update using the existing cloud setup.
+rem Routine Singing-only update without a typed confirmation.
 setlocal DisableDelayedExpansion
-call "%~dp0tools\deploy-launcher.bat" update
+call "%~dp0tools\deploy-launcher.bat" update --yes
 exit /b %ERRORLEVEL%

@@ -9,7 +9,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const help = `Singing deployment
 
 Double-click deploy.bat for the menu, or use the numbered files in deployment/.
-Double-click deploy-fast.bat for routine Singing-only updates.
+Double-click deploy-fast.bat for routine Singing-only updates without typing DEPLOY.
 
   prepare   Install dependencies via the BAT launcher, prepare an isolated
             PinPlay checkout, run tests, and dry-run both Workers.

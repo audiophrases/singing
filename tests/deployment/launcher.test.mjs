@@ -28,7 +28,7 @@ test('Windows BAT launchers preserve spaces, ampersands, actions and failure exi
   }
   await writeFile(path.join(root, 'tools/deploy-cli.mjs'), `import {writeFileSync} from 'node:fs'; writeFileSync(process.env.SINGING_LAUNCHER_RESULT,JSON.stringify({cwd:process.cwd(),args:process.argv.slice(2)})); process.exitCode=17;`);
   const resultFile = path.join(root, 'launcher-result.json');
-  for (const [name, action] of [['deploy.bat', 'menu'], ['deploy-fast.bat', 'update'], ['deployment/01-prepare.bat', 'prepare'], ['deployment/02-deploy.bat', 'deploy'], ['deployment/03-verify-and-open.bat', 'verify'], ['deployment/04-google-login-setup.bat', 'google']]) {
+  for (const [name, args] of [['deploy.bat', ['menu']], ['deploy-fast.bat', ['update', '--yes']], ['deployment/01-prepare.bat', ['prepare']], ['deployment/02-deploy.bat', ['deploy']], ['deployment/03-verify-and-open.bat', ['verify']], ['deployment/04-google-login-setup.bat', ['google']]]) {
     const result = spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/v:off', '/s', '/c', `""${path.join(root, name)}""`], {
       cwd: directory, env: { ...process.env, SINGING_DEPLOY_NO_PAUSE: '1', SINGING_LAUNCHER_RESULT: resultFile },
       shell: false, windowsVerbatimArguments: true, windowsHide: true, encoding: 'utf8', timeout: 20000,
@@ -36,6 +36,6 @@ test('Windows BAT launchers preserve spaces, ampersands, actions and failure exi
     assert.equal(result.status, 17, `${name}: ${result.stdout}\n${result.stderr}`);
     const record = JSON.parse(await readFile(resultFile, 'utf8'));
     assert.equal(record.cwd.toLowerCase(), root.toLowerCase());
-    assert.deepEqual(record.args, [action]);
+    assert.deepEqual(record.args, args);
   }
 });

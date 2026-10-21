@@ -17,6 +17,7 @@ confirmed by reading the live deployment's exact version and 100% traffic. If
 activation succeeded but confirmation was interrupted, rerunning the fast launcher
 finishes the local record and health checks without publishing that version again.
 
+The dedicated **`deploy-fast.bat`** publishes without asking you to type `DEPLOY`.
 Fast updates validate the Cloudflare account and live Singing bindings, preserve
 variables/routes through version upload and promotion, and check for concurrent
 releases. Changed database migrations, Worker configuration or shared identity
