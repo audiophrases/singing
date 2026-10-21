@@ -66,7 +66,7 @@ export function paintLine(el, t) {
 
 // The ball cues the next syllable slightly early. All times remain on the
 // recording's timeline; rate scales the cue so its real-time lead stays steady.
-export const BALL_LEAD = 0.08;
+export const BALL_LEAD = 0.04;
 export function ballHop(syllables, t, rate = 1) {
   if (!syllables.length) return null;
   const speed = Math.max(0.1, Number(rate) || 1);
