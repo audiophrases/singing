@@ -1,0 +1,30 @@
+Singing deployment
+
+1. Deploy or update Singing (recommended)
+2. Prepare and test only
+3. Verify deployment and open app
+4. Open Google login setup
+Q. Exit
+
+Choose 1, 2, 3, 4 or Q: 1
+Preparing the PinPlay identity adapter in an isolated checkout…
+Running Singing tests…
+Running Cloud storage and assignment tests…
+Running Deployment automation tests…
+Checking shared PinPlay authentication…
+Building the site and both Worker bundles…
+Preparation passed. No production resources were changed.
+Cloudflare account: b7cc0719d9ecb3485646785035f87ca1 (OAuth Token).
+Target: account b7cc0719d9ecb3485646785035f87ca1; new/private Singing storage; PinPlay API identity adapter.
+PinPlay source: 041ab6e5af65b1b27c7763e5e3a18653bef2d8ed; current production version: 24717386-f39a-41a0-9632-e5140ae1ad46.
+Type DEPLOY to create/update these resources and release both apps: DEPLOY
+Reusing Singing’s private R2 bucket.
+Applying only the Singing database migrations…
+Deploying Singing and its static assets…
+Checking https://singing.eugenime.workers.dev…
+Public smoke checks passed.
+App: https://singing.eugenime.workers.dev
+Google OAuth origin: https://singing.eugenime.workers.dev
+Remaining browser steps: .deployment/NEXT-STEPS.txt
+
+Press any key to continue . . .
