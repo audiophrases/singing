@@ -111,7 +111,7 @@ async function fixture(t, setup = () => {}) {
       if (injected) return failure(injected);
       const current = world.workers[worker];
       if (!current) return failure('Worker does not exist [code: 10007]');
-      return json({ id: uuid(100), created_on: '2026-10-21T10:00:00Z', versions: [{ version_id: current.active, percentage: 100 }] });
+      return json({ id: uuid(100), created_on: '2026-10-21T10:00:00Z', versions: current.traffic || [{ version_id: current.active, percentage: 100 }] });
     }
     if (args[0] === 'versions' && args[1] === 'view') {
       const version = world.workers[worker]?.versions.find((value) => value.id === args[2]);
@@ -167,7 +167,9 @@ async function fixture(t, setup = () => {}) {
       await recordWrite('promotion', worker);
       if (world.promotionFailures > 0) { world.promotionFailures--; return failure('Fixture promotion failed'); }
       world.workers[worker].active = id;
-      return output({ type: 'version-deploy', worker_name: worker, deployment_id: uuid(200), version_traffic: { [id]: 100 } });
+      world.afterPromotion?.(worker, id);
+      // Real Wrangler 4.151.3 receipt: its Map becomes an empty JSON object.
+      return output({ type: 'version-deploy', worker_name: worker, deployment_id: uuid(200), version_traffic: world.promotionTraffic || {} });
     }
     if (args[0] === 'deploy') {
       assert.equal(worker, 'singing'); assert(!world.workers.singing); assert(world.migrated);
@@ -405,6 +407,73 @@ test('fast update resumes an interrupted promotion without uploading the same co
   assert.equal(world.writes.filter((w) => w.kind === 'upload').length, 1);
   assert.equal(world.writes.filter((w) => w.kind === 'promotion').length, 2);
   assert(world.writes.every((w) => w.worker === 'singing'));
+});
+
+test('fast update checks actual traffic even when the promotion receipt claims success', async (t) => {
+  for (const outcome of ['previous version', 'partial traffic', 'different version', 'missing traffic']) {
+    await t.test(outcome, async (subtest) => {
+      const { world, load } = await fixture(subtest);
+      const setup = await load(); await setup.deploy({ yes: true });
+      const before = world.workers.singing.active;
+      world.writes = []; world.fetches = []; world.fingerprint = 'new-site';
+      world.afterPromotion = (worker, id) => {
+        assert.equal(worker, 'singing');
+        world.promotionTraffic = { [id]: 100 };
+        if (outcome === 'previous version') world.workers.singing.active = before;
+        if (outcome === 'partial traffic') world.workers.singing.traffic = [
+          { version_id: id, percentage: 50 }, { version_id: before, percentage: 50 },
+        ];
+        if (outcome === 'different version') {
+          world.workers.singing.versions.push(singingVersion(uuid(99), 99));
+          world.workers.singing.active = uuid(99);
+        }
+        if (outcome === 'missing traffic') world.workers.singing.traffic = [];
+      };
+      const update = await load();
+      await assert.rejects(update.update({ yes: true }), /did not confirm 100% traffic|one production version/);
+      const saved = JSON.parse(await readFile(path.join(update.directory, 'state.json'), 'utf8'));
+      assert.equal(saved.singing.deployedVersion, before);
+      assert(saved.singing.pending?.versionId);
+      assert.deepEqual(world.fetches, [], 'no success smoke checks before deployment confirmation');
+      assert.deepEqual(world.writes.map((w) => w.kind), ['upload', 'promotion']);
+    });
+  }
+});
+
+test('fast update recovers an already live version after a failed confirmation without prompting or publishing again', async (t) => {
+  const { world, load } = await fixture(t);
+  await (await load()).deploy({ yes: true });
+  world.writes = []; world.fingerprint = 'new-site';
+  world.afterPromotion = (worker) => { world.statusFailures[worker] = 'Fixture confirmation unavailable'; };
+  const first = await load();
+  await assert.rejects(first.update({ yes: true }), /deployments status.*failed/);
+  const pending = first.state.singing.pending;
+  assert.equal(world.workers.singing.active, pending.versionId);
+  const releaseFile = first.state.releaseFile;
+  delete world.statusFailures.singing;
+  world.calls = [];
+  const retry = await load();
+  retry.ask = async () => assert.fail('already live recovery needs no deployment confirmation');
+  await retry.update();
+  assert.equal(retry.state.singing.deployedVersion, pending.versionId);
+  assert.equal(retry.state.singing.deployedFingerprint, pending.fingerprint);
+  assert.equal(retry.state.singing.pending, undefined);
+  assert.equal(retry.state.releaseFile, releaseFile);
+  assert.deepEqual(world.writes.map((w) => w.kind), ['upload', 'promotion']);
+  assert(world.calls.every((call) => call.worker === 'singing'));
+  assert(!world.calls.some(({ args }) => ['d1', 'r2'].includes(args[0])));
+});
+
+test('an already live pending version does not skip confirmation when source files have changed', async (t) => {
+  const { world, load } = await fixture(t);
+  await (await load()).deploy({ yes: true });
+  world.fingerprint = 'new-site';
+  world.afterPromotion = (worker) => { world.statusFailures[worker] = 'Fixture confirmation unavailable'; };
+  await assert.rejects((await load()).update({ yes: true }), /deployments status.*failed/);
+  delete world.statusFailures.singing;
+  world.fingerprint = 'changed-again'; world.writes = [];
+  await assert.rejects((await load('CANCEL')).update(), /cancelled/);
+  assert.deepEqual(world.writes, []);
 });
 
 test('fast update preserves a concurrent Singing release and leaves its upload staged', async (t) => {

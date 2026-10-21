@@ -12,7 +12,10 @@ and choose **1: Fast update Singing**. This builds and publishes only Singing,
 reusing the saved account, database, bucket and shared authentication. It skips
 PinPlay checkout/testing/deployment, the full Singing test suites, storage
 provisioning and migration writes. Unchanged code needs no upload. Failed version
-promotion can be retried without uploading the same code again.
+promotion can be retried without uploading the same code again. Promotion is
+confirmed by reading the live deployment's exact version and 100% traffic. If
+activation succeeded but confirmation was interrupted, rerunning the fast launcher
+finishes the local record and health checks without publishing that version again.
 
 Fast updates validate the Cloudflare account and live Singing bindings, preserve
 variables/routes through version upload and promotion, and check for concurrent

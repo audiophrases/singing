@@ -321,8 +321,11 @@ export class Deployment {
       ensure(current.latest === pending.versionId, `${worker} has another staged version. Stop and review it before promotion.`);
       this.log(`Activating ${worker} version ${pending.versionId}…`);
       const promoted = await this.wr(['versions', 'deploy', `${pending.versionId}@100%`, '--yes', '--message', 'Singing classroom deployment'], { config, output: true });
-      const record = deploymentRecord(promoted.records, 'version-deploy', worker);
-      ensure(record.version_traffic?.[pending.versionId] === 100, `Cloudflare did not confirm 100% traffic for ${worker}.`);
+      deploymentRecord(promoted.records, 'version-deploy', worker);
+      // Wrangler 4.151.3 serializes its traffic Map as {} in the receipt.
+      // Confirm the exact live version and traffic through a separate API read.
+      const deployment = parseJson((await this.wr(['deployments', 'status', '--name', worker, '--json'], { config })).stdout, `${worker} deployment confirmation`);
+      ensure(activeVersion(deployment) === pending.versionId, `Cloudflare did not confirm 100% traffic for ${worker} version ${pending.versionId}. The uploaded version is saved for retry.`);
     }
     progress.deployedVersion = pending.versionId; progress.deployedFingerprint = fingerprint; delete progress.pending;
     await this.checkpoint(); return progress.deployedVersion;
@@ -401,7 +404,10 @@ export class Deployment {
       ensure(JSON.stringify(applied) === JSON.stringify(migrations.files), 'Unapplied or missing database migrations. Use Full setup / deployment (menu 2).');
     }
     const fingerprint = await this.siteFingerprint();
-    if (this.state.singing.deployedVersion === singing.id && this.state.singing.deployedFingerprint === fingerprint) {
+    if (this.state.singing.pending?.versionId === singing.id && this.state.singing.pending.fingerprint === fingerprint) {
+      this.log('The saved Singing update is already live at 100%. Completing its local deployment record…');
+      await this.releaseExisting('singing', this.configFile, singing, fingerprint, { fast: true });
+    } else if (this.state.singing.deployedVersion === singing.id && this.state.singing.deployedFingerprint === fingerprint) {
       this.log('Singing is already up to date. No code uploaded.');
     } else {
       this.log(`Target: Singing only, account ${this.accountId}; current version ${singing.id}.`);
