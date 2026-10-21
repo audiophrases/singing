@@ -15,6 +15,9 @@
  */
 import { h, clear, toast } from './ui.js';
 import { openTeamsDialog } from './views/teams.js';
+import { initFolderLibrary } from './media/folder-library.js';
+
+initFolderLibrary();
 
 const routes = [
   { re: /^\/?$/, view: () => import('./views/library.js'), nav: 'library' },

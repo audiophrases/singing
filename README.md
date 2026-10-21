@@ -89,6 +89,21 @@ Singing composes a song for it:
   song automatically (onset correlation) and plays in step with it; the
   🎤 *Singer* knob switches between the two. Karaoke starts with the karaoke
   version, Echo's "your turn" and Pitch Pal's "I know it" use it.
+- **Vocals only**: keep an isolated vocals file alongside the original and
+  karaoke track. The player's *Singer* menu offers **Vocals only** for practice.
+  A karaoke/vocals pair can also play together without the original recording.
+- **Songs folder** (in Songs or Studio): choose a folder containing, for example,
+  `Sia - Chandelier.m4a`, `Sia - Chandelier (Karaoke).mp3`,
+  `Sia - Chandelier (Vocals).mp3` and `Sia - Chandelier.txt`.
+  Matching files become one song; subfolders and UltraStar audio references are
+  supported. Chrome/Edge check every five seconds while the app is open, waiting
+  for files to stop changing. **Scan now** checks manually, **Pause watching**
+  stops automatic checks, and **Reconnect folder** restores access if needed.
+  Other browsers offer a folder import; select the folder again to rescan.
+  Rescans skip unchanged files, attach new stems and lyrics to existing songs,
+  and preserve Studio edits when the corresponding source file has not changed.
+  Folder access is read-only; playable copies stay in this browser, and removing
+  a disk file does not remove the imported song.
 - **Remix**: rewrite any line (new animals, students' names, new verbs). The
   tune bends to fit the new syllables.
 - **Share link**: the whole song is compressed into the URL; no server needed.

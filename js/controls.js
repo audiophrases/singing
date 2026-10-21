@@ -140,13 +140,19 @@ export function knobsBar(track, song) {
   }
 
   // A recording with a karaoke version: the singer on or off.
-  if (track.hasKaraoke) {
+  if (track.hasKaraoke || track.hasVocals) {
     const singerSel = h('select', { 'aria-label': 'Singer' },
       h('option', { value: 'on' }, '🎤 On (the song)'),
-      h('option', { value: 'off' }, '🙊 Off (karaoke version)'));
-    singerSel.value = track.singer ? 'on' : 'off';
-    singerSel.addEventListener('change', () => track.setSinger(singerSel.value === 'on'));
-    track.on('change', (e) => { if (e && 'singer' in e) singerSel.value = e.singer ? 'on' : 'off'; });
+      track.hasKaraoke ? h('option', { value: 'off' }, '🙊 Off (karaoke version)') : null,
+      track.hasVocals ? h('option', { value: 'vocals' }, '🗣️ Vocals only') : null);
+    const syncSinger = () => { singerSel.value = !track.singer ? 'off' : track.vocalsOnly ? 'vocals' : 'on'; };
+    syncSinger();
+    singerSel.addEventListener('change', () => {
+      const value = singerSel.value;
+      track.setVocalsOnly?.(value === 'vocals');
+      track.setSinger(value !== 'off');
+    });
+    track.on('change', (e) => { if (e && ('singer' in e || 'vocalsOnly' in e)) syncSinger(); });
     wrap.append(h('div', { class: 'knob', title: 'The song, or its karaoke version without the singer' }, h('span', { class: 'knob-label' }, '🎤 Singer'), singerSel));
   }
   return wrap;

@@ -30,8 +30,10 @@ export function packableSong(song) {
   delete s.builtin;
   delete s.createdAt;
   delete s.updatedAt;
+  delete s.folderImport;
   if (s.audio) delete s.audio.mediaId;
   if (s.karaoke) delete s.karaoke.mediaId;
+  if (s.vocals) delete s.vocals.mediaId;
   return s;
 }
 

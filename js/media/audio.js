@@ -36,7 +36,10 @@ export class AudioTrack extends PolledTrack {
     this.kind = 'audio';
     this.audio = newElement();
     this.kar = null;
+    this.voc = null;
     this.karOffset = Number(song.karaoke && song.karaoke.offset) || 0;
+    this.vocOffset = Number(song.vocals?.offset) || 0;
+    this.vocalsOnly = false;
     this.singer = true;
     this.leadMuted = false;
     this.objectUrls = [];
@@ -56,16 +59,27 @@ export class AudioTrack extends PolledTrack {
     await loadElement(this.audio, src, 'audio file');
     if (Number.isFinite(this.audio.duration)) this.timeline.duration = Math.max(this.timeline.duration, this.audio.duration);
     this.audio.addEventListener('ended', () => {
-      if (this.playing) { this.playing = false; this.kar?.pause(); this.emit('end'); }
+      if (this.playing) { this.playing = false; this.kar?.pause(); this.voc?.pause(); this.emit('end'); }
     });
     // The karaoke version is a bonus: the song plays without it if it is missing.
     const k = this.song.karaoke;
-    const kblob = k && k.mediaId ? await getMedia(k.mediaId).catch(() => null) : null;
+    const kblob = k && k.mediaId && k.mediaId !== a.mediaId ? await getMedia(k.mediaId).catch(() => null) : null;
     if (kblob) {
       const el = newElement();
       try {
         await loadElement(el, this.urlFor(kblob), 'karaoke version');
         this.kar = el;
+      } catch (e) {
+        console.warn(e.message);
+      }
+    }
+    const v = this.song.vocals;
+    const vblob = v?.mediaId ? await getMedia(v.mediaId).catch(() => null) : null;
+    if (vblob) {
+      const el = newElement();
+      try {
+        await loadElement(el, this.urlFor(vblob), 'vocals file');
+        this.voc = el;
       } catch (e) {
         console.warn(e.message);
       }
@@ -80,6 +94,7 @@ export class AudioTrack extends PolledTrack {
       };
       this.main = route(this.audio);
       if (this.kar) this.karNode = route(this.kar);
+      if (this.voc) this.vocNode = route(this.voc);
     } catch { /* plays without the visualizer (and switches by volume) */ }
     this.applyVoice(true);
   }
@@ -92,7 +107,14 @@ export class AudioTrack extends PolledTrack {
 
   get duration() { return this.timeline.duration; }
 
-  get hasKaraoke() { return !!this.kar; }
+  get hasKaraoke() { return !!this.kar || !!(this.song.audio?.stems && this.voc); }
+  get hasVocals() { return !!this.voc; }
+
+  setVocalsOnly(on) {
+    this.vocalsOnly = !!on && this.hasVocals;
+    this.applyVoice();
+    this.emit('change', { vocalsOnly: this.vocalsOnly });
+  }
 
   // The singer on (the song) or off (the karaoke version).
   setSinger(on) {
@@ -109,9 +131,10 @@ export class AudioTrack extends PolledTrack {
   }
 
   applyVoice(now = false) {
-    if (!this.kar) return;
     const voice = this.singer && !this.leadMuted;
+    const solo = this.vocalsOnly && voice;
     const set = (el, ng, on) => {
+      if (!el) return;
       if (ng) {
         const t = ng.gain.context.currentTime;
         ng.gain.gain.cancelScheduledValues(t);
@@ -121,15 +144,26 @@ export class AudioTrack extends PolledTrack {
         el.volume = on ? 1 : 0;
       }
     };
-    set(this.audio, this.main, voice);
-    set(this.kar, this.karNode, !voice);
+    if (this.song.audio?.stems) {
+      set(this.audio, this.main, !solo);
+      set(this.kar, this.karNode, false);
+      set(this.voc, this.vocNode, voice);
+    } else {
+      set(this.audio, this.main, (!this.kar || voice) && !solo);
+      set(this.kar, this.karNode, !voice);
+      set(this.voc, this.vocNode, solo);
+    }
   }
 
   // Keep the karaoke version where the song is.
   syncKaraoke(force = false) {
-    const k = this.kar;
+    this.syncCompanion(this.kar, this.karOffset, 'lastFix', force);
+    this.syncCompanion(this.voc, this.vocOffset, 'lastVocFix', force);
+  }
+
+  syncCompanion(k, offset, fixKey, force) {
     if (!k) return;
-    const want = this.audio.currentTime + this.karOffset;
+    const want = this.audio.currentTime + offset;
     if (!this.playing || want < 0 || want >= (k.duration || 0) - 0.05) {
       if (!k.paused) k.pause();
       return;
@@ -140,9 +174,9 @@ export class AudioTrack extends PolledTrack {
       return;
     }
     const now = performance.now();
-    if (Math.abs(k.currentTime - want) > 0.06 && (force || now - this.lastFix > 800)) {
+    if (Math.abs(k.currentTime - want) > 0.06 && (force || now - (this[fixKey] || 0) > 800)) {
       k.currentTime = want;
-      this.lastFix = now;
+      this[fixKey] = now;
     }
   }
 
@@ -162,24 +196,28 @@ export class AudioTrack extends PolledTrack {
   rawPause() {
     this.audio.pause();
     if (this.kar) this.kar.pause();
+    if (this.voc) this.voc.pause();
   }
 
   rawSeek(sec) {
     this.audio.currentTime = sec;
     if (this.kar) this.kar.currentTime = Math.max(0, Math.min(sec + this.karOffset, this.kar.duration || 0));
+    if (this.voc) this.voc.currentTime = Math.max(0, Math.min(sec + this.vocOffset, this.voc.duration || 0));
   }
 
   rawRate(r) {
     this.audio.playbackRate = r;
     if (this.kar) this.kar.playbackRate = r;
+    if (this.voc) this.voc.playbackRate = r;
     return r;
   }
 
   destroy() {
     super.destroy();
-    for (const n of [this.main, this.karNode]) if (n) try { n.node.disconnect(); n.gain.disconnect(); } catch { /* ignore */ }
+    for (const n of [this.main, this.karNode, this.vocNode]) if (n) try { n.node.disconnect(); n.gain.disconnect(); } catch { /* ignore */ }
     this.audio.removeAttribute('src');
     if (this.kar) this.kar.removeAttribute('src');
+    if (this.voc) this.voc.removeAttribute('src');
     this.objectUrls.forEach((u) => URL.revokeObjectURL(u));
   }
 }

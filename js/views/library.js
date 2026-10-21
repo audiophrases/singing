@@ -5,6 +5,8 @@ import { h, clear, levelBadge, pick, debounce } from '../ui.js';
 import { allSongs, getProgress } from '../store.js';
 import { GAMES, gameFits } from '../games/index.js';
 import { SynthTrack } from '../music/player.js';
+import { folderLibraryControls } from './folder-library.js';
+import { onFolderStatus } from '../media/folder-library.js';
 
 const FILTER_KEY = 'singing.libraryFilters.v1';
 const LEVELS = ['Pre-A1', 'A1', 'A2', 'B1', 'B2'];
@@ -105,7 +107,7 @@ export function surpriseMe() {
 
 export async function render(el) {
   const f = readFilters();
-  const songs = allSongs();
+  let songs = allSongs();
   const grammarSet = [...new Set(songs.flatMap((s) => s.grammar || []))].sort();
   const progress = getProgress();
 
@@ -113,6 +115,7 @@ export async function render(el) {
   const count = h('span', { class: 'small' });
 
   const draw = () => {
+    songs = allSongs();
     saveFilters(f);
     clear(grid);
     const list = songs.filter((s) => matches(s, f));
@@ -163,6 +166,7 @@ export async function render(el) {
     }
   }
 
+  const folders = folderLibraryControls();
   el.append(
     h('section', { class: 'hero' },
       h('div', null,
@@ -178,6 +182,7 @@ export async function render(el) {
       ),
       h('div', { class: 'hero-notes', 'aria-hidden': 'true' }, h('span', null, '🎵'), h('span', null, '🎤'), h('span', null, '🎶')),
     ),
+    folders,
     h('div', { class: 'filters' },
       h('div', { class: 'row' }, search, grammarSel, mineBtn, h('span', { class: 'grow' }), count),
       chipRow('Level', LEVELS.map((l) => [l, l]), 'level'),
@@ -186,5 +191,6 @@ export async function render(el) {
     grid,
   );
   draw();
-  return () => stopPreview();
+  const off = onFolderStatus((state) => { if (state.changed) draw(); });
+  return () => { stopPreview(); folders.destroy(); off(); };
 }

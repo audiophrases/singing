@@ -13,6 +13,8 @@ import { decodeMono, features, alignNotes, alignRecordings } from '../media/alig
 import { parseLyrics, lyricsText } from '../lyrics/lines.js';
 import { makeTrack } from '../track.js';
 import { compileSong } from '../music/score.js';
+import { selectAudioFiles, AUDIO_FILE, LYRICS_FILE } from '../media/song-files.js';
+import { folderLibraryControls } from './folder-library.js';
 
 const EMOJIS = ['🎵', '🎤', '🎸', '🎹', '🥁', '🎺', '🌟', '❤️', '🌈', '🌍', '🐶', '🚀', '☀️', '🌙', '🎉', '🍕', '⚽', '🦄'];
 
@@ -62,6 +64,8 @@ export async function render(el, { id }) {
   const fileNote = h('span', { class: 'small' }, song.audio && song.audio.name ? `🎧 ${song.audio.name}` : '');
   const karIn = h('input', { type: 'file', accept: 'audio/*' });
   const karNote = h('div', { class: 'small' }, song.karaoke && song.karaoke.name ? `🎤 ${song.karaoke.name}` : '');
+  const vocIn = h('input', { type: 'file', accept: 'audio/*', 'aria-label': 'Vocals only file' });
+  const vocNote = h('div', { class: 'small' }, song.vocals?.name ? `🗣️ ${song.vocals.name}` : '');
   // Files added in this visit, to listen to them (auto-align) without reading them back.
   const blobs = {};
   const keepFile = async (f) => {
@@ -90,17 +94,31 @@ export async function render(el, { id }) {
       return false;
     }
   };
+  const setVocalsFile = async (f) => {
+    try {
+      song.vocals = { mediaId: await keepFile(f), name: f.name, offset: 0 };
+      vocNote.textContent = `🗣️ ${f.name} (saved in this browser)`;
+      return true;
+    } catch (e) {
+      toast(`Could not keep the file: ${e.message}`, 'bad');
+      return false;
+    }
+  };
   fileIn.addEventListener('change', async () => { if (fileIn.files[0] && await setAudioFile(fileIn.files[0])) afterMedia({ audio: true }); });
   karIn.addEventListener('change', async () => { if (karIn.files[0] && await setKaraokeFile(karIn.files[0])) afterMedia({ karaoke: true }); });
+  vocIn.addEventListener('change', async () => { if (vocIn.files[0] && await setVocalsFile(vocIn.files[0])) afterMedia({ vocals: true }); });
   const dropKaraoke = h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { delete song.karaoke; karIn.value = ''; karNote.textContent = ''; } }, '✕ No karaoke version');
+  const dropVocals = h('button', { class: 'btn btn-sm', type: 'button', onclick: () => { delete song.vocals; vocIn.value = ''; vocNote.textContent = ''; } }, '✕ No vocals file');
   const drawSrc = () => {
     clear(srcRow);
     [['youtube', '▶ YouTube video'], ['audio', '🎧 Audio file'], ['none', '📝 No music (lyrics only)']].forEach(([v, label]) => srcRow.append(h('button', { class: 'chip', type: 'button', 'aria-pressed': String(song.source === v), onclick: () => { song.source = v; drawSrc(); } }, label)));
     clear(srcBox);
     if (song.source === 'youtube') srcBox.append(field('YouTube link', ytIn), h('p', { class: 'small' }, 'Some videos do not allow playing on other websites; if yours does not play, try another upload of the song.'));
     if (song.source === 'audio') {
-      srcBox.append(field('Audio file (mp3, m4a...)', fileIn), fileNote,
+      srcBox.append(field('Original recording (mp3, m4a...)', fileIn), fileNote,
         field('Karaoke version (optional)', karIn), karNote, dropKaraoke,
+        field('Vocals only (optional)', vocIn), vocNote, dropVocals,
+        h('p', { class: 'small' }, 'Keep the original song, the instrumental and isolated vocals together. Choose Vocals only in the player to practise with just the singer.'),
         h('p', { class: 'small' }, 'The karaoke version is the same recording without the singer: an official instrumental, or this file through a vocal remover. Karaoke, Echo and Pitch Pal use it; Singing lines it up with the song by itself. The files stay in this browser; share links do not include them.'));
     }
     if (song.source === 'none') srcBox.append(h('p', { class: 'small' }, 'No music: you sing or play it yourself. The lyrics move at the speed you set when you sync (or at a reading pace).'));
@@ -350,11 +368,6 @@ export async function render(el, { id }) {
     return true;
   }
 
-  const AUDIO_EXT = /\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|weba)$/i;
-  const TIMING_EXT = /\.(txt|lrc|srt|vtt)$/i;
-  const KARAOKE_NAME = /instrumental|karaoke|backing|minus.?one|no.?vocals?|without.?vocals?|off.?vocal|\binst\b|\(inst/i;
-  const stem = (n) => String(n || '').replace(/\.[^.]+$/, '').trim().toLowerCase();
-
   /*
    * Dropped files: the song, its karaoke version and the lyrics, in any mix.
    * Which audio is which: the names in the UltraStar file (#AUDIO/#MP3,
@@ -362,8 +375,8 @@ export async function render(el, { id }) {
    */
   async function takeFiles(files) {
     const list = [...files];
-    const audios = list.filter((f) => (f.type || '').startsWith('audio/') || AUDIO_EXT.test(f.name));
-    const timing = list.find((f) => TIMING_EXT.test(f.name));
+    const audios = list.filter((f) => (f.type || '').startsWith('audio/') || AUDIO_FILE.test(f.name));
+    const timing = list.find((f) => LYRICS_FILE.test(f.name));
     if (!audios.length && !timing) { toast('Drop an audio file (mp3...), its karaoke version and/or a lyrics file (UltraStar .txt, .lrc, .srt, .vtt).', 'bad'); return; }
     let text = null;
     let meta = {};
@@ -375,24 +388,28 @@ export async function render(el, { id }) {
         toast(`Could not read ${timing.name}: ${e.message}`, 'bad');
       }
     }
-    const named = (n) => (n ? audios.find((f) => stem(f.name) === stem(n)) : null);
-    let karFile = named(meta.instrumental) || audios.find((f) => KARAOKE_NAME.test(f.name)) || null;
-    let songFile = [named(meta.audio), ...audios].find((f) => f && f !== karFile) || null;
-    if (audios.length >= 2 && !karFile) {
+    const selected = selectAudioFiles(audios, meta);
+    let karFile = selected.karaoke;
+    const vocFile = selected.vocals;
+    let songFile = selected.audio;
+    if (audios.filter((f) => f !== vocFile).length >= 2 && !karFile) {
       const pick = await choose('Which one is the karaoke version?', 'The karaoke version is the one without the singer.', [...audios.slice(0, 3).map((f) => f.name), 'Neither']);
       karFile = pick >= 0 && pick < Math.min(3, audios.length) ? audios[pick] : null;
-      songFile = audios.find((f) => f !== karFile) || null;
+      songFile = audios.find((f) => f !== karFile && f !== vocFile) || null;
     }
-    if (songFile || karFile) {
+    if (!songFile && !song.audio) songFile = karFile || vocFile;
+    if (songFile || karFile || vocFile) {
       song.source = 'audio';
       drawSrc();
     }
-    const [gotSong, gotKar, gotLyrics] = await Promise.all([
+    const [gotSong, gotKar, gotVocals, gotLyrics] = await Promise.all([
       songFile ? setAudioFile(songFile) : false,
       karFile ? setKaraokeFile(karFile) : false,
+      vocFile ? setVocalsFile(vocFile) : false,
       timing && text !== null ? importTiming(timing, { withAudio: !!songFile, text }) : false,
     ]);
-    if (gotSong || gotKar || gotLyrics) await afterMedia({ audio: gotSong, karaoke: gotKar, lyrics: gotLyrics });
+    if (gotSong && songFile === karFile && gotVocals) song.audio.stems = true;
+    if (gotSong || gotKar || gotVocals || gotLyrics) await afterMedia({ audio: gotSong, karaoke: gotKar, vocals: gotVocals, lyrics: gotLyrics });
   }
   const timingIn = h('input', { type: 'file', accept: '.txt,.lrc,.srt,.vtt,text/plain', class: 'hidden' });
   timingIn.addEventListener('change', async () => {
@@ -468,8 +485,9 @@ export async function render(el, { id }) {
     card.classList.remove('dropping');
     takeFiles(e.dataTransfer.files);
   });
-  el.append(card, importExport());
-  return () => { clearInterval(follow); document.removeEventListener('keydown', onKey); if (track) track.destroy(); };
+  const folders = folderLibraryControls();
+  el.append(folders, card, importExport());
+  return () => { folders.destroy(); clearInterval(follow); document.removeEventListener('keydown', onKey); if (track) track.destroy(); };
 }
 
 // Songs played by the band: edit the song file directly (for the curious).
