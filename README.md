@@ -14,6 +14,12 @@ D1 assignments/results, connected to PinPlay's shared identity directory. See
 [repository audit and architecture](docs/CLOUD_ARCHITECTURE.md). Built-in songs still work
 on a static host; new uploaded recordings require cloud sign-in.
 
+The public app needs no login for songs and games. Teachers sign in at
+**`/create/`**, where Studio, folder import, cloud uploads and assignment management
+are available. Students sign in with their school Google account only when they
+open an assignment link. Copied assignment links point to the public app and
+return students to their assignment after sign-in.
+
 On Windows, double-click **`deploy.bat`** for the deployment menu. It installs
 locked dependencies, runs checks, prepares PinPlay, provisions Singing storage and
 deploys both Worker changes. The numbered launchers in `deployment/` also provide

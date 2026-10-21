@@ -40,7 +40,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.hidden { display: none !important; }
+.hidden, [hidden] { display: none !important; }
+.account-card { max-width: 34rem; margin: 2rem auto; }
+.account-card input[type="password"] { margin-bottom: .75rem; }
+.account-card details { margin-top: 1rem; }
 
 a { color: var(--primary); }
 

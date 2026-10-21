@@ -7,6 +7,7 @@ import { GAMES, gameFits } from '../games/index.js';
 import { SynthTrack } from '../music/player.js';
 import { folderLibraryControls } from './folder-library.js';
 import { onFolderStatus } from '../media/folder-library.js';
+import { teacherAccess } from '../cloud/access.js';
 
 const FILTER_KEY = 'singing.libraryFilters.v1';
 const LEVELS = ['Pre-A1', 'A1', 'A2', 'B1', 'B2'];
@@ -121,7 +122,7 @@ export async function render(el) {
     const list = songs.filter((s) => matches(s, f));
     count.textContent = `${list.length} song${list.length === 1 ? '' : 's'}`;
     if (!list.length) {
-      grid.append(h('li', { class: 'empty', style: { gridColumn: '1 / -1' } }, h('span', { class: 'big' }, '🔍'), 'No songs match. ', h('a', { href: '#/studio' }, 'Make your own song!')));
+      grid.append(h('li', { class: 'empty', style: { gridColumn: '1 / -1' } }, h('span', { class: 'big' }, '🔍'), 'No songs match. ', teacherAccess() ? h('a', { href: '#/studio' }, 'Make your own song!') : 'Try another search.'));
       return;
     }
     for (const s of list) grid.append(card(s));
@@ -174,7 +175,7 @@ export async function render(el) {
         h('p', null, 'Karaoke, listening games and party games for your class - with a built-in band that plays every song at any speed, in any key, in any style.'),
         h('div', { class: 'row' },
           h('button', { class: 'btn primary', type: 'button', onclick: surpriseMe }, '🎲 Surprise me'),
-          h('a', { class: 'btn', href: '#/studio' }, '➕ Add a song'),
+          teacherAccess() ? h('a', { class: 'btn', href: '#/studio' }, '➕ Add a song') : null,
           h('a', { class: 'btn', href: '#/chant' }, '✨ Song maker'),
           h('a', { class: 'btn', href: '#/party' }, '🎉 Party games'),
           continueCard,
@@ -182,7 +183,7 @@ export async function render(el) {
       ),
       h('div', { class: 'hero-notes', 'aria-hidden': 'true' }, h('span', null, '🎵'), h('span', null, '🎤'), h('span', null, '🎶')),
     ),
-    folders,
+    ...(folders ? [folders] : []),
     h('div', { class: 'filters' },
       h('div', { class: 'row' }, search, grammarSel, mineBtn, h('span', { class: 'grow' }), count),
       chipRow('Level', LEVELS.map((l) => [l, l]), 'level'),
@@ -193,5 +194,5 @@ export async function render(el) {
   draw();
   const off = onFolderStatus((state) => { if (state.changed) draw(); });
   const offSongs = onSongs(draw);
-  return () => { stopPreview(); folders.destroy(); off(); offSongs(); };
+  return () => { stopPreview(); folders?.destroy(); off(); offSongs(); };
 }

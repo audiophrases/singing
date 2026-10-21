@@ -12,6 +12,7 @@ import { lineIndexAt } from '../music/timeline.js';
 import { shareLink } from '../share.js';
 import { exportPinPlayQuiz } from '../pinplay-export.js';
 import { deleteCloudSong } from '../cloud/library.js';
+import { teacherAccess } from '../cloud/access.js';
 
 export async function render(el, { id }) {
   const song = getSong(id);
@@ -70,10 +71,10 @@ export async function render(el, { id }) {
   acts.append(h('div', { class: 'activity-grid' },
     h('a', { class: 'activity', href: `#/remix/${encodeURIComponent(song.id)}` }, h('span', { class: 'act-emoji' }, '🪄'), h('span', { class: 'act-name' }, 'Remix'), h('span', { class: 'act-desc' }, 'Students write their own verses; the band sings them.')),
     h('a', { class: 'activity', href: `#/print/${encodeURIComponent(song.id)}/gapfill` }, h('span', { class: 'act-emoji' }, '🖨️'), h('span', { class: 'act-name' }, 'Worksheets'), h('span', { class: 'act-desc' }, 'Gap fill, cut-up lines, bingo cards, lyrics sheet - ready to print.')),
-    h('button', { class: 'activity', type: 'button', onclick: () => editCopy(song) }, h('span', { class: 'act-emoji' }, song.mine ? '✏️' : '📋'), h('span', { class: 'act-name' }, song.mine ? 'Edit song' : 'Copy and edit'), h('span', { class: 'act-desc' }, song.mine ? 'Change lyrics, timing, pictures and translations.' : 'Make your own version of this song in the Studio.')),
+    teacherAccess() ? h('button', { class: 'activity', type: 'button', onclick: () => editCopy(song) }, h('span', { class: 'act-emoji' }, song.mine ? '✏️' : '📋'), h('span', { class: 'act-name' }, song.mine ? 'Edit song' : 'Copy and edit'), h('span', { class: 'act-desc' }, song.mine ? 'Change lyrics, timing, pictures and translations.' : 'Make your own version of this song in the Studio.')) : null,
     h('button', { class: 'activity', type: 'button', onclick: () => shareLink(song) }, h('span', { class: 'act-emoji' }, '🔗'), h('span', { class: 'act-name' }, 'Share link'), h('span', { class: 'act-desc' }, 'A link that opens this song on any computer, nothing to install.')),
-    h('button', { class: 'activity', type: 'button', onclick: () => exportPinPlayQuiz(song) }, h('span', { class: 'act-emoji' }, '🎯'), h('span', { class: 'act-name' }, 'Export to PinPlay'), h('span', { class: 'act-desc' }, 'A PinPlay quiz (gap fills, word choice, line order) from this song.')),
-    song.mine ? h('button', { class: 'activity', type: 'button', onclick: async () => {
+    teacherAccess() ? h('button', { class: 'activity', type: 'button', onclick: () => exportPinPlayQuiz(song) }, h('span', { class: 'act-emoji' }, '🎯'), h('span', { class: 'act-name' }, 'Export to PinPlay'), h('span', { class: 'act-desc' }, 'A PinPlay quiz (gap fills, word choice, line order) from this song.')) : null,
+    teacherAccess() && song.mine ? h('button', { class: 'activity', type: 'button', onclick: async () => {
       if (await confirmDialog(`Delete "${song.title}"${song.cloud ? ' from your cloud library' : ' from this browser'}?`, { ok: 'Delete', danger: true })) {
         try { if (song.cloud) await deleteCloudSong(song); else deleteUserSong(song.id); }
         catch (e) { toast(e.message, 'bad'); return; }

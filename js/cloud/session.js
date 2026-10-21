@@ -41,6 +41,6 @@ export async function signOut() {
 export function requireTeacher() {
   const s = cloudSession();
   if (!s.available) throw new Error('Cloud storage is not connected. Open the cloud-hosted Singing app to save uploaded songs.');
-  if (!['owner', 'teacher'].includes(s.principal?.role)) throw new Error('Sign in as a teacher to save songs to your private cloud library.');
+  if (!['owner', 'teacher'].includes(s.principal?.role)) throw new Error('Open /create/ and sign in as a teacher to save songs to your private cloud library.');
   return s.principal;
 }

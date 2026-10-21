@@ -124,6 +124,16 @@ run `npm run build` and `node tools/test-cloud-server.mjs`, then run `npm run
 test:browser` in another terminal. `PLAYWRIGHT_CHROMIUM_EXECUTABLE` optionally selects
 an existing Chromium executable. It checks real Studio uploads, WAV conversion,
 folder imports, grant renewal, student gameplay/results and repeatable migration.
+It also checks login-free public play, teacher sign-in at `/create/`, assignment-only
+student sign-in and the absence of upload/import controls from student screens.
+
+Teachers should bookmark `/create/`. Studio, folder imports, backups and assignment
+management require an authenticated teacher there. Students use the copied public
+assignment link (`/#/assignment/...`) and sign in with their school Google account;
+ordinary songs and games do not ask for login. The same origin serves both entry
+points, so the existing Google authorized origin still applies. Older `/#/studio`
+bookmarks redirect to `/create/#/studio`. The build generates the teacher entry
+page automatically; no separate service, database or secret is needed.
 
 For actual local development, build assets, apply migrations with `npm run
 db:local`, and run both Workers locally. Singing's identity service binding must
@@ -178,8 +188,10 @@ legacy migration keeps the original local song records and blobs.
 Migration runs on the browser and **origin** containing the old files. A new
 Worker hostname cannot read IndexedDB from the old GitHub Pages origin. Publish
 the updated static app at the old address first; it still works without the cloud
-API. Open Account → Export local backup with audio there, then sign in as a teacher
-at the cloud address, confirm permission, and choose Import backup to cloud.
+API. Publish the generated `_site` folder, including `create/index.html`. Open
+`create/` under that old app address and choose Export local backup with audio
+(no sign-in needed). Then open `/create/` at the cloud address, sign in as a
+teacher, and use Account → confirm permission → Import backup to cloud.
 The `.singing` transfer includes binary originals/stems, lyrics and metadata;
 checksums detect damaged files, retries deduplicate, and the original browser data
 is retained. Export is available even without cloud sign-in. An ordinary JSON

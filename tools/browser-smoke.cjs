@@ -1,6 +1,7 @@
 // Run against tools/test-cloud-server.mjs, never a production account.
 const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
+const { stubGoogle, noTeacherTools, guestChecks } = require('./browser-access.cjs');
 
 (async () => {
   const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE } : {}) });
@@ -11,14 +12,24 @@ const assert = require('node:assert/strict');
   teacher.on('pageerror', (e) => errors.push(e.message));
   teacher.on('response', async (r) => { if (r.url().includes('/api/') && r.status() >= 400 && !r.url().endsWith('/api/auth/session')) { try { console.log('API failure:', r.status(), (await r.json()).error); } catch {} } });
   const base = 'http://127.0.0.1:8788/';
-  async function login(page, who) {
-    await page.goto(base + '#/assignments');
-    await page.locator('.topbar-right').getByRole('button', { name: 'Sign in', exact: false }).click();
-    await page.getByLabel('Teacher password', { exact: true }).fill(who);
-    await page.getByRole('button', { name: 'Teacher sign in', exact: true }).click();
-    await page.getByText('Signed in as ' + who + '.', { exact: true }).waitFor();
-    await page.keyboard.press('Escape');
+  const createBase = base + 'create/';
+  async function login(page, who, assignmentLink) {
+    await stubGoogle(page, who);
+    await page.goto(who === 'teacher' ? createBase : assignmentLink);
+    if (who === 'teacher') {
+      await page.getByLabel('Teacher password', { exact: true }).fill(who);
+      await page.getByRole('button', { name: 'Teacher sign in', exact: true }).click();
+      await page.getByRole('heading', { name: 'Songs from a folder', exact: false }).waitFor();
+    } else {
+      await page.getByRole('heading', { name: 'Sign in for your assignment', exact: true }).waitFor();
+      assert.equal(await page.getByLabel('Teacher password', { exact: true }).count(), 0);
+      await noTeacherTools(page);
+      await page.getByRole('button', { name: 'Continue with Google', exact: true }).click();
+    }
+    await page.locator('.topbar-right').getByRole('button', { name: who, exact: false }).waitFor();
   }
+  await stubGoogle(teacher, 'teacher');
+  await guestChecks(teacher, base);
   await login(teacher, 'teacher');
   const mp3 = Buffer.from(await teacher.evaluate(async () => {
     const { mp3Blob } = await import('/js/media/mp3.js');
@@ -26,7 +37,7 @@ const assert = require('node:assert/strict');
     const blob = await mp3Blob([data, data], { rate: 44100, kbps: 128 });
     return [...new Uint8Array(await blob.arrayBuffer())];
   }));
-  await teacher.goto(base + '#/studio');
+  await teacher.goto(createBase + '#/studio');
   await teacher.getByPlaceholder('Song title', { exact: true }).fill('Cloud browser song');
   await teacher.getByRole('button', { name: 'Audio file', exact: false }).click();
   const files = teacher.locator('.studio-card input[type=file][accept="audio/*"]');
@@ -103,7 +114,7 @@ const assert = require('node:assert/strict');
   assert.equal(folderChecks.sourceBytes, folderChecks.expectedBytes);
   console.log('Whole-folder cloud import converts WAV, preserves sources and skips unchanged songs');
 
-  await teacher.goto(base + '#/assignments');
+  await teacher.goto(createBase + '#/assignments');
   await teacher.getByRole('button', { name: 'Create assignment', exact: false }).click();
   await teacher.getByRole('textbox', { name: 'Assignment title' }).fill('Browser homework');
   await teacher.getByRole('combobox', { name: 'Assignment song' }).selectOption(songUrl.split('/').pop());
@@ -113,13 +124,16 @@ const assert = require('node:assert/strict');
   await teacher.waitForURL(/#\/assignment\//);
   await teacher.getByRole('heading', { name: 'Browser homework', exact: true }).waitFor();
   const assignmentUrl = teacher.url();
+  const studentLink = await teacher.getByLabel('Student link (sign-in and class membership required)', { exact: true }).inputValue();
+  assert.ok(studentLink.startsWith(base + '#/assignment/'));
+  assert.ok(!studentLink.includes('/create/'));
   console.log('Teacher created a native Singing assignment');
 
   const studentContext = await browser.newContext();
   const student = await studentContext.newPage();
   student.on('pageerror', (e) => errors.push(e.message));
-  await login(student, 'student');
-  await student.goto(assignmentUrl);
+  await login(student, 'student', studentLink);
+  await noTeacherTools(student);
   await student.getByRole('button', { name: 'Start activity', exact: true }).click();
   await student.waitForURL(/attempt=/);
   await student.locator('.stage .setup-card').getByRole('button', { name: 'Start', exact: false }).waitFor();
@@ -155,10 +169,23 @@ const assert = require('node:assert/strict');
   await teacher.getByText('Not started student: 0/1 activities completed', { exact: true }).waitFor();
   console.log('Student native game, server-checked result, attempt limit and teacher dashboard passed');
 
+  await student.goto(createBase + '#/studio');
+  await student.getByText(/You are signed in as a student/).waitFor();
+  assert.equal(await student.getByLabel('Teacher password', { exact: true }).count(), 0);
+  await noTeacherTools(student);
+  await student.goto(base);
+  await student.locator('.song-card').first().waitFor();
+  await noTeacherTools(student);
+  await student.locator('.topbar-right').getByRole('button', { name: 'student', exact: false }).click();
+  assert.equal(await student.getByRole('button', { name: /backup|migrate|import/i }).count(), 0);
+  await student.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await student.locator('.song-card').first().waitFor();
+  assert.equal(await student.getByRole('button', { name: /sign in/i }).count(), 0);
+  console.log('Student sessions cannot open teacher tools; signing out returns to login-free play');
+
   const outsiderContext = await browser.newContext();
   const outsider = await outsiderContext.newPage();
-  await login(outsider, 'outsider');
-  await outsider.goto(assignmentUrl);
+  await login(outsider, 'outsider', studentLink);
   await outsider.getByText('Assignment not found for your class.', { exact: true }).waitFor();
   console.log('Copied assignment links refused for another class');
 
@@ -175,21 +202,21 @@ const assert = require('node:assert/strict');
   await teacher.getByRole('button', { name: 'Migrate local songs', exact: false }).click();
   await teacher.getByText(/1 songs migrated\. Local originals were kept/).waitFor();
   await teacher.keyboard.press('Escape');
-  await teacher.goto(base + '#/');
+  await teacher.goto(createBase + '#/');
   assert.equal(await teacher.locator('.song-title', { hasText: 'Legacy browser song' }).count(), 1);
   console.log('Local migration is repeatable and keeps source files');
   const legacyContext = await browser.newContext();
   const legacy = await legacyContext.newPage();
   legacy.on('pageerror', (e) => errors.push(e.message));
   await legacy.route('**/api/**', (route) => route.fulfill({ status: 404, contentType: 'text/plain', body: 'Old static host' }));
-  await legacy.goto('http://localhost:8788/#/');
+  await legacy.goto('http://localhost:8788/create/');
   await legacy.evaluate(async (bytes) => {
     const { putMedia } = await import('/js/media/store.js');
     await putMedia('old-host-audio', new File([new Uint8Array(bytes)], 'Old host.mp3', { type: 'audio/mpeg' }));
     localStorage.setItem('singing.songs.v1', JSON.stringify([{ id: `old-host-${Date.now()}`, title: 'Cross-origin legacy song', source: 'audio',
       audio: { mediaId: 'old-host-audio', name: 'Old host.mp3' }, karaoke: { mediaId: 'old-host-audio', name: 'Old host karaoke.mp3' }, synced: [{ text: 'Keep every original', start: 0, end: 3 }] }]));
   }, [...mp3]);
-  await legacy.locator('.topbar-right').getByRole('button', { name: 'Sign in', exact: false }).click();
+  await legacy.reload();
   await legacy.getByText(/Cloud sign-in is not connected on this host/).waitFor();
   const downloading = legacy.waitForEvent('download');
   await legacy.getByRole('button', { name: 'Export local backup with audio', exact: true }).click();
@@ -212,7 +239,7 @@ const assert = require('node:assert/strict');
   assert.equal(await legacy.evaluate(async () => !!await (await import('/js/media/store.js')).getMedia('old-host-audio')), true);
   await teacher.keyboard.press('Escape');
   console.log('Audio-inclusive backup migrates between app origins and preserves the old browser files');
-  await require('./browser-timing.cjs')(teacher, base);
+  await require('./browser-timing.cjs')(teacher, createBase);
   assert.deepEqual(errors, []);
   await teacher.setViewportSize({ width: 390, height: 844 });
   await teacher.goto(assignmentUrl);

@@ -3,6 +3,7 @@
  * identifier-only cloud link whose lyrics and audio require authorization.
  */
 import { h, openModal, toast } from './ui.js';
+import { publicUrl } from './cloud/access.js';
 
 function toBase64Url(bytes) {
   let bin = '';
@@ -59,8 +60,7 @@ export async function decodeSong(data) {
 }
 
 export function appUrl(hash) {
-  const base = `${location.origin}${location.pathname}`;
-  return `${base}${hash}`;
+  return publicUrl(hash);
 }
 
 export async function shareLink(song) {

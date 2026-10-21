@@ -1,6 +1,7 @@
 import { h, clear, toast, openModal, confirmDialog } from '../ui.js';
 import { api, cloudSession } from '../cloud/session.js';
-import { openAccount } from './account.js';
+import { renderSignIn } from './account.js';
+import { teacherAccess, publicUrl } from '../cloud/access.js';
 import { allSongs } from '../store.js';
 import { saveCloudSong } from '../cloud/library.js';
 import { GAMES, gameFits } from '../games/index.js';
@@ -12,19 +13,17 @@ const date = (value) => value ? new Date(value).toLocaleString() : 'No deadline'
 export async function render(el, { id } = {}) {
   const principal = cloudSession().principal;
   if (!principal) {
-    el.append(h('section', { class: 'card' }, h('h1', null, 'Your Singing assignments'),
-      h('p', null, 'Sign in with your existing account to see assignments and results.'),
-      h('button', { class: 'btn primary', type: 'button', onclick: openAccount }, 'Sign in')));
+    renderSignIn(el);
     return;
   }
-  const isTeacher = principal.role !== 'student';
+  const isTeacher = teacherAccess();
   if (id) return detail(el, id, isTeacher);
   const { assignments } = await api('/api/assignments');
   const list = h('div');
   el.append(h('section', { class: 'card' }, h('h1', null, isTeacher ? 'Singing assignments' : 'My assignments'),
     h('p', { class: 'small' }, isTeacher ? 'Assign songs and native Singing activities to your classes. Attempt limits apply to each activity.' : 'Choose an assignment to practise, continue an attempt or see your results.'),
     isTeacher ? h('button', { class: 'btn primary', type: 'button', onclick: () => run(() => createAssignment()) }, '➕ Create assignment') : null,
-    principal.role === 'owner' ? h('button', { class: 'btn', type: 'button', onclick: () => run(manageTeachers) }, 'Manage teachers') : null), list);
+    isTeacher && principal.role === 'owner' ? h('button', { class: 'btn', type: 'button', onclick: () => run(manageTeachers) }, 'Manage teachers') : null), list);
   if (!assignments.length) list.append(h('p', { class: 'empty' }, 'No assignments yet.'));
   for (const a of assignments) list.append(h('a', { class: 'card', href: `#/assignment/${a.id}`, style: { display: 'block', textDecoration: 'none', color: 'inherit' } },
     h('h2', null, a.title), h('p', { class: 'small' }, `${a.active ? 'Open' : 'Closed'} · ${date(a.due_at)} · ${a.attempts_limit} attempt(s) per activity`)));
@@ -90,7 +89,7 @@ async function detail(el, id, isTeacher) {
     h('h1', null, assignment.title), h('p', { class: 'small' }, `${date(assignment.due_at)} · ${assignment.attempts_limit} attempts per activity`));
   el.append(card);
   if (isTeacher) {
-    const link = `${location.origin}${location.pathname}#/assignment/${id}`;
+    const link = publicUrl(`#/assignment/${id}`);
     card.append(h('label', null, 'Student link (sign-in and class membership required)', h('input', { value: link, readonly: true, onclick: (e) => e.target.select() })),
       h('button', { class: 'btn', type: 'button', onclick: () => run(async () => { await navigator.clipboard.writeText(link); toast('Assignment link copied'); }) }, 'Copy student link'),
       assignment.active ? h('button', { class: 'btn', type: 'button', onclick: () => run(async () => {

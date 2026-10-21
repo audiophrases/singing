@@ -12,7 +12,7 @@
     "dev": "npm run build && wrangler dev --local",
     "db:local": "wrangler d1 migrations apply singing --local",
     "check:worker": "npm run build && wrangler deploy --dry-run",
-    "serve": "npx http-server -p 8080 -c-1 ."
+    "serve": "npm run build && npx http-server -p 8080 -c-1 _site"
   },
   "devDependencies": {
     "miniflare": "5.20261019.1-beta",

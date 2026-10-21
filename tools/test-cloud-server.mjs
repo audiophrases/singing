@@ -19,7 +19,9 @@ const mf = new Miniflare(convertV4MiniflareOptions({ port: 8788, host: '127.0.0.
   name: 'singing', modulesRoot: fileURLToPath(root), modules,
   compatibilityDate: '2026-10-21', d1Databases: ['DB'], r2Buckets: ['SONGS'],
   serviceBindings: { ASSETS: async (request) => {
-    const path = new URL(request.url).pathname === '/' ? 'index.html' : new URL(request.url).pathname.slice(1);
+    const url = new URL(request.url);
+    if (url.pathname === '/create') { url.pathname = '/create/'; return Response.redirect(url, 308); }
+    const path = url.pathname.endsWith('/') ? url.pathname.slice(1) + 'index.html' : url.pathname.slice(1);
     if (path.split('/').includes('..')) return new Response('Not found', { status: 404 });
     try {
       const contents = await readFile(new URL(`_site/${path}`, root));
@@ -28,7 +30,7 @@ const mf = new Miniflare(convertV4MiniflareOptions({ port: 8788, host: '127.0.0.
     } catch { return new Response('Not found', { status: 404 }); }
   }, IDENTITY: async (request) => {
     const path = new URL(request.url).pathname; const body = await request.json();
-    if (path === '/config') return Response.json({ googleClientId: '' });
+    if (path === '/config') return Response.json({ googleClientId: 'test-client' });
     if (path === '/login') {
       const name = body.password || body.googleIdToken;
       if (!['teacher', 'student', 'outsider'].includes(name)) return Response.json({ error: 'Wrong test credentials.' }, { status: 401 });

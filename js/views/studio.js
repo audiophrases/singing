@@ -16,6 +16,7 @@ import { compileSong } from '../music/score.js';
 import { selectAudioFiles, AUDIO_FILE, LYRICS_FILE } from '../media/song-files.js';
 import { folderLibraryControls } from './folder-library.js';
 import { saveCloudSong } from '../cloud/library.js';
+import { teacherAccess } from '../cloud/access.js';
 
 const EMOJIS = ['🎵', '🎤', '🎸', '🎹', '🥁', '🎺', '🌟', '❤️', '🌈', '🌍', '🐶', '🚀', '☀️', '🌙', '🎉', '🍕', '⚽', '🦄'];
 
@@ -32,6 +33,7 @@ function choose(title, message, labels) {
 }
 
 export async function render(el, { id }) {
+  if (!teacherAccess()) return;
   const existing = id ? getSong(id) : null;
   if (id && (!existing || !existing.mine)) {
     el.append(h('div', { class: 'empty' }, 'Only your own songs can be edited. ', h('a', { href: '#/studio' }, 'Make a new song')));
@@ -138,7 +140,7 @@ export async function render(el, { id }) {
         field('Karaoke version (optional)', karIn), karNote, dropKaraoke,
         field('Vocals only (optional)', vocIn), vocNote, dropVocals,
         h('p', { class: 'small' }, 'Keep the original song, the instrumental and isolated vocals together on the same timeline. Sync the lyrics once for all three. Choose Vocals only in the player to practise with just the singer.'),
-        h('p', { class: 'small' }, 'Use the same recording without the singer. Original, karaoke and vocals files are saved to your private cloud library. Sign in as a teacher before saving.'));
+        h('p', { class: 'small' }, 'Use the same recording without the singer. Original, karaoke and vocals files are saved to your private cloud library when you save the song.'));
     }
     if (song.source === 'none') srcBox.append(h('p', { class: 'small' }, 'No music: you sing or play it yourself. The lyrics move at the speed you set when you sync (or at a reading pace).'));
   };

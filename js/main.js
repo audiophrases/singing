@@ -16,24 +16,49 @@
  */
 import { h, clear, toast } from './ui.js';
 import { openTeamsDialog } from './views/teams.js';
-import { initFolderLibrary } from './media/folder-library.js';
-import { initCloud } from './cloud/session.js';
+import { initFolderLibrary, stopWatching, setFolderUploadRights } from './media/folder-library.js';
+import { initCloud, cloudSession, onCloudSession } from './cloud/session.js';
+import { teacherArea, teacherAccess, isTeacher, assignmentRoute, teacherUrl, publicUrl } from './cloud/access.js';
 import { refreshCloudLibrary, resolveCloudSong } from './cloud/library.js';
-import { accountButton } from './views/account.js';
+import { accountButton, renderSignIn } from './views/account.js';
 
 const cloudReady = initCloud().then(async (session) => {
-  if (session.principal && session.principal.role !== 'student') {
+  if (teacherArea() && isTeacher(session.principal)) {
     try { await refreshCloudLibrary(); } catch (e) { toast(e.message, 'bad'); }
   }
-  initFolderLibrary();
+  if (teacherAccess()) initFolderLibrary();
 });
-document.querySelector('.topbar-right').prepend(accountButton());
+const account = accountButton();
+document.querySelector('.topbar-right').prepend(account);
+
+function syncNavigation() {
+  const { path, query } = parseHash();
+  const principal = cloudSession().principal;
+  const teacherGate = teacherArea() && !teacherAccess();
+  document.querySelector('.topnav').hidden = teacherGate;
+  document.getElementById('teamsBtn').hidden = teacherGate;
+  document.querySelector('[data-nav="studio"]').hidden = !teacherAccess();
+  document.querySelector('[data-nav="assignments"]').hidden = !(teacherAccess() || (!teacherArea() && (principal?.role === 'student' || assignmentRoute(path, query))));
+  document.querySelector('[data-public-link]').hidden = !teacherArea();
+  document.querySelector('[data-public-link]').href = publicUrl('#/');
+  account.hidden = !principal || !(teacherArea() || assignmentRoute(path, query) || principal.role === 'student');
+}
+let previousPrincipal = null;
+onCloudSession((session) => {
+  syncNavigation();
+  if (previousPrincipal && !session.principal) {
+    stopWatching(); setFolderUploadRights(false);
+    queueMicrotask(() => window.dispatchEvent(new Event('hashchange')));
+  }
+  previousPrincipal = session.principal;
+});
+syncNavigation();
 
 const routes = [
   { re: /^\/?$/, view: () => import('./views/library.js'), nav: 'library' },
   { re: /^\/song\/([^/]+)$/, view: () => import('./views/song.js'), nav: 'library', keys: ['id'] },
   { re: /^\/play\/([^/]+)\/([^/]+)$/, view: () => import('./views/stage.js'), nav: 'library', keys: ['id', 'game'], stage: true },
-  { re: /^\/studio(?:\/([^/]+))?$/, view: () => import('./views/studio.js'), nav: 'studio', keys: ['id'] },
+  { re: /^\/studio(?:\/([^/]+))?$/, view: () => import('./views/studio.js'), nav: 'studio', keys: ['id'], teacher: true },
   { re: /^\/voicelab$/, view: () => import('./views/voicelab.js'), nav: 'studio' },
   { re: /^\/chant$/, view: () => import('./views/chant.js'), nav: 'chant' },
   { re: /^\/party(?:\/([^/]+))?$/, view: () => import('./views/party.js'), nav: 'party', keys: ['game'] },
@@ -78,6 +103,26 @@ async function render() {
   const params = { ...query };
   (route.keys || []).forEach((k, i) => { if (m[i + 1] !== undefined) params[k] = m[i + 1]; });
   await cloudReady;
+  if (seq !== renderSeq) return;
+  syncNavigation();
+  // Preserve old teacher bookmarks while keeping public pages free of tools.
+  if (!teacherArea() && (route.teacher || (route.nav === 'assignments' && isTeacher()))) {
+    location.replace(teacherUrl(location.hash || '#/'));
+    return;
+  }
+  if (teacherArea() && !teacherAccess()) {
+    clear(stage); stage.classList.add('hidden'); app.inert = false;
+    document.body.classList.remove('on-stage');
+    clear(app); renderSignIn(app, { teacher: true });
+    return;
+  }
+  if (teacherAccess()) initFolderLibrary();
+  if (!cloudSession().principal && assignmentRoute(path, query) && route.stage) {
+    clear(stage); stage.classList.add('hidden'); app.inert = false;
+    document.body.classList.remove('on-stage');
+    clear(app); renderSignIn(app);
+    return;
+  }
   if (params.id && route.nav !== 'assignments' && !params.attempt) {
     try { await resolveCloudSong(params.id); }
     catch (e) { toast(e.message, 'bad'); }
@@ -101,8 +146,11 @@ async function render() {
     window.scrollTo(0, 0);
   }
   try {
-    cleanup = await mod.render(target, params);
+    const nextCleanup = await mod.render(target, params);
+    if (seq === renderSeq) cleanup = nextCleanup;
+    else if (typeof nextCleanup === 'function') nextCleanup();
   } catch (e) {
+    if (seq !== renderSeq) return;
     console.error(e);
     clear(app).append(h('div', { class: 'card' }, h('h2', null, 'Something went wrong'), h('p', { class: 'small' }, String(e.message || e)), h('a', { class: 'btn', href: '#/' }, 'Back to the songs')));
   }

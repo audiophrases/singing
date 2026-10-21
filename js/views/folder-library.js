@@ -1,7 +1,9 @@
 import { h, toast } from '../ui.js';
 import { folderStatus, onFolderStatus, chooseSongFolder, scanFolder, startWatching, stopWatching, importFolderSelection, setFolderUploadRights } from '../media/folder-library.js';
+import { teacherAccess } from '../cloud/access.js';
 
 export function folderLibraryControls() {
+  if (!teacherAccess()) return null;
   const supported = typeof window.showDirectoryPicker === 'function';
   const run = async (fn) => {
     try { await fn(); } catch (error) {
@@ -32,7 +34,7 @@ export function folderLibraryControls() {
     h('div', { class: 'row' }, choose, name, scan, watch, input), status,
     h('label', { class: 'inline small' }, rights, ' I have permission to upload and use the songs in this folder.'),
     h('p', { class: 'small' }, supported
-      ? 'Sign in as a teacher. Songs upload to your private cloud library; the chosen folder stays unchanged.'
+      ? 'Songs upload to your private cloud library; the chosen folder stays unchanged.'
       : 'This browser supports folder import. Select the folder again to scan for additions; automatic watching needs Chrome or Edge.'),
   );
   const off = onFolderStatus(sync);
