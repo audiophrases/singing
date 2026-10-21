@@ -1,6 +1,7 @@
 import { h, toast } from '../ui.js';
-import { folderStatus, onFolderStatus, chooseSongFolder, scanFolder, startWatching, stopWatching, importFolderSelection, setFolderUploadRights } from '../media/folder-library.js';
+import { folderStatus, onFolderStatus, chooseSongFolder, scanFolder, startWatching, stopWatching, importFolderSelection } from '../media/folder-library.js';
 import { teacherAccess } from '../cloud/access.js';
+import { songPermissionCheckbox } from './song-permission.js';
 
 export function folderLibraryControls() {
   if (!teacherAccess()) return null;
@@ -17,7 +18,7 @@ export function folderLibraryControls() {
   const watch = h('button', { class: 'btn btn-sm', type: 'button', onclick: () => folderStatus().watching ? stopWatching() : run(startWatching) });
   const status = h('p', { class: 'small', role: 'status', 'aria-live': 'polite' });
   const name = h('strong');
-  const rights = h('input', { type: 'checkbox', onchange: () => setFolderUploadRights(rights.checked) });
+  const rights = songPermissionCheckbox();
   const sync = (state) => {
     name.textContent = state.name;
     choose.disabled = state.busy;

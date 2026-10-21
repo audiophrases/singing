@@ -43,6 +43,7 @@ const DEFAULT_SETTINGS = {
   ttsVoice: 'en-US-AriaNeural',
   sfx: true,
   speechLang: 'en-US',
+  songUploadPermission: false,
 };
 
 export function getSettings() {

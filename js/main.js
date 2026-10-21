@@ -16,7 +16,7 @@
  */
 import { h, clear, toast } from './ui.js';
 import { openTeamsDialog } from './views/teams.js';
-import { initFolderLibrary, stopWatching, setFolderUploadRights } from './media/folder-library.js';
+import { initFolderLibrary, stopWatching } from './media/folder-library.js';
 import { initCloud, cloudSession, onCloudSession } from './cloud/session.js';
 import { teacherArea, teacherAccess, isTeacher, assignmentRoute, teacherUrl, publicUrl } from './cloud/access.js';
 import { refreshCloudLibrary, resolveCloudSong } from './cloud/library.js';
@@ -47,7 +47,7 @@ let previousPrincipal = null;
 onCloudSession((session) => {
   syncNavigation();
   if (previousPrincipal && !session.principal) {
-    stopWatching(); setFolderUploadRights(false);
+    stopWatching();
     queueMicrotask(() => window.dispatchEvent(new Event('hashchange')));
   }
   previousPrincipal = session.principal;

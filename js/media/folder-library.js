@@ -1,5 +1,5 @@
 /* Read-only folder import. Poll while the app is open and save to private R2. */
-import { userSongs, saveUserSong, newSongId } from '../store.js';
+import { userSongs, saveUserSong, newSongId, getSettings, setSettings } from '../store.js';
 import { putMedia, getMedia, newMediaId, deleteMedia } from './store.js';
 import { parseLyrics } from '../lyrics/lines.js';
 import { AUDIO_FILE, LYRICS_FILE, filePath, fileStamp, groupSongFiles } from './song-files.js';
@@ -15,8 +15,8 @@ let busy = false;
 let seen = new Map();
 let state = { name: '', watching: false, busy: false, message: 'Choose a folder to add songs together with their karaoke, vocals and lyrics files.' };
 let initialized;
-let uploadRights = false;
-export function setFolderUploadRights(value) { uploadRights = !!value; }
+const uploadRights = () => getSettings().songUploadPermission === true;
+export function setFolderUploadRights(value) { setSettings({ songUploadPermission: !!value }); }
 
 export const folderStatus = () => ({ ...state });
 export function onFolderStatus(fn) { listeners.add(fn); return () => listeners.delete(fn); }
@@ -164,7 +164,7 @@ export function stopWatching() {
 export async function startWatching() {
   if (!folder) return;
   requireTeacher();
-  if (!uploadRights) { update({ message: 'Confirm permission to store these songs, then reconnect the folder.' }); return; }
+  if (!uploadRights()) { update({ message: 'Confirm permission to store these songs, then reconnect the folder.' }); return; }
   const current = folder;
   if (await current.handle.requestPermission({ mode: 'read' }) !== 'granted') {
     update({ message: 'Folder access was not granted. Reconnect when you are ready.' });
@@ -179,7 +179,7 @@ export async function startWatching() {
 
 export async function chooseSongFolder() {
   requireTeacher();
-  if (!uploadRights) throw new Error('Confirm permission to store and use these songs before choosing the folder.');
+  if (!uploadRights()) throw new Error('Confirm permission to store and use these songs before choosing the folder.');
   const handle = await window.showDirectoryPicker({ mode: 'read', id: 'singing-songs' });
   stopWatching();
   seen = new Map();
@@ -209,7 +209,7 @@ export function initFolderLibrary() {
 export async function importFolderSelection(files) {
   if (busy) return;
   requireTeacher();
-  if (!uploadRights) throw new Error('Confirm permission to store and use these songs before importing.');
+  if (!uploadRights()) throw new Error('Confirm permission to store and use these songs before importing.');
   busy = true;
   update({ busy: true, changed: 0, message: 'Importing songs…' });
   try {
@@ -223,7 +223,7 @@ export async function importFolderSelection(files) {
 
 async function importCloudFiles(files, sourceId) {
   requireTeacher();
-  if (!uploadRights) throw new Error('Confirm permission to upload these songs.');
+  if (!uploadRights()) throw new Error('Confirm permission to upload these songs.');
   return importSongFiles(files, sourceId, { onProgress: (message) => update({ message }), saveSong: async (song) => {
     const key = song.folderImport.key;
     const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key));

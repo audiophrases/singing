@@ -17,6 +17,7 @@ import { selectAudioFiles, AUDIO_FILE, LYRICS_FILE } from '../media/song-files.j
 import { folderLibraryControls } from './folder-library.js';
 import { saveCloudSong } from '../cloud/library.js';
 import { teacherAccess } from '../cloud/access.js';
+import { songPermissionCheckbox } from './song-permission.js';
 
 const EMOJIS = ['🎵', '🎤', '🎸', '🎹', '🥁', '🎺', '🌟', '❤️', '🌈', '🌍', '🐶', '🚀', '☀️', '🌙', '🎉', '🍕', '⚽', '🦄'];
 
@@ -78,7 +79,7 @@ export async function render(el, { id }) {
   const fileNote = h('span', { class: 'small' }, song.audio && song.audio.name ? `🎧 ${song.audio.name}` : '');
   const karIn = h('input', { type: 'file', accept: 'audio/*' });
   const karNote = h('div', { class: 'small' }, song.karaoke && song.karaoke.name ? `🎤 ${song.karaoke.name}` : '');
-  const rightsIn = h('input', { type: 'checkbox', checked: !!song.cloud });
+  const rightsIn = songPermissionCheckbox();
   const vocIn = h('input', { type: 'file', accept: 'audio/*', 'aria-label': 'Vocals only file' });
   const vocNote = h('div', { class: 'small' }, song.vocals?.name ? `🗣️ ${song.vocals.name}` : '');
   const keepFile = async (f) => {

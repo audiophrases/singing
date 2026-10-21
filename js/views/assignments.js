@@ -2,6 +2,7 @@ import { h, clear, toast, openModal, confirmDialog } from '../ui.js';
 import { api, cloudSession } from '../cloud/session.js';
 import { renderSignIn } from './account.js';
 import { teacherAccess, publicUrl } from '../cloud/access.js';
+import { songPermissionCheckbox } from './song-permission.js';
 import { allSongs } from '../store.js';
 import { saveCloudSong } from '../cloud/library.js';
 import { GAMES, gameFits } from '../games/index.js';
@@ -50,7 +51,7 @@ async function createAssignment() {
     }
   };
   songSelect.addEventListener('change', drawActivities); drawActivities();
-  const rights = h('input', { type: 'checkbox' });
+  const rights = songPermissionCheckbox();
   const status = h('p', { class: 'small', role: 'status' });
   const save = h('button', { class: 'btn primary', type: 'button', onclick: async () => {
     save.disabled = true;

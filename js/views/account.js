@@ -5,6 +5,7 @@ import { localUserSongs } from '../store.js';
 import { createSongBackup } from '../media/backup.js';
 import { getMedia } from '../media/store.js';
 import { teacherArea, isTeacher, publicUrl } from '../cloud/access.js';
+import { songPermissionCheckbox } from './song-permission.js';
 
 export function accountButton() {
   const button = h('button', { class: 'btn btn-sm', type: 'button', hidden: true, onclick: () => openAccount() });
@@ -60,7 +61,7 @@ function accountContent({ teacher, onChanged }) {
       body.append(h('p', null, `Signed in as ${s.principal.displayName || s.principal.email || s.principal.role}.`));
       if (teacher && !isTeacher(s.principal)) body.append(h('p', null, 'This is the teacher area. You are signed in as a student. Open your assignment link, or sign out to use a teacher account.'));
       if (teacher && isTeacher(s.principal)) {
-        const rights = h('input', { type: 'checkbox' });
+        const rights = songPermissionCheckbox();
         const backupInput = h('input', { type: 'file', accept: '.singing', class: 'hidden', 'aria-label': 'Local song backup with audio' });
         const importBackup = h('button', { class: 'btn', type: 'button', onclick: () => {
           if (!rights.checked) { status.textContent = 'Confirm permission before importing a backup.'; return; }
