@@ -7,13 +7,26 @@ the cloud Worker and a teacher session.
 
 ## Windows quick start
 
-Install **Node.js 22 or later** (including npm) and **Git for Windows**. Then
-double-click **`deploy.bat`** and choose **1: Deploy or update Singing**. There is
-no need to clone PinPlay manually, paste database IDs, install a global Wrangler,
-or copy Cloudflare/PinPlay secrets. The launcher installs the project's pinned
-dependencies when needed and opens Cloudflare's browser login if necessary.
+For routine updates, double-click **`deploy-fast.bat`**, or open **`deploy.bat`**
+and choose **1: Fast update Singing**. This builds and publishes only Singing,
+reusing the saved account, database, bucket and shared authentication. It skips
+PinPlay checkout/testing/deployment, the full Singing test suites, storage
+provisioning and migration writes. Unchanged code needs no upload. Failed version
+promotion can be retried without uploading the same code again.
 
-The deployment helper runs preparation first, shows the target account, PinPlay
+Fast updates validate the Cloudflare account and live Singing bindings, preserve
+variables/routes through version upload and promotion, and check for concurrent
+releases. Changed database migrations, Worker configuration or shared identity
+integration require the full deployment path. An older saved deployment gets a
+one-time read-only check of its applied migration names before fast updates.
+
+For first setup, install **Node.js 22 or later** (including npm) and **Git for
+Windows**, then choose **2: Full setup / deployment** in **`deploy.bat`**. There
+is no need to clone PinPlay manually, paste database IDs, install a global
+Wrangler, or copy Cloudflare/PinPlay secrets. The launchers install the project's
+pinned dependencies when needed and open Cloudflare's browser login if necessary.
+
+The full deployment helper runs preparation first, shows the target account, PinPlay
 source commit and production version, then asks you to type `DEPLOY` once before
 making production changes. You can also use the individual launchers:
 
@@ -23,12 +36,14 @@ reconcile that work before confirming this deployment.
 
 | File | What it does |
 | --- | --- |
+| `deploy-fast.bat` | Build and publish Singing only using its existing cloud setup, check public health, and open the app. No full test suites, PinPlay release or storage setup. |
 | `deployment/01-prepare.bat` | Prepare an isolated PinPlay checkout, apply/check the identity patch, run the tests, build the static site, and dry-run both Workers. No production changes. |
 | `deployment/02-deploy.bat` | Prepare and test, authenticate, inspect existing deployments, create/reuse private Singing R2 and D1, apply Singing migrations, release the identity adapter and Singing, run public smoke checks, and open the app. |
 | `deployment/03-verify-and-open.bat` | Recheck R2 privacy, Singing bindings, the public page/API and authentication requirement, then open the app. |
 | `deployment/04-google-login-setup.bat` | Show the exact Singing origin to allow and open Google's credentials page. Keep all existing authorized origins. |
 
-Run the same deployment BAT again after an interruption or for a later release.
+Run the same deployment BAT again after an interruption. Use the fast launcher
+for routine later releases and the full launcher for setup/integration changes.
 Existing Singing resources are reused. Migration failures stop before Worker code
 is released. A recorded staged version can be resumed; an unknown staged release
 or concurrent rollout stops the helper rather than inheriting unreviewed settings.
@@ -50,8 +65,9 @@ The helper uses version upload/promotion for PinPlay, with `--keep-vars`; this
 preserves its routes, domains, schedules, existing variables and secrets. Later
 Singing code updates also use version promotion. For intentional changes to routes,
 schedules or other deployment settings, use the manual workflow below and review
-the Cloudflare configuration separately. The helper refuses unexpected existing
-bindings, different accounts/databases and public bucket access.
+the Cloudflare configuration separately. Deployment checks refuse unexpected
+bindings and different accounts/databases. Full setup and verification also
+inspect R2 privacy and refuse public bucket access.
 
 Two steps still require the service owner's browser:
 
@@ -63,8 +79,9 @@ Two steps still require the service owner's browser:
    that address and use the audio-inclusive transfer described below. The helper
    builds that folder, but does not push to GitHub or replace the old host.
 
-For terminal/CI use, `node tools/deploy-cli.mjs deploy --yes` explicitly skips the
-typed confirmation while retaining all checks. `SINGING_DEPLOY_NO_PAUSE=1` avoids
+For terminal/CI use, `node tools/deploy-cli.mjs update --yes` runs fast updates;
+`node tools/deploy-cli.mjs deploy --yes` runs full deployment. Both skip the typed
+confirmation and retain their workflow's deployment checks. `SINGING_DEPLOY_NO_PAUSE=1` avoids
 the BAT's closing pause; `SINGING_DEPLOY_NO_BROWSER=1` prevents opening browser tabs.
 On a machine without a saved app URL, `SINGING_DEPLOY_URL` can supply its public
 HTTPS origin. Never put tokens or passwords in those settings or BAT files.

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Deployment } from '../../tools/deployment.mjs';
+import { createHash } from 'node:crypto';
 
 // Every command and HTTP request is an in-memory fixture. This file never starts
 // Wrangler, Git, a shell, or any other child process and never accesses a network.
@@ -63,11 +64,14 @@ async function fixture(t, setup = () => {}) {
   await cp(path.join(repository, 'wrangler.jsonc'), path.join(root, 'wrangler.jsonc'));
   await mkdir(path.join(root, 'cloudflare'), { recursive: true });
   await cp(path.join(repository, 'cloudflare/migrations'), path.join(root, 'cloudflare/migrations'), { recursive: true });
+  await mkdir(path.join(root, 'integrations'), { recursive: true });
+  await writeFile(path.join(root, 'integrations/pinplay-classroom.patch'), 'fixture identity patch');
+  const patchHash = createHash('sha256').update('fixture identity patch').digest('hex');
   const world = {
     bucket: false, database: false, migrated: false, tables: [], publicBucket: false, customDomain: false,
     migrationFailures: 0, promotionFailures: 0, statusFailures: {}, sequence: 10,
     workers: { 'pinplay-api': { active: baseline, versions: [pinplayVersion()] } },
-    calls: [], writes: [], fetches: [],
+    calls: [], writes: [], fetches: [], builds: 0, fingerprint: 'identical-site-and-worker-fixture',
   };
   setup(world);
   const success = (stdout = '') => ({ code: 0, stdout, stderr: '' });
@@ -133,7 +137,11 @@ async function fixture(t, setup = () => {}) {
       assert.equal(config.d1_databases[0].database_name, 'singing');
       assert(args.includes('--remote'));
       if (args[1] === 'execute') {
-        assert.equal(args[2], 'DB'); assert.equal(argument(args, '--command'), "SELECT name FROM sqlite_master WHERE type = 'table'");
+        assert.equal(args[2], 'DB');
+        if (argument(args, '--command') === 'SELECT name FROM d1_migrations ORDER BY name') {
+          return json([{ success: true, results: (world.migrationNames || ['0001_cloud_library.sql', '0002_assignments.sql']).map((name) => ({ name })) }]);
+        }
+        assert.equal(argument(args, '--command'), "SELECT name FROM sqlite_master WHERE type = 'table'");
         return json([{ success: true, results: world.tables.map((name) => ({ name })) }]);
       }
       if (args[1] === 'migrations' && args[2] === 'apply') {
@@ -149,6 +157,7 @@ async function fixture(t, setup = () => {}) {
       await recordWrite('upload', worker);
       const number = world.sequence++, id = uuid(number);
       world.workers[worker].versions.push(worker === 'pinplay-api' ? pinplayVersion(id, number, true) : singingVersion(id, number));
+      if (worker === 'singing') world.afterSingingUpload?.();
       return output({ type: 'version-upload', worker_name: worker, version_id: id });
     }
     if (args[0] === 'versions' && args[1] === 'deploy') {
@@ -187,10 +196,11 @@ async function fixture(t, setup = () => {}) {
       this.accountId = accountId; this.pinplay = pinplayConfig(); this.state.accountId = accountId;
       this.pinplayFile = path.join(this.directory, 'pinplay.production.json');
       await writeFile(this.pinplayFile, JSON.stringify(this.pinplay));
-      this.state.source = { commit: 'a'.repeat(40), patchHash: 'fixture-patch-hash', hashes: { 'cloudflare/worker.js': 'fixture-source-hash' } };
+      this.state.source = { commit: 'a'.repeat(40), patchHash, hashes: { 'cloudflare/worker.js': 'fixture-source-hash' } };
       await this.checkpoint();
     };
-    deployment.siteFingerprint = async () => 'identical-site-and-worker-fixture';
+    deployment.siteFingerprint = async () => world.fingerprint;
+    deployment.node = async (args) => { assert.deepEqual(args, ['tools/build-site.mjs']); world.builds++; };
     return deployment;
   };
   return { root, world, load, count: (kind) => world.writes.filter((write) => write.kind === kind).length };
@@ -317,4 +327,129 @@ test('cancelling the final deployment prompt leaves production unchanged', async
   const { load, world } = await fixture(t);
   await assert.rejects((await load('CANCEL')).deploy(), /Deployment cancelled/);
   assert.deepEqual(world.writes, []); assert.equal(world.bucket, false); assert.equal(world.database, false);
+});
+
+test('fast update publishes only Singing and skips PinPlay, provisioning, tests and migration writes', async (t) => {
+  const { world, load } = await fixture(t);
+  await (await load()).deploy({ yes: true });
+  const originalPinplay = world.workers['pinplay-api'].active;
+  world.writes = []; world.calls = []; world.fingerprint = 'new-singing-code';
+  const update = await load();
+  update.prepare = () => assert.fail('fast update cannot prepare PinPlay or run the full suites');
+  await update.update({ yes: true });
+  assert.equal(world.builds, 1);
+  assert.deepEqual(world.writes.map((w) => [w.kind, w.worker]), [['upload', 'singing'], ['promotion', 'singing']]);
+  assert.equal(world.workers['pinplay-api'].active, originalPinplay);
+  assert(world.calls.every((call) => call.worker === 'singing'));
+  assert(!world.calls.some(({ args }) => ['d1', 'r2'].includes(args[0])));
+  const release = JSON.parse(await readFile(update.state.releaseFile, 'utf8'));
+  assert.equal(release.kind, 'singing-update'); assert.equal(release.pinplayBefore, null);
+  assert.equal(update.state.singing.deployedVersion, world.workers.singing.active);
+});
+
+test('fast update requires completed setup and skips uploading identical code', async (t) => {
+  const { world, load } = await fixture(t);
+  await assert.rejects((await load()).update({ yes: true }), /existing Singing deployment/);
+  assert.equal(world.builds, 0); assert.equal(world.writes.length, 0);
+  await (await load()).deploy({ yes: true });
+  world.writes = []; world.calls = [];
+  await (await load()).update({ yes: true });
+  assert.deepEqual(world.writes, []);
+  assert(world.calls.every((call) => call.worker === 'singing'));
+});
+
+test('fast update refuses changed migrations, config and shared identity before any remote writes', async (t) => {
+  for (const change of ['migration', 'config', 'identity']) {
+    await t.test(change, async (subtest) => {
+      const { root, world, load } = await fixture(subtest);
+      await (await load()).deploy({ yes: true }); world.writes = []; world.calls = [];
+      const update = await load();
+      if (change === 'migration') await writeFile(path.join(root, 'cloudflare/migrations/0003_new.sql'), 'CREATE TABLE extra (id TEXT);');
+      if (change === 'config') update.base.compatibility_date = '2026-10-22';
+      if (change === 'identity') await writeFile(path.join(root, 'integrations/pinplay-classroom.patch'), 'changed identity integration');
+      await assert.rejects(update.update({ yes: true }), /Full setup/);
+      assert.equal(world.builds, 0); assert.deepEqual(world.writes, []); assert.deepEqual(world.calls, []);
+    });
+  }
+});
+
+test('older setup records need only one read-only migration check before fast updates', async (t) => {
+  const { world, load } = await fixture(t);
+  const setup = await load(); await setup.deploy({ yes: true });
+  delete setup.state.schemaFingerprint; delete setup.state.identityPatchHash; delete setup.state.singingConfigFingerprint;
+  await setup.checkpoint(); world.writes = []; world.calls = []; world.fingerprint = 'new-site';
+  await (await load()).update({ yes: true });
+  const d1 = world.calls.filter(({ args }) => args[0] === 'd1');
+  assert.equal(d1.length, 1); assert.equal(d1[0].args[1], 'execute');
+  assert(world.writes.every((write) => write.worker === 'singing'));
+  world.calls = [];
+  await (await load()).update({ yes: true });
+  assert(!world.calls.some(({ args }) => args[0] === 'd1'));
+});
+
+test('older setup records with unapplied migrations refuse fast upload', async (t) => {
+  const { world, load } = await fixture(t);
+  const setup = await load(); await setup.deploy({ yes: true });
+  delete setup.state.schemaFingerprint; await setup.checkpoint();
+  world.migrationNames = ['0001_cloud_library.sql']; world.writes = []; world.fingerprint = 'new-site';
+  await assert.rejects((await load()).update({ yes: true }), /Unapplied or missing/);
+  assert.deepEqual(world.writes, []);
+});
+
+test('fast update resumes an interrupted promotion without uploading the same code again', async (t) => {
+  const { world, load } = await fixture(t);
+  await (await load()).deploy({ yes: true });
+  world.writes = []; world.fingerprint = 'new-site'; world.promotionFailures = 1;
+  await assert.rejects((await load()).update({ yes: true }), /promotion failed/);
+  await (await load()).update({ yes: true });
+  assert.equal(world.writes.filter((w) => w.kind === 'upload').length, 1);
+  assert.equal(world.writes.filter((w) => w.kind === 'promotion').length, 2);
+  assert(world.writes.every((w) => w.worker === 'singing'));
+});
+
+test('fast update preserves a concurrent Singing release and leaves its upload staged', async (t) => {
+  const { world, load } = await fixture(t);
+  await (await load()).deploy({ yes: true });
+  world.writes = []; world.fingerprint = 'new-site';
+  world.afterSingingUpload = () => {
+    const concurrent = singingVersion(uuid(99), 99);
+    world.workers.singing.versions.push(concurrent); world.workers.singing.active = concurrent.id;
+  };
+  await assert.rejects((await load()).update({ yes: true }), /changed during deployment/);
+  assert.equal(world.workers.singing.active, uuid(99));
+  assert.deepEqual(world.writes.map((w) => w.kind), ['upload']);
+});
+
+test('fast update rejects incorrect live bindings and cancellation without replacing code', async (t) => {
+  const { world, load } = await fixture(t);
+  await (await load()).deploy({ yes: true });
+  world.writes = []; world.fingerprint = 'new-site';
+  await assert.rejects((await load('CANCEL')).update(), /cancelled/);
+  assert.deepEqual(world.writes, []);
+  world.workers.singing.versions.find((v) => v.id === world.workers.singing.active).resources.bindings.find((b) => b.name === 'DB').id = otherDatabase;
+  await assert.rejects((await load()).update({ yes: true }), /another D1 database/);
+  assert.deepEqual(world.writes, []);
+});
+
+test('fast update refuses unknown staged code before uploading', async (t) => {
+  const { world, load } = await fixture(t);
+  await (await load()).deploy({ yes: true });
+  world.writes = []; world.fingerprint = 'new-site';
+  world.workers.singing.versions.push(singingVersion(uuid(99), 99));
+  await assert.rejects((await load()).update({ yes: true }), /unrecognized staged/);
+  assert.deepEqual(world.writes, []);
+});
+
+test('fast update rechecks releases after the confirmation prompt', async (t) => {
+  const { world, load } = await fixture(t);
+  await (await load()).deploy({ yes: true });
+  world.writes = []; world.fingerprint = 'new-site';
+  const update = await load();
+  update.ask = async () => {
+    const concurrent = singingVersion(uuid(99), 99);
+    world.workers.singing.versions.push(concurrent); world.workers.singing.active = concurrent.id;
+    return 'DEPLOY';
+  };
+  await assert.rejects(update.update(), /changed while confirming/);
+  assert.deepEqual(world.writes, []); assert.equal(world.workers.singing.active, uuid(99));
 });

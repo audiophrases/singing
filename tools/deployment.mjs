@@ -8,6 +8,8 @@ export const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 const PATCH_FILES = ['cloudflare/classroom-entry.mjs', 'cloudflare/classroom-identity.mjs', 'cloudflare/worker.js', 'cloudflare/wrangler.toml', 'tests/classroom-identity.test.mjs'];
 const ensure = (condition, message) => { if (!condition) throw new Error(message); };
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
+const configDigest = (config) => digest(JSON.stringify(config, (_key, value) => value && typeof value === 'object' && !Array.isArray(value)
+  ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value));
 export const plain = (text = '') => text.replace(/\x1b\[[0-9;]*m/g, '').trim();
 export function parseJson(output, label) {
   try { return JSON.parse(plain(output)); } catch { throw new Error(`${label} did not return valid JSON. Stop and check the installed Wrangler version.`); }
@@ -222,26 +224,28 @@ export class Deployment {
     this.log('Preparation passed. No production resources were changed.');
   }
   async authenticate() {
-    let result = await this.wr(['whoami', '--json'], { allowFailure: true, config: this.pinplayFile });
+    const config = this.pinplayFile || this.configFile;
+    let result = await this.wr(['whoami', '--json'], { allowFailure: true, config });
     if (result.code !== 0) {
       ensure(!this.environment.CLOUDFLARE_API_TOKEN && !this.environment.CLOUDFLARE_API_KEY, 'Cloudflare API credentials are configured but authentication failed. Correct them outside this tool, or remove them to use browser login.');
       this.log('Sign in to Cloudflare in the browser window…');
-      await this.wr(['login'], { interactive: true, config: this.pinplayFile });
-      result = await this.wr(['whoami', '--json'], { config: this.pinplayFile });
+      await this.wr(['login'], { interactive: true, config });
+      result = await this.wr(['whoami', '--json'], { config });
     }
     const who = parseJson(result.stdout, 'Cloudflare identity');
     requireAccount(who, this.accountId, this.environment.CLOUDFLARE_ACCOUNT_ID);
     this.log(`Cloudflare account: ${this.accountId} (${who.authType || 'authenticated session'}).`);
   }
-  async inspect(worker) {
-    const result = await this.wr(['deployments', 'status', '--name', worker, '--json'], { allowFailure: true, config: this.pinplayFile });
+  async inspect(worker, { details = true } = {}) {
+    const config = this.pinplayFile || this.configFile;
+    const result = await this.wr(['deployments', 'status', '--name', worker, '--json'], { allowFailure: true, config });
     if (result.code !== 0) {
       ensure(worker === 'singing' && /\b10007\b/.test(result.stderr + result.stdout), `Could not inspect ${worker}. Authentication or network errors are not treated as a missing Worker.${this.diagnostic(result)}`);
       return null;
     }
     const deployment = parseJson(result.stdout, `${worker} deployment`), id = activeVersion(deployment);
-    const version = parseJson((await this.wr(['versions', 'view', id, '--name', worker, '--json'], { config: this.pinplayFile })).stdout, `${worker} version`);
-    const latest = latestVersion(parseJson((await this.wr(['versions', 'list', '--name', worker, '--json'], { config: this.pinplayFile })).stdout, `${worker} versions`));
+    const version = details ? parseJson((await this.wr(['versions', 'view', id, '--name', worker, '--json'], { config })).stdout, `${worker} version`) : undefined;
+    const latest = latestVersion(parseJson((await this.wr(['versions', 'list', '--name', worker, '--json'], { config })).stdout, `${worker} versions`));
     assertLatest(id, latest, this.state[worker]?.pending);
     return { id, deploymentId: deployment.id, createdAt: deployment.created_on, version, latest };
   }
@@ -284,18 +288,19 @@ export class Deployment {
   async saveRelease(pinplay, singing) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const release = { createdAt: new Date().toISOString(), accountId: this.accountId, databaseId: this.state.databaseId,
-      pinplayBefore: { versionId: pinplay.id, deploymentId: pinplay.deploymentId },
+      kind: pinplay ? 'full-deployment' : 'singing-update',
+      pinplayBefore: pinplay ? { versionId: pinplay.id, deploymentId: pinplay.deploymentId } : null,
       singingBefore: singing ? { versionId: singing.id, deploymentId: singing.deploymentId } : null,
-      sourceCommit: this.state.source.commit, patchHash: this.state.source.patchHash };
-    this.state.originalVersions ??= { pinplay: pinplay.id, singing: singing?.id || null };
+      sourceCommit: this.state.source?.commit || null, patchHash: this.state.source?.patchHash || null };
+    this.state.originalVersions ??= { pinplay: pinplay?.id || null, singing: singing?.id || null };
     this.state.releaseFile = path.join(this.directory, 'releases', `${stamp}.json`);
     await mkdir(path.dirname(this.state.releaseFile), { recursive: true });
     await writeFile(this.state.releaseFile, JSON.stringify(release, null, 2) + '\n'); await this.checkpoint();
     return release;
   }
-  async releaseExisting(worker, config, inspected, fingerprint) {
+  async releaseExisting(worker, config, inspected, fingerprint, { fast = false } = {}) {
     const progress = this.state[worker] ||= {};
-    const beforeUpload = await this.inspect(worker);
+    const beforeUpload = fast ? inspected : await this.inspect(worker);
     ensure(beforeUpload.id === inspected.id, `${worker} changed during setup. Inspect the current release before uploading.`);
     if (worker === 'pinplay-api') assertPinplayBindings(beforeUpload.version, this.pinplay);
     else assertSingingBindings(beforeUpload.version, this.state.databaseId);
@@ -310,7 +315,7 @@ export class Deployment {
       pending = progress.pending = { versionId: record.version_id, baselineVersion: inspected.id, fingerprint };
       await this.checkpoint();
     }
-    const current = await this.inspect(worker);
+    const current = await this.inspect(worker, { details: !fast });
     ensure(current.id === inspected.id || current.id === pending.versionId, `${worker} changed during deployment. The uploaded version was left staged; no concurrent release was replaced.`);
     if (current.id !== pending.versionId) {
       ensure(current.latest === pending.versionId, `${worker} has another staged version. Stop and review it before promotion.`);
@@ -336,10 +341,14 @@ export class Deployment {
     if (singing) assertSingingBindings(singing.version, this.state.databaseId);
     this.log('Applying only the Singing database migrations…');
     await this.wr(['d1', 'migrations', 'apply', 'DB', '--remote']);
+    this.state.schemaFingerprint = (await this.migrationSnapshot()).hash;
+    await this.checkpoint();
     const sourceFingerprint = digest(JSON.stringify(this.state.source.hashes));
     await this.releaseExisting('pinplay-api', this.pinplayFile, pinplay, sourceFingerprint);
     const ready = await this.inspect('pinplay-api');
     ensure(ready.version.resources.script.named_handlers?.some((handler) => handler.name === 'ClassroomIdentity'), 'The deployed PinPlay version does not export ClassroomIdentity. Singing was not deployed.');
+    this.state.identityPatchHash = this.state.source.patchHash;
+    await this.checkpoint();
     const fingerprint = await this.siteFingerprint();
     if (singing) await this.releaseExisting('singing', this.configFile, singing, fingerprint);
     else {
@@ -352,6 +361,60 @@ export class Deployment {
       if (url) this.state.url = applicationUrl(url.replace(/\/$/, ''));
       await this.checkpoint();
     }
+    this.state.singingConfigFingerprint = configDigest(await this.readConfig(this.configFile));
+    await this.checkpoint();
+    await this.verify();
+  }
+  async migrationSnapshot() {
+    const files = (await readdir(path.join(this.root, 'cloudflare/migrations'))).filter((name) => name.endsWith('.sql')).sort();
+    const hash = createHash('sha256');
+    for (const file of files) { hash.update(file); hash.update(await readFile(path.join(this.root, 'cloudflare/migrations', file))); }
+    return { files, hash: hash.digest('hex') };
+  }
+  async update({ yes = false } = {}) {
+    ensure(this.state.accountId && this.state.databaseId && this.state.singing?.deployedVersion && this.state.url,
+      'Fast update needs an existing Singing deployment. Choose Full setup / deployment (menu 2) or run deployment/02-deploy.bat first.');
+    this.accountId = this.state.accountId;
+    this.configFile = path.join(this.directory, 'singing.production.json');
+    this.pinplayFile = undefined;
+    const saved = await this.readConfig(this.configFile);
+    const config = singingConfig(this.base, this.root, this.accountId, this.state.databaseId);
+    ensure(saved.account_id === this.accountId && configDigest(config) === (this.state.singingConfigFingerprint || configDigest(saved))
+      && configDigest(saved) === configDigest(config), 'Singing configuration changed. Use Full setup / deployment (menu 2) to review it.');
+    const identityPatchHash = this.state.identityPatchHash || (this.state.source?.hashes && this.state['pinplay-api']?.deployedFingerprint === digest(JSON.stringify(this.state.source.hashes)) ? this.state.source.patchHash : null);
+    ensure(identityPatchHash && identityPatchHash === digest(await readFile(path.join(this.root, 'integrations/pinplay-classroom.patch'))),
+      'The shared identity integration changed. Use Full setup / deployment (menu 2).');
+    const migrations = await this.migrationSnapshot();
+    ensure(!this.state.schemaFingerprint || this.state.schemaFingerprint === migrations.hash,
+      'Database migrations changed. Use Full setup / deployment (menu 2) before updating code.');
+    this.log('Fast update: building Singing only; keeping existing PinPlay and storage.');
+    await this.node(['tools/build-site.mjs'], { label: 'Singing build' });
+    await this.authenticate();
+    const singing = await this.inspect('singing');
+    ensure(singing, 'Singing is no longer deployed. Use Full setup / deployment (menu 2).');
+    assertSingingBindings(singing.version, this.state.databaseId);
+    if (!this.state.schemaFingerprint) {
+      // Upgrade older deployment records with one read-only migration check.
+      const result = parseJson((await this.wr(['d1', 'execute', 'DB', '--remote', '--command', 'SELECT name FROM d1_migrations ORDER BY name', '--json'])).stdout, 'Applied Singing migrations');
+      ensure(Array.isArray(result) && result.every((r) => r.success && Array.isArray(r.results)), 'Could not check applied migrations. Use Full setup / deployment (menu 2).');
+      const applied = result.flatMap((r) => r.results.map((row) => row.name)).sort();
+      ensure(JSON.stringify(applied) === JSON.stringify(migrations.files), 'Unapplied or missing database migrations. Use Full setup / deployment (menu 2).');
+    }
+    const fingerprint = await this.siteFingerprint();
+    if (this.state.singing.deployedVersion === singing.id && this.state.singing.deployedFingerprint === fingerprint) {
+      this.log('Singing is already up to date. No code uploaded.');
+    } else {
+      this.log(`Target: Singing only, account ${this.accountId}; current version ${singing.id}.`);
+      if (!yes) ensure((await this.ask('Type DEPLOY to publish the Singing update: ')).trim() === 'DEPLOY', 'Deployment cancelled. Production is unchanged.');
+      const current = await this.inspect('singing', { details: false });
+      ensure(current?.id === singing.id, 'Singing changed while confirming the update. Run fast update again to review the current release.');
+      await this.saveRelease(null, singing);
+      await this.releaseExisting('singing', this.configFile, singing, fingerprint, { fast: true });
+    }
+    this.state.schemaFingerprint = migrations.hash;
+    this.state.identityPatchHash = identityPatchHash;
+    this.state.singingConfigFingerprint = configDigest(config);
+    await this.checkpoint();
     await this.verify();
   }
   async siteFingerprint() {

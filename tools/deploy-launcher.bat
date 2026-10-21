@@ -4,6 +4,7 @@ set "SINGING_ACTION="
 if "%~1"=="menu" set "SINGING_ACTION=menu"
 if "%~1"=="prepare" set "SINGING_ACTION=prepare"
 if "%~1"=="deploy" set "SINGING_ACTION=deploy"
+if "%~1"=="update" set "SINGING_ACTION=update"
 if "%~1"=="verify" set "SINGING_ACTION=verify"
 if "%~1"=="google" set "SINGING_ACTION=google"
 if not defined SINGING_ACTION exit /b 2

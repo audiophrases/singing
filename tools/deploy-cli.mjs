@@ -9,16 +9,19 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const help = `Singing deployment
 
 Double-click deploy.bat for the menu, or use the numbered files in deployment/.
+Double-click deploy-fast.bat for routine Singing-only updates.
 
   prepare   Install dependencies via the BAT launcher, prepare an isolated
             PinPlay checkout, run tests, and dry-run both Workers.
   deploy    Prepare, sign in, create/reuse private Singing storage, migrate
             Singing D1, release the PinPlay adapter, and deploy Singing.
+  update    Build and publish Singing only, reusing its existing setup.
+            Skips PinPlay checkout, tests, provisioning and migration writes.
   verify    Check private bucket access and public application health.
   google    Show the app origin to allow and open the Google credentials page.
 
-Advanced: node tools/deploy-cli.mjs deploy --yes skips the final typed
-confirmation. It still performs all checks. Credentials stay with Wrangler.
+Advanced: node tools/deploy-cli.mjs update --yes (or deploy --yes) skips the final typed
+confirmation. Account and deployment checks still run. Credentials stay with Wrangler.
 SINGING_DEPLOY_URL can supply the public app HTTPS origin on another computer.
 SINGING_DEPLOY_NO_BROWSER=1 disables opening the app after deploy/verify.
 `;
@@ -70,7 +73,7 @@ export async function main(argv = process.argv.slice(2)) {
   if (argv.includes('--help') || argv.includes('-h')) { console.log(help); return; }
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('Install Node.js 22 or later, then run the BAT file again.');
   let action = argv[0] || 'menu';
-  if (!['menu', 'prepare', 'deploy', 'verify', 'google'].includes(action) || argv.some((arg, i) => i > 0 && arg !== '--yes')) throw new Error('Unknown option. Run node tools/deploy-cli.mjs --help .');
+  if (!['menu', 'prepare', 'deploy', 'update', 'verify', 'google'].includes(action) || argv.some((arg, i) => i > 0 && arg !== '--yes')) throw new Error('Unknown option. Run node tools/deploy-cli.mjs --help .');
   let prompt;
   const ask = async (question) => {
     if (!process.stdin.isTTY) throw new Error('This step needs an interactive terminal. Use the BAT launcher, or explicitly use deploy --yes for an automated release.');
@@ -80,10 +83,10 @@ export async function main(argv = process.argv.slice(2)) {
   let releaseLock;
   try {
     if (action === 'menu') {
-      console.log('Singing deployment\n\n1. Deploy or update Singing (recommended)\n2. Prepare and test only\n3. Verify deployment and open app\n4. Open Google login setup\nQ. Exit\n');
-      const choice = (await ask('Choose 1, 2, 3, 4 or Q: ')).trim().toLowerCase();
+      console.log('Singing deployment\n\n1. Fast update Singing (recommended after first setup)\n2. Full setup / deployment (both apps)\n3. Prepare and test only\n4. Verify deployment and open app\n5. Open Google login setup\nQ. Exit\n');
+      const choice = (await ask('Choose 1, 2, 3, 4, 5 or Q: ')).trim().toLowerCase();
       if (choice === 'q') return;
-      action = { 1: 'deploy', 2: 'prepare', 3: 'verify', 4: 'google' }[choice];
+      action = { 1: 'update', 2: 'deploy', 3: 'prepare', 4: 'verify', 5: 'google' }[choice];
       if (!action) throw new Error('Choose one of the listed menu options.');
     }
     releaseLock = await lock(path.join(root, '.deployment'));
@@ -92,8 +95,9 @@ export async function main(argv = process.argv.slice(2)) {
     const { experimental_readRawConfig } = await import('wrangler');
     const deployment = await new Deployment({ root, run: execute, readConfig: (config) => experimental_readRawConfig({ config }).rawConfig, ask }).load();
     if (action === 'prepare') await deployment.prepare();
-    else if (action === 'deploy') {
-      await deployment.deploy({ yes: argv.includes('--yes') });
+    else if (action === 'deploy' || action === 'update') {
+      if (action === 'update') await deployment.update({ yes: argv.includes('--yes') });
+      else await deployment.deploy({ yes: argv.includes('--yes') });
       openBrowser(deployment.state.url);
     } else if (action === 'google') {
       const url = applicationUrl(process.env.SINGING_DEPLOY_URL || deployment.state.url || await ask('Singing HTTPS address: '));

@@ -18,7 +18,7 @@ test('Windows BAT launchers preserve spaces, ampersands, actions and failure exi
   const repository = fileURLToPath(new URL('../../', import.meta.url));
   await mkdir(path.join(root, 'tools'), { recursive: true });
   await cp(path.join(repository, 'deployment'), path.join(root, 'deployment'), { recursive: true });
-  for (const name of ['deploy.bat', 'package.json', 'tools/deploy-launcher.bat', 'tools/deploy-dependencies.cjs']) await cp(path.join(repository, name), path.join(root, name));
+  for (const name of ['deploy.bat', 'deploy-fast.bat', 'package.json', 'tools/deploy-launcher.bat', 'tools/deploy-dependencies.cjs']) await cp(path.join(repository, name), path.join(root, name));
   const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
   // Satisfy the real dependency checker with metadata only. No installation,
   // Wrangler command or production operation is possible in this fixture.
@@ -28,7 +28,7 @@ test('Windows BAT launchers preserve spaces, ampersands, actions and failure exi
   }
   await writeFile(path.join(root, 'tools/deploy-cli.mjs'), `import {writeFileSync} from 'node:fs'; writeFileSync(process.env.SINGING_LAUNCHER_RESULT,JSON.stringify({cwd:process.cwd(),args:process.argv.slice(2)})); process.exitCode=17;`);
   const resultFile = path.join(root, 'launcher-result.json');
-  for (const [name, action] of [['deploy.bat', 'menu'], ['deployment/01-prepare.bat', 'prepare'], ['deployment/02-deploy.bat', 'deploy'], ['deployment/03-verify-and-open.bat', 'verify'], ['deployment/04-google-login-setup.bat', 'google']]) {
+  for (const [name, action] of [['deploy.bat', 'menu'], ['deploy-fast.bat', 'update'], ['deployment/01-prepare.bat', 'prepare'], ['deployment/02-deploy.bat', 'deploy'], ['deployment/03-verify-and-open.bat', 'verify'], ['deployment/04-google-login-setup.bat', 'google']]) {
     const result = spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/v:off', '/s', '/c', `""${path.join(root, name)}""`], {
       cwd: directory, env: { ...process.env, SINGING_DEPLOY_NO_PAUSE: '1', SINGING_LAUNCHER_RESULT: resultFile },
       shell: false, windowsVerbatimArguments: true, windowsHide: true, encoding: 'utf8', timeout: 20000,

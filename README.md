@@ -20,10 +20,13 @@ are available. Students sign in with their school Google account only when they
 open an assignment link. Copied assignment links point to the public app and
 return students to their assignment after sign-in.
 
-On Windows, double-click **`deploy.bat`** for the deployment menu. It installs
-locked dependencies, runs checks, prepares PinPlay, provisions Singing storage and
-deploys both Worker changes. The numbered launchers in `deployment/` also provide
-preparation, verification and Google login setup separately. See the
+On Windows, double-click **`deploy-fast.bat`** for routine Singing updates, or
+choose **1** in **`deploy.bat`**. It builds and publishes Singing using the existing
+cloud setup, without checking out or redeploying PinPlay, running the full test
+suites, or provisioning/migrating storage. For first setup or changes to database
+migrations/shared authentication, choose **2 — Full setup / deployment** instead.
+The numbered launchers in `deployment/` also provide preparation, verification
+and Google login setup separately. See the
 [Windows deployment guide](docs/CLOUD_DEPLOYMENT.md#windows-quick-start) for the two
 remaining browser steps and recovery details.
 
