@@ -16,8 +16,17 @@
 import { h, clear, toast } from './ui.js';
 import { openTeamsDialog } from './views/teams.js';
 import { initFolderLibrary } from './media/folder-library.js';
+import { initCloud } from './cloud/session.js';
+import { refreshCloudLibrary, resolveCloudSong } from './cloud/library.js';
+import { accountButton } from './views/account.js';
 
-initFolderLibrary();
+const cloudReady = initCloud().then(async (session) => {
+  if (session.principal && session.principal.role !== 'student') {
+    try { await refreshCloudLibrary(); } catch (e) { toast(e.message, 'bad'); }
+  }
+  initFolderLibrary();
+});
+document.querySelector('.topbar-right').prepend(accountButton());
 
 const routes = [
   { re: /^\/?$/, view: () => import('./views/library.js'), nav: 'library' },
@@ -26,6 +35,8 @@ const routes = [
   { re: /^\/studio(?:\/([^/]+))?$/, view: () => import('./views/studio.js'), nav: 'studio', keys: ['id'] },
   { re: /^\/chant$/, view: () => import('./views/chant.js'), nav: 'chant' },
   { re: /^\/party(?:\/([^/]+))?$/, view: () => import('./views/party.js'), nav: 'party', keys: ['game'] },
+  { re: /^\/assignments$/, view: () => import('./views/assignments.js'), nav: 'assignments' },
+  { re: /^\/assignment\/([^/]+)$/, view: () => import('./views/assignments.js'), nav: 'assignments', keys: ['id'] },
   { re: /^\/remix\/([^/]+)$/, view: () => import('./views/remix.js'), nav: 'library', keys: ['id'] },
   { re: /^\/print\/([^/]+)\/([^/]+)$/, view: () => import('./views/print.js'), nav: 'library', keys: ['id', 'kind'] },
   { re: /^\/card\/([^/]+)\/([^/]+)$/, view: () => import('./views/card.js'), nav: '', keys: ['id', 'seed'] },
@@ -64,6 +75,11 @@ async function render() {
   const m = route.re.exec(path);
   const params = { ...query };
   (route.keys || []).forEach((k, i) => { if (m[i + 1] !== undefined) params[k] = m[i + 1]; });
+  await cloudReady;
+  if (params.id && route.nav !== 'assignments' && !params.attempt) {
+    try { await resolveCloudSong(params.id); }
+    catch (e) { toast(e.message, 'bad'); }
+  }
   let mod;
   try {
     mod = await route.view();
@@ -74,6 +90,7 @@ async function render() {
   }
   if (seq !== renderSeq) return;
   stage.classList.toggle('hidden', !route.stage);
+  app.inert = !!route.stage;
   document.body.classList.toggle('on-stage', !!route.stage);
   if (!route.stage) clear(stage);
   const target = route.stage ? stage : app;

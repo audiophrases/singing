@@ -2,7 +2,7 @@
  * The song library: every built-in song plus the teacher's own, as cards.
  */
 import { h, clear, levelBadge, pick, debounce } from '../ui.js';
-import { allSongs, getProgress } from '../store.js';
+import { allSongs, getProgress, onSongs } from '../store.js';
 import { GAMES, gameFits } from '../games/index.js';
 import { SynthTrack } from '../music/player.js';
 import { folderLibraryControls } from './folder-library.js';
@@ -192,5 +192,6 @@ export async function render(el) {
   );
   draw();
   const off = onFolderStatus((state) => { if (state.changed) draw(); });
-  return () => { stopPreview(); folders.destroy(); off(); };
+  const offSongs = onSongs(draw);
+  return () => { stopPreview(); folders.destroy(); off(); offSongs(); };
 }

@@ -1,6 +1,6 @@
 /*
- * Audio files the teacher adds are kept in this browser (IndexedDB), never
- * uploaded anywhere.
+ * Temporary upload files and legacy originals in IndexedDB. Saved recordings
+ * upload to private cloud storage; legacy originals are retained during migration.
  */
 const DB = 'singing-media';
 const STORE = 'files';

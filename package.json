@@ -5,6 +5,17 @@
   "description": "Singing: songs, karaoke and lyric games for the English class.",
   "scripts": {
     "test": "node --test tests/*.test.js",
+    "test:cloud": "node --test tests/cloud/*.test.mjs",
+    "test:browser": "node tools/browser-smoke.cjs",
+    "build": "node tools/build-site.mjs",
+    "dev": "npm run build && wrangler dev --local",
+    "db:local": "wrangler d1 migrations apply singing --local",
+    "check:worker": "npm run build && wrangler deploy --dry-run",
     "serve": "npx http-server -p 8080 -c-1 ."
+  },
+  "devDependencies": {
+    "miniflare": "5.20261019.1-beta",
+    "playwright": "1.64.1",
+    "wrangler": "4.151.3"
   }
 }

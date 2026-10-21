@@ -1,6 +1,6 @@
 /*
- * Everything Singing remembers lives in this browser: the teacher's own songs,
- * settings, teams and scores. Nothing is sent anywhere.
+ * Browser settings, classroom scores and legacy songs. Private cloud songs stay
+ * in memory; authenticated assignments and results live in the Singing API.
  */
 import { BUILTIN_SONGS } from './data/songs/index.js';
 
@@ -58,19 +58,33 @@ export function setSettings(patch) {
 // --------------------------------------------------------------------- songs
 
 let sharedSong = null; // a song opened from a share link, not saved yet
-
-export function userSongs() {
+let cloudSongs = [];
+const songListeners = new Set();
+export function onSongs(fn) { songListeners.add(fn); return () => songListeners.delete(fn); }
+export function setCloudSongs(songs) { cloudSongs = songs; for (const fn of songListeners) fn(); }
+export function localUserSongs() {
   const list = read(KEYS.songs, []);
   return Array.isArray(list) ? list : [];
 }
+export function markMigrated(localId, principalId, cloudId) {
+  const migrated = read('singing.migrated.v1', {});
+  migrated[localId] = { principalId, cloudId };
+  if (!write('singing.migrated.v1', migrated)) throw new Error('Could not record migration. Your cloud copy is safe; retry migration later.');
+}
+
+export function userSongs() {
+  const migrated = read('singing.migrated.v1', {});
+  return [...cloudSongs, ...localUserSongs().filter((s) => !migrated[s.id])];
+}
 
 export function allSongs() {
-  return [...userSongs().map((s) => ({ ...s, mine: true })), ...BUILTIN_SONGS];
+  return [...userSongs().map((s) => ({ ...s, mine: s.mine !== false })), ...BUILTIN_SONGS];
 }
 
 export function getSong(id) {
   if (sharedSong && sharedSong.id === id) return sharedSong;
-  return allSongs().find((s) => s.id === id) || null;
+  const migrated = read('singing.migrated.v1', {});
+  return allSongs().find((s) => s.id === id || s.id === migrated[id]?.cloudId) || null;
 }
 
 export function setSharedSong(song) {
@@ -78,7 +92,9 @@ export function setSharedSong(song) {
 }
 
 export function saveUserSong(song) {
-  const list = userSongs();
+  if (song.cloud) throw new Error('Save this song to your cloud library.');
+  if (song.source === 'audio' || ['audio', 'karaoke', 'vocals', 'sourceFile'].some((role) => song[role]?.mediaId)) throw new Error('Uploaded songs must be saved to your private cloud library. Sign in as a teacher.');
+  const list = localUserSongs();
   const clean = { ...song };
   delete clean.mine;
   delete clean.builtin;
@@ -91,7 +107,7 @@ export function saveUserSong(song) {
 }
 
 export function deleteUserSong(id) {
-  write(KEYS.songs, userSongs().filter((s) => s.id !== id));
+  write(KEYS.songs, localUserSongs().filter((s) => s.id !== id));
 }
 
 export function newSongId(title = 'song') {

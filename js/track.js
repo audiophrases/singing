@@ -21,7 +21,8 @@ export async function makeTrack(song, opts = {}) {
   }
   if (song.source === 'audio') {
     const { AudioTrack } = await import('./media/audio.js');
-    const t = new AudioTrack(song, opts);
+    const prepared = song.cloud ? await (await import('./cloud/library.js')).playbackSong(song) : song;
+    const t = new AudioTrack(prepared, opts);
     await t.ready;
     return t;
   }

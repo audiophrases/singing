@@ -15,6 +15,7 @@ import { makeTrack } from '../track.js';
 import { compileSong } from '../music/score.js';
 import { selectAudioFiles, AUDIO_FILE, LYRICS_FILE } from '../media/song-files.js';
 import { folderLibraryControls } from './folder-library.js';
+import { saveCloudSong, cloudMediaBlob } from '../cloud/library.js';
 
 const EMOJIS = ['🎵', '🎤', '🎸', '🎹', '🥁', '🎺', '🌟', '❤️', '🌈', '🌍', '🐶', '🚀', '☀️', '🌙', '🎉', '🍕', '⚽', '🦄'];
 
@@ -64,6 +65,7 @@ export async function render(el, { id }) {
   const fileNote = h('span', { class: 'small' }, song.audio && song.audio.name ? `🎧 ${song.audio.name}` : '');
   const karIn = h('input', { type: 'file', accept: 'audio/*' });
   const karNote = h('div', { class: 'small' }, song.karaoke && song.karaoke.name ? `🎤 ${song.karaoke.name}` : '');
+  const rightsIn = h('input', { type: 'checkbox', checked: !!song.cloud });
   const vocIn = h('input', { type: 'file', accept: 'audio/*', 'aria-label': 'Vocals only file' });
   const vocNote = h('div', { class: 'small' }, song.vocals?.name ? `🗣️ ${song.vocals.name}` : '');
   // Files added in this visit, to listen to them (auto-align) without reading them back.
@@ -77,7 +79,7 @@ export async function render(el, { id }) {
   const setAudioFile = async (f) => {
     try {
       song.audio = { mediaId: await keepFile(f), name: f.name };
-      fileNote.textContent = `🎧 ${f.name} (saved in this browser)`;
+      fileNote.textContent = `🎧 ${f.name} (ready to upload when you save)`;
       return true;
     } catch (e) {
       toast(`Could not keep the file: ${e.message}`, 'bad');
@@ -87,7 +89,7 @@ export async function render(el, { id }) {
   const setKaraokeFile = async (f) => {
     try {
       song.karaoke = { mediaId: await keepFile(f), name: f.name, offset: 0 };
-      karNote.textContent = `🎤 ${f.name} (saved in this browser)`;
+      karNote.textContent = `🎤 ${f.name} (ready to upload when you save)`;
       return true;
     } catch (e) {
       toast(`Could not keep the file: ${e.message}`, 'bad');
@@ -97,7 +99,7 @@ export async function render(el, { id }) {
   const setVocalsFile = async (f) => {
     try {
       song.vocals = { mediaId: await keepFile(f), name: f.name, offset: 0 };
-      vocNote.textContent = `🗣️ ${f.name} (saved in this browser)`;
+      vocNote.textContent = `🗣️ ${f.name} (ready to upload when you save)`;
       return true;
     } catch (e) {
       toast(`Could not keep the file: ${e.message}`, 'bad');
@@ -119,7 +121,7 @@ export async function render(el, { id }) {
         field('Karaoke version (optional)', karIn), karNote, dropKaraoke,
         field('Vocals only (optional)', vocIn), vocNote, dropVocals,
         h('p', { class: 'small' }, 'Keep the original song, the instrumental and isolated vocals together. Choose Vocals only in the player to practise with just the singer.'),
-        h('p', { class: 'small' }, 'The karaoke version is the same recording without the singer: an official instrumental, or this file through a vocal remover. Karaoke, Echo and Pitch Pal use it; Singing lines it up with the song by itself. The files stay in this browser; share links do not include them.'));
+        h('p', { class: 'small' }, 'Use the same recording without the singer. Original, karaoke and vocals files are saved to your private cloud library. Sign in as a teacher before saving.'));
     }
     if (song.source === 'none') srcBox.append(h('p', { class: 'small' }, 'No music: you sing or play it yourself. The lyrics move at the speed you set when you sync (or at a reading pace).'));
   };
@@ -209,7 +211,8 @@ export async function render(el, { id }) {
   const featuresOf = (mid) => {
     if (!heard[mid]) {
       heard[mid] = (async () => {
-        const blob = blobs[mid] || await getMedia(mid);
+        const ref = ['audio', 'karaoke', 'vocals'].map((r) => song[r]).find((r) => r && (r.mediaId || r.assetId) === mid);
+        const blob = blobs[mid] || (ref?.assetId ? await cloudMediaBlob(ref, song) : await getMedia(mid));
         if (!blob) throw new Error('the audio file is not in this browser any more');
         return features(await decodeMono(blob));
       })();
@@ -219,7 +222,7 @@ export async function render(el, { id }) {
   };
   // Let the message show before the (second-long) listening starts.
   const working = (el, text) => { el.textContent = text; return new Promise((r) => setTimeout(r, 50)); };
-  const hasAudioFile = () => song.source === 'audio' && song.audio && song.audio.mediaId;
+  const hasAudioFile = () => song.source === 'audio' && song.audio && (song.audio.mediaId || song.audio.assetId);
 
   // The UltraStar melody against the song: move the lyrics to where it is sung.
   async function alignLyrics({ auto = false } = {}) {
@@ -236,7 +239,7 @@ export async function render(el, { id }) {
     await working(syncStatus, '🪄 Listening for the melody in your audio…');
     let res;
     try {
-      res = alignNotes(await featuresOf(song.audio.mediaId), notes);
+      res = alignNotes(await featuresOf(song.audio.mediaId || song.audio.assetId), notes);
     } catch (e) {
       syncStatus.textContent = `Could not listen to the audio: ${e.message}.`;
       return;
@@ -257,7 +260,7 @@ export async function render(el, { id }) {
     await working(karNote, `🎤 ${k.name}: lining it up with the song…`);
     let res;
     try {
-      res = alignRecordings(await featuresOf(song.audio.mediaId), await featuresOf(k.mediaId));
+      res = alignRecordings(await featuresOf(song.audio.mediaId || song.audio.assetId), await featuresOf(k.mediaId || k.assetId));
     } catch (e) {
       karNote.textContent = `🎤 ${k.name}: could not listen to it (${e.message}).`;
       return;
@@ -435,16 +438,26 @@ export async function render(el, { id }) {
   };
   document.addEventListener('keydown', onKey);
 
-  const save = () => {
+  let saving = false;
+  const save = async () => {
+    if (saving) return;
     collect();
     if (song.source === 'youtube' && !song.youtube.id) { toast('That YouTube link does not look right.', 'bad'); return; }
     if (!song.synced.length) { toast('Add the lyrics first.', 'bad'); return; }
     const timed = song.synced.filter((l) => Number.isFinite(l.start)).length;
     if (song.source !== 'none' && timed < song.synced.length) toast(`${song.synced.length - timed} lines are not synced yet - they get estimated times.`);
-    saveUserSong(song);
-    toast('Song saved ⭐', 'ok');
-    location.hash = `#/song/${encodeURIComponent(song.id)}`;
+    saving = true;
+    saveButton.disabled = true;
+    try {
+      const saved = song.source === 'audio' || song.cloud || ['audio', 'karaoke', 'vocals', 'sourceFile'].some((role) => song[role]?.mediaId)
+        ? await saveCloudSong(song, { rightsConfirmed: rightsIn.checked, onProgress: (text) => { syncStatus.textContent = text; } })
+        : saveUserSong(song);
+      toast(saved.cloud ? 'Song saved to your private cloud library ☁' : 'Song saved ⭐', 'ok');
+      location.hash = `#/song/${encodeURIComponent(saved.id)}`;
+    } catch (e) { syncStatus.textContent = e.message; toast(e.message, 'bad'); }
+    finally { saving = false; saveButton.disabled = false; }
   };
+  const saveButton = h('button', { class: 'btn primary btn-lg', type: 'button', onclick: save }, '💾 Save song');
 
   drawSync();
   const shiftBtn = (d, label, title) => h('button', { class: 'btn btn-sm', type: 'button', title, onclick: () => shiftAll(d) }, label);
@@ -474,7 +487,8 @@ export async function render(el, { id }) {
     syncStatus,
     syncList,
     h('div', { class: 'row top-space' },
-      h('button', { class: 'btn primary btn-lg', type: 'button', onclick: save }, '💾 Save song'),
+      h('label', { class: 'inline' }, rightsIn, ' I have permission to store and use this song.'),
+      saveButton,
       existing ? h('a', { class: 'btn', href: `#/song/${encodeURIComponent(song.id)}` }, 'Cancel') : null),
   );
   card.addEventListener('dragover', (e) => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); card.classList.add('dropping'); } });
@@ -511,7 +525,13 @@ function renderBand(el, song) {
     area, msg,
     h('div', { class: 'row top-space' },
       h('button', { class: 'btn', type: 'button', onclick: check }, '🔍 Check'),
-      h('button', { class: 'btn primary', type: 'button', onclick: () => { const s = check(); if (s) { saveUserSong(s); toast('Saved ⭐', 'ok'); location.hash = `#/song/${encodeURIComponent(s.id)}`; } } }, '💾 Save'),
+      h('button', { class: 'btn primary', type: 'button', onclick: async () => {
+        const s = check(); if (!s) return;
+        try {
+          const saved = song.cloud ? await saveCloudSong({ ...s, id: song.id, cloud: true, revision: song.revision }, { rightsConfirmed: true }) : saveUserSong(s);
+          toast('Saved ⭐', 'ok'); location.hash = `#/song/${encodeURIComponent(saved.id)}`;
+        } catch (e) { msg.textContent = e.message; }
+      } }, '💾 Save'),
       h('a', { class: 'btn', href: `#/remix/${encodeURIComponent(song.id)}` }, '🪄 Remix words instead'))));
   return null;
 }
@@ -546,9 +566,9 @@ function importExport() {
   };
   return h('section', { class: 'card' },
     h('h3', { style: { marginTop: 0 } }, '💾 Back up your songs'),
-    h('p', { class: 'small' }, 'Your songs live in this browser. Download them as a file to keep them safe or move them to another computer. (Audio files are not included.)'),
+    h('p', { class: 'small' }, 'JSON contains song details only. To move old browser songs with their audio to the cloud app, open your account and choose Export local backup with audio. Cloud recordings already persist across devices.'),
     h('div', { class: 'row' },
-      h('button', { class: 'btn', type: 'button', onclick: exportAll }, '⬇️ Download my songs'),
+      h('button', { class: 'btn', type: 'button', onclick: exportAll }, '⬇️ Download song details (JSON)'),
       h('button', { class: 'btn', type: 'button', onclick: () => fileIn.click() }, '⬆️ Import songs'),
       fileIn));
 }

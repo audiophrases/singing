@@ -1,6 +1,6 @@
 /*
- * AudioTrack: an audio file the teacher added (kept in this browser), or a
- * URL. Played through the band's mixer so the visualizer sees it.
+ * AudioTrack: a temporary/legacy browser file or private cloud playback URL.
+ * Played through the band's mixer so the visualizer sees it.
  *
  * A song can also have a karaoke version: the same recording without the
  * singer. Both play together, in step, and only one is heard: the knob
@@ -44,6 +44,9 @@ export class AudioTrack extends PolledTrack {
     this.leadMuted = false;
     this.objectUrls = [];
     this.lastFix = 0;
+    this.destroyed = false;
+    this.refreshing = null;
+    this.renewPosition = null;
     this.ready = this.load();
   }
 
@@ -64,10 +67,10 @@ export class AudioTrack extends PolledTrack {
     // The karaoke version is a bonus: the song plays without it if it is missing.
     const k = this.song.karaoke;
     const kblob = k && k.mediaId && k.mediaId !== a.mediaId ? await getMedia(k.mediaId).catch(() => null) : null;
-    if (kblob) {
+    if (kblob || k?.url) {
       const el = newElement();
       try {
-        await loadElement(el, this.urlFor(kblob), 'karaoke version');
+        await loadElement(el, kblob ? this.urlFor(kblob) : k.url, 'karaoke version');
         this.kar = el;
       } catch (e) {
         console.warn(e.message);
@@ -75,10 +78,10 @@ export class AudioTrack extends PolledTrack {
     }
     const v = this.song.vocals;
     const vblob = v?.mediaId ? await getMedia(v.mediaId).catch(() => null) : null;
-    if (vblob) {
+    if (vblob || v?.url) {
       const el = newElement();
       try {
-        await loadElement(el, this.urlFor(vblob), 'vocals file');
+        await loadElement(el, vblob ? this.urlFor(vblob) : v.url, 'vocals file');
         this.voc = el;
       } catch (e) {
         console.warn(e.message);
@@ -181,13 +184,47 @@ export class AudioTrack extends PolledTrack {
   }
 
   poll() {
+    if (this.song.cloud && this.song.playbackExpiresAt - Date.now() < 60000 && !this.refreshing && !this.destroyed) this.refreshPlayback().catch(() => {});
     super.poll();
     this.syncKaraoke();
   }
 
-  time() { return this.audio.currentTime || 0; }
+  time() { return this.renewPosition ?? (this.audio.currentTime || 0); }
+
+  async refreshPlayback() {
+    if (this.refreshing) return this.refreshing;
+    this.refreshing = (async () => {
+      const { playbackSong } = await import('../cloud/library.js');
+      const prepared = await playbackSong(this.song);
+      if (this.destroyed) return;
+      const wasPlaying = this.playing;
+      const position = this.audio.currentTime;
+      this.renewPosition = position;
+      this.playing = false;
+      this.rawPause();
+      try {
+        for (const [element, role] of [[this.audio, 'audio'], [this.kar, 'karaoke'], [this.voc, 'vocals']]) {
+          if (element && prepared[role]?.url) await loadElement(element, prepared[role].url, role);
+        }
+        if (this.destroyed) return;
+        this.song = prepared;
+        this.rawSeek(position);
+        this.renewPosition = null;
+        if (wasPlaying) { this.playing = true; await this.rawPlay(); }
+      } catch (error) { this.playing = false; this.emit('pause'); throw error; }
+      finally { this.renewPosition = null; }
+    })().catch((error) => {
+      this.pause();
+      this.emit('error', error);
+      // Avoid a retry loop while access is unavailable. Play retries explicitly.
+      this.stopPolling();
+      throw error;
+    }).finally(() => { this.refreshing = null; });
+    return this.refreshing;
+  }
 
   async rawPlay() {
+    if (this.song.cloud && this.song.playbackExpiresAt <= Date.now() && !this.refreshing) await this.refreshPlayback();
     await unlockAudio();
     try { await this.audio.play(); } catch (e) { this.playing = false; throw e; }
     this.syncKaraoke(true);
@@ -213,6 +250,7 @@ export class AudioTrack extends PolledTrack {
   }
 
   destroy() {
+    this.destroyed = true;
     super.destroy();
     for (const n of [this.main, this.karNode, this.vocNode]) if (n) try { n.node.disconnect(); n.gain.disconnect(); } catch { /* ignore */ }
     this.audio.removeAttribute('src');

@@ -4,9 +4,15 @@ Songs, karaoke and lyric games for the English class. A sister app to
 [PinPlay](https://github.com/audiophrases/pinplay): same look, same "free, no ads,
 no sign-up" spirit, and it reuses PinPlay's sound effects, voices and quiz format.
 
-Everything runs in the browser. There is no build step and no server: open
+The built-in band and activities run in the browser. For static mode, open
 `index.html` from any static host (GitHub Pages, Cloudflare Pages, or
 `npm run serve` locally).
+
+Cloud classroom mode adds a Cloudflare Worker, private R2 songs and Singing-only
+D1 assignments/results, connected to PinPlay's shared identity directory. See
+[cloud setup and migration](docs/CLOUD_DEPLOYMENT.md) and the
+[repository audit and architecture](docs/CLOUD_ARCHITECTURE.md). Built-in songs still work
+on a static host; new uploaded recordings require cloud sign-in.
 
 ## What's inside
 
@@ -73,7 +79,7 @@ Singing composes a song for it:
 ### Bring your own songs
 - **Studio**: paste lyrics (with `[Chorus]` sections, emoji pictures, `A:`/`B:`
   parts and `| translations`), link a **YouTube** video or add an **audio file**
-  (kept in the browser), then **tap along** to sync each line with fine-tuning.
+  (uploaded to private cloud storage when saved), then **tap along** to sync each line with fine-tuning.
 - **Timing files**: drop an mp3 and its lyrics file on the Studio. It reads
   **UltraStar** `.txt` (every syllable's time and pitch, duet parts),
   **LRC** (with `<mm:ss.xx>` word times), **SRT** and **WebVTT** (including
@@ -102,11 +108,13 @@ Singing composes a song for it:
   Other browsers offer a folder import; select the folder again to rescan.
   Rescans skip unchanged files, attach new stems and lyrics to existing songs,
   and preserve Studio edits when the corresponding source file has not changed.
-  Folder access is read-only; playable copies stay in this browser, and removing
-  a disk file does not remove the imported song.
+  Folder access is read-only. After teacher sign-in and permission confirmation,
+  songs upload to the private cloud library. Removing a disk file does not remove
+  its cloud copy. Watching runs while the app is open.
 - **Remix**: rewrite any line (new animals, students' names, new verbs). The
   tune bends to fit the new syllables.
-- **Share link**: the whole song is compressed into the URL; no server needed.
+- **Share link**: built-in and lyrics-only songs can travel in a compressed URL.
+  Uploaded recordings use private links; students need a class assignment and sign-in.
 - **Worksheets**: lyrics, gap fill with word bank, cut-up strips, bingo cards.
 - **Export to PinPlay**: a PinPlay quiz (context gaps read aloud, word choice,
   word order, error hunt, rhyme matching) ready to import in PinPlay's builder.
@@ -124,8 +132,8 @@ karaoke version: drop all three on the Studio. A recording cannot change key
 or style, so those knobs, Round and Remix stay with the built-in band; without
 a karaoke version, Echo's "your turn" pauses the music. YouTube videos cannot
 be listened to or swapped, so auto-align and the karaoke version need audio
-files. Audio files stay in the browser that added them: keep copyrighted
-recordings out of this repository, since the site is public.
+files. Uploaded audio persists in private R2 storage across devices. Keep music
+out of the public repository and only upload recordings you have permission to use.
 
 ## Reused from PinPlay
 - Visual language: tokens, buttons, cards, Inter, the purple `#605dff`.
@@ -134,7 +142,8 @@ recordings out of this repository, since the site is public.
 - PinPlay's quiz JSON format for the export.
 - The QR-join idea for phones.
 
-PinPlay itself is not modified.
+The optional shared identity adapter adds a service-only entrypoint to PinPlay;
+each app keeps its own assignments and results. See [cloud deployment](docs/CLOUD_DEPLOYMENT.md).
 
 ## Develop
 

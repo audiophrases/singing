@@ -11,6 +11,7 @@ import { speak } from '../tts.js';
 import { lineIndexAt } from '../music/timeline.js';
 import { shareLink } from '../share.js';
 import { exportPinPlayQuiz } from '../pinplay-export.js';
+import { deleteCloudSong } from '../cloud/library.js';
 
 export async function render(el, { id }) {
   const song = getSong(id);
@@ -73,8 +74,9 @@ export async function render(el, { id }) {
     h('button', { class: 'activity', type: 'button', onclick: () => shareLink(song) }, h('span', { class: 'act-emoji' }, '🔗'), h('span', { class: 'act-name' }, 'Share link'), h('span', { class: 'act-desc' }, 'A link that opens this song on any computer, nothing to install.')),
     h('button', { class: 'activity', type: 'button', onclick: () => exportPinPlayQuiz(song) }, h('span', { class: 'act-emoji' }, '🎯'), h('span', { class: 'act-name' }, 'Export to PinPlay'), h('span', { class: 'act-desc' }, 'A PinPlay quiz (gap fills, word choice, line order) from this song.')),
     song.mine ? h('button', { class: 'activity', type: 'button', onclick: async () => {
-      if (await confirmDialog(`Delete "${song.title}" from this browser?`, { ok: 'Delete', danger: true })) {
-        deleteUserSong(song.id);
+      if (await confirmDialog(`Delete "${song.title}"${song.cloud ? ' from your cloud library' : ' from this browser'}?`, { ok: 'Delete', danger: true })) {
+        try { if (song.cloud) await deleteCloudSong(song); else deleteUserSong(song.id); }
+        catch (e) { toast(e.message, 'bad'); return; }
         toast('Song deleted');
         location.hash = '#/';
       }

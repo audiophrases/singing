@@ -9,6 +9,7 @@ import { SynthTrack } from '../music/player.js';
 import { transportBar } from '../controls.js';
 import { hyphenate, lineSyllables } from '../lyrics/syllables.js';
 import { songTimeline } from '../pinplay-export.js';
+import { saveCloudSong } from '../cloud/library.js';
 
 export async function render(el, { id }) {
   const song = getSong(id);
@@ -84,7 +85,18 @@ export async function render(el, { id }) {
       h('div', { class: 'row' },
         band ? h('button', { class: 'btn', type: 'button', onclick: preview }, '▶ Listen') : null,
         h('button', { class: 'btn primary', type: 'button', onclick: () => { const s = remixed(); setSharedSong(s); location.hash = `#/play/${encodeURIComponent(s.id)}/karaoke`; } }, '🎤 Sing it'),
-        h('button', { class: 'btn', type: 'button', onclick: () => { const s = remixed(); s.id = newSongId(s.title); saveUserSong(s); toast('Saved in your songs ⭐', 'ok'); location.hash = `#/song/${encodeURIComponent(s.id)}`; } }, '💾 Save as my song')),
+        h('button', { class: 'btn', type: 'button', onclick: async () => {
+          const s = remixed();
+          try {
+            let saved;
+            if (song.cloud) {
+              // Save a revision of the cloud recording; its immutable earlier lyrics
+              // remain available to assignments already using them.
+              saved = await saveCloudSong({ ...s, id: song.id, revision: song.revision }, { rightsConfirmed: true });
+            } else { s.id = newSongId(s.title); saved = saveUserSong(s); }
+            toast('Saved in your songs ⭐', 'ok'); location.hash = `#/song/${encodeURIComponent(saved.id)}`;
+          } catch (e) { toast(e.message, 'bad'); }
+        } }, song.cloud ? '💾 Save remix to cloud song' : '💾 Save as my song')),
       previewBox,
       list),
   );

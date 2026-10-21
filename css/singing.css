@@ -697,6 +697,9 @@ kbd {
 .setup-select { width: auto; max-width: 100%; }
 .setup-actions { margin-top: 1.3rem; }
 .choice-row { display: flex; gap: 0.4rem; flex-wrap: wrap; justify-content: center; }
+.assignment-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.4rem; }
+.results-table { width: 100%; border-collapse: collapse; margin-top: 1rem; text-align: left; }
+.results-table th, .results-table td { padding: 0.6rem; border-bottom: 1px solid var(--line); }
 
 .shake { animation: shake 0.4s; }
 @keyframes shake { 20%, 60% { transform: translateX(-8px); } 40%, 80% { transform: translateX(8px); } }

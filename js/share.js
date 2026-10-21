@@ -1,7 +1,6 @@
 /*
- * Share a song as a link: the whole song travels compressed inside the URL,
- * so there is no server and nothing to sign up for. (Audio files the teacher
- * added stay on their computer; YouTube songs keep their video.)
+ * Public songs can travel compressed in the URL. Private recordings use an
+ * identifier-only cloud link whose lyrics and audio require authorization.
  */
 import { h, openModal, toast } from './ui.js';
 
@@ -38,6 +37,7 @@ export function packableSong(song) {
 }
 
 export async function encodeSong(song) {
+  if (song.cloud || song.source === 'audio') throw new Error('Share uploaded songs using their private cloud link.');
   const json = new TextEncoder().encode(JSON.stringify(packableSong(song)));
   if (typeof CompressionStream === 'function') {
     const z = await pipe(json, new CompressionStream('deflate-raw'));
@@ -66,7 +66,7 @@ export function appUrl(hash) {
 export async function shareLink(song) {
   let link;
   try {
-    link = appUrl(`#/s/${await encodeSong(song)}`);
+    link = song.cloud ? appUrl(`#/song/${encodeURIComponent(song.id)}`) : appUrl(`#/s/${await encodeSong(song)}`);
   } catch (e) {
     toast(`Could not make a link: ${e.message}`, 'bad');
     return;
@@ -87,8 +87,9 @@ export async function shareLink(song) {
     : h('p', { class: 'small' }, 'This song is too long for a QR code, but the link works.');
   openModal([
     h('h2', null, '🔗 Share this song'),
-    h('p', { class: 'small' }, 'Anyone who opens this link gets the song - lyrics, tune, pictures and timing. Nothing is uploaded: the song is inside the link.'),
-    song.source === 'audio' ? h('p', { class: 'small bad' }, `Your audio file${song.karaoke ? ' and its karaoke version are' : ' is'} not in the link. The other teacher will need to add their own copy.`) : null,
+    h('p', { class: 'small' }, song.cloud
+      ? 'This private link requires sign-in and permission to access the song. Use an assignment to give students access.'
+      : 'This link contains the song lyrics, tune and timing.'),
     input,
     h('div', { class: 'row top-space' }, h('button', { class: 'btn primary', type: 'button', onclick: copy }, '📋 Copy link'), h('span', { class: 'small' }, `${link.length} characters`)),
     h('div', { class: 'share-qr-wrap' }, qr),

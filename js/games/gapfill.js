@@ -43,6 +43,7 @@ export async function start(ctx, forced = {}) {
     forced.input ? null : h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Answer by'),
       choiceRow([['type', '⌨️ Typing'], ['bank', '👆 Tapping words']], conf.input, (v) => { conf.input = v; })),
   );
+  if (ctx.assignment) setupBody.querySelectorAll('button, input, select').forEach((control) => { control.disabled = true; });
   const intro = forced.input === 'choose'
     ? 'Listen and choose the word you hear. The music waits for you at the end of each line.'
     : 'Listen and type the missing words. The music waits at the end of each line. Type before the line ends for a speed bonus!';
@@ -86,6 +87,13 @@ export async function start(ctx, forced = {}) {
       if (conf.input === 'choose') {
         it.options = shuffle([it.word, ...distractors(it.word, { pool, count: 2, seed: conf.seed + it.id })], rnd);
       }
+    }
+    for (const saved of ctx.savedAnswers || []) {
+      const item = items[saved.item_id];
+      if (!item) continue;
+      const answer = checkAnswer(saved.answer, item.word);
+      if (saved.skipped) item.status = 'revealed';
+      else if (answer === 'right' || (answer === 'close' && conf.input === 'type')) item.status = answer;
     }
     const score = scoreBox();
     const progress = h('div', { class: 'gf-progress' });
@@ -161,8 +169,9 @@ export async function start(ctx, forced = {}) {
       opts.forEach((w, i) => bank.append(h('button', { class: 'btn bank-word', type: 'button', onclick: (e) => tryAnswer(w, e.currentTarget) }, h('kbd', null, String(i + 1)), ` ${w}`)));
     }
 
-    function settle(it, status, points) {
+    function settle(it, status, points, answer = it.word) {
       it.status = status;
+      ctx.reportAnswer?.({ itemId: it.id, answer, skipped: status === 'revealed' });
       if (points) score.add(points, status === 'right');
       else score.breakStreak();
       const box = boxes.get(it.id);
@@ -200,7 +209,7 @@ export async function start(ctx, forced = {}) {
         if (early) pts += 5;
         pts = Math.max(2, pts - active.hints * 3);
         sfx('pop', { volume: 0.35 });
-        settle(active, res === 'right' ? 'right' : 'close', pts);
+        settle(active, res === 'right' ? 'right' : 'close', pts, text);
         input.value = '';
         input.classList.remove('wrong');
         return true;

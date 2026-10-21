@@ -1,8 +1,10 @@
-/* Read-only folder import. Poll while the app is open; keep playable copies locally. */
+/* Read-only folder import. Poll while the app is open and save to private R2. */
 import { userSongs, saveUserSong, newSongId } from '../store.js';
 import { putMedia, getMedia, newMediaId, deleteMedia } from './store.js';
 import { parseLyrics } from '../lyrics/lines.js';
 import { AUDIO_FILE, LYRICS_FILE, filePath, fileStamp, groupSongFiles } from './song-files.js';
+import { saveCloudSong } from '../cloud/library.js';
+import { requireTeacher } from '../cloud/session.js';
 
 const FOLDER_KEY = 'library-folder-v1';
 const listeners = new Set();
@@ -12,6 +14,8 @@ let busy = false;
 let seen = new Map();
 let state = { name: '', watching: false, busy: false, message: 'Choose a folder to add songs together with their karaoke, vocals and lyrics files.' };
 let initialized;
+let uploadRights = false;
+export function setFolderUploadRights(value) { uploadRights = !!value; }
 
 export const folderStatus = () => ({ ...state });
 export function onFolderStatus(fn) { listeners.add(fn); return () => listeners.delete(fn); }
@@ -50,7 +54,7 @@ export async function importSongFiles(files, sourceId, {
     const created = [];
     try {
       if (group.error) throw group.error;
-      const existing = listSongs().find((s) => s.folderImport?.sourceId === sourceId && s.folderImport.key === group.key);
+      const existing = listSongs().find((s) => s.folderImport?.key === group.key && (s.cloud || s.folderImport.sourceId === sourceId));
       const meta = group.timing?.meta || {};
       const fallback = /^(.*?)\s+-\s+(.+)$/.exec(group.base);
       const song = existing ? structuredClone(existing) : {
@@ -84,7 +88,7 @@ export async function importSongFiles(files, sourceId, {
       if (song.audio) song.source = 'audio';
       if (!changed) { result.unchanged += 1; continue; }
       song.folderImport = { sourceId, key: group.key, stamps };
-      saveSong(song);
+      await saveSong(song);
       result[existing ? 'updated' : 'added'] += 1;
     } catch (error) {
       await Promise.allSettled(created.map((id) => removeFile(id)));
@@ -116,7 +120,7 @@ export async function scanFolder() {
     // Wait for the whole group to stop changing, including files still copying.
     const stable = await stableSongFiles(files, seen);
     seen = next;
-    const result = await importSongFiles(stable.files, current.id);
+    const result = await importCloudFiles(stable.files, current.id);
     if (folder !== current) return;
     report(result);
     if (stable.waiting) update({ message: `${state.message}. Waiting for ${stable.waiting} song group${stable.waiting === 1 ? '' : 's'} to finish copying; scan again shortly.` });
@@ -139,6 +143,8 @@ export function stopWatching() {
 
 export async function startWatching() {
   if (!folder) return;
+  requireTeacher();
+  if (!uploadRights) { update({ message: 'Confirm permission to store these songs, then reconnect the folder.' }); return; }
   const current = folder;
   if (await current.handle.requestPermission({ mode: 'read' }) !== 'granted') {
     update({ message: 'Folder access was not granted. Reconnect when you are ready.' });
@@ -152,6 +158,8 @@ export async function startWatching() {
 }
 
 export async function chooseSongFolder() {
+  requireTeacher();
+  if (!uploadRights) throw new Error('Confirm permission to store and use these songs before choosing the folder.');
   const handle = await window.showDirectoryPicker({ mode: 'read', id: 'singing-songs' });
   stopWatching();
   seen = new Map();
@@ -169,11 +177,7 @@ export function initFolderLibrary() {
       folder = await getMedia(FOLDER_KEY);
       if (!folder) return;
       update({ name: folder.handle.name });
-      if (await folder.handle.queryPermission({ mode: 'read' }) === 'granted') {
-        timer = setInterval(scanFolder, 5000);
-        update({ watching: true });
-        await scanFolder();
-      } else update({ message: 'Reconnect this folder to check for new songs.' });
+      update({ message: 'Sign in, confirm permission to upload, and reconnect this folder to check for new songs.' });
     } catch (error) {
       update({ message: `Could not restore the folder: ${error.message}` });
     }
@@ -184,13 +188,26 @@ export function initFolderLibrary() {
 // Browsers without directory handles can still import a whole folder at once.
 export async function importFolderSelection(files) {
   if (busy) return;
+  requireTeacher();
+  if (!uploadRights) throw new Error('Confirm permission to store and use these songs before importing.');
   busy = true;
   update({ busy: true, changed: 0, message: 'Importing songs…' });
   try {
     const root = files[0]?.webkitRelativePath?.split('/')[0] || 'Selected files';
-    return report(await importSongFiles(files, `selection:${root}`));
+    return report(await importCloudFiles(files, `selection:${root}`));
   } finally {
     busy = false;
     update({ busy: false });
   }
+}
+
+async function importCloudFiles(files, sourceId) {
+  requireTeacher();
+  if (!uploadRights) throw new Error('Confirm permission to upload these songs.');
+  return importSongFiles(files, sourceId, { saveSong: async (song) => {
+    const key = song.folderImport.key;
+    const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key));
+    const clientId = `folder-${[...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+    return saveCloudSong(song, { rightsConfirmed: true, clientId, onProgress: (message) => update({ message }) });
+  } });
 }

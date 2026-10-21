@@ -20,9 +20,26 @@ import { teamStrip, openTeamsDialog, showPodium } from './teams.js';
 import { startViz } from '../viz.js';
 import { sfx, confetti, floatEmoji } from '../sfx.js';
 import { lineIndexAt } from '../music/timeline.js';
+import { api } from '../cloud/session.js';
 
 export async function render(root, params) {
-  const song = getSong(params.id);
+  let song = getSong(params.id);
+  let assignmentRun = null;
+  if (params.attempt) {
+    try {
+      assignmentRun = await api(`/api/attempts/${encodeURIComponent(params.attempt)}`);
+      if (assignmentRun.attempt.song_id !== params.id || assignmentRun.attempt.activity !== params.game) throw new Error('This attempt belongs to another activity.');
+      if (assignmentRun.attempt.submitted_at) {
+        clear(root).append(h('div', { class: 'stage-main' }, h('h2', null, 'Attempt already submitted'), h('a', { class: 'btn', href: `#/assignment/${assignmentRun.attempt.assignment_id}` }, 'Back to assignment')));
+        return;
+      }
+      song = { ...assignmentRun.song, assigned: true, mine: false };
+      params = { ...params, ...assignmentRun.settings };
+    } catch (e) {
+      clear(root).append(h('div', { class: 'stage-main' }, h('p', null, e.message), h('a', { class: 'btn', href: '#/assignments' }, 'Back to assignments')));
+      return;
+    }
+  }
   const game = gameById(params.game);
   clear(root);
   root.className = 'stage';
@@ -44,7 +61,8 @@ export async function render(root, params) {
   let optionsBuilder = null;
   const optBtn = h('button', { class: 'btn icon-btn', type: 'button', title: 'Game settings', 'aria-label': 'Game settings', onclick: () => openOptions() }, '⚙️');
   const fsBtn = h('button', { class: 'btn icon-btn', type: 'button', title: 'Full screen (F)', 'aria-label': 'Full screen', onclick: () => toggleFullscreen() }, '⛶');
-  const back = () => { location.hash = `#/song/${encodeURIComponent(song.id)}`; };
+  const assignmentLink = assignmentRun ? `#/assignment/${assignmentRun.attempt.assignment_id}` : null;
+  const back = () => { location.hash = assignmentLink || `#/song/${encodeURIComponent(song.id)}`; };
   const top = h('div', { class: 'stage-top' },
     h('button', { class: 'btn icon-btn', type: 'button', title: 'Back to the song (Esc)', 'aria-label': 'Back', onclick: back }, '✕'),
     h('div', { class: 'stage-title' },
@@ -83,6 +101,7 @@ export async function render(root, params) {
     trackOffs = ['play', 'pause', 'end', 'barrier'].map((ev) => track.on(ev, syncViz));
     transport = transportBar(track);
     defaultBottom = h('div', { class: 'row', style: { width: '100%', flexWrap: 'wrap', gap: '.6rem' } }, transport, knobsBar(track, song));
+    if (assignmentRun && ['bingo', 'hotmic'].includes(game.id)) defaultBottom.append(h('button', { class: 'btn', type: 'button', onclick: () => ctx.finish({ title: 'Practice complete', text: 'Classroom activity marked complete.' }) }, 'Mark practice complete'));
     if (ctx) ctx.transport = transport;
   };
   cleanups.push(() => { trackOffs.forEach((off) => off()); if (transport) transport.destroy(); });
@@ -95,6 +114,8 @@ export async function render(root, params) {
     bottom.append(el || defaultBottom);
   };
   let ctx = null;
+  const pendingAnswers = new Map();
+  let answerQueue = Promise.resolve();
   bindTrack();
   setBottom(null);
 
@@ -103,6 +124,18 @@ export async function render(root, params) {
     track,
     timeline: track.timeline,
     params,
+    assignment: assignmentRun?.attempt || null,
+    savedAnswers: assignmentRun?.answers || [],
+    reportAnswer(answer) {
+      if (!assignmentRun) return;
+      pendingAnswers.set(answer.itemId, answer);
+      answerQueue = answerQueue.then(async () => {
+        const pending = pendingAnswers.get(answer.itemId);
+        if (!pending) return;
+        await api(`/api/attempts/${params.attempt}/answers`, { method: 'POST', body: pending });
+        if (pendingAnswers.get(answer.itemId) === pending) pendingAnswers.delete(answer.itemId);
+      }).catch(() => { toast('Progress is waiting to sync. Keep this page open and retry submission if your connection drops.', 'bad', 4500); });
+    },
     settings: getSettings(),
     game,
     root,
@@ -121,8 +154,22 @@ export async function render(root, params) {
       }
       if (x !== undefined) floatEmoji(points > 0 ? `+${points}` : String(points), x, y, { size: 36 });
     },
-    finish(result) { showResult(result); },
-    restart() { location.hash = `#/play/${encodeURIComponent(song.id)}/${game.id}?r=${Date.now().toString(36)}`; },
+    async finish(result) {
+      track.pause();
+      if (!assignmentRun) { showResult(result); return; }
+      try {
+        await answerQueue;
+        for (const answer of pendingAnswers.values()) await api(`/api/attempts/${params.attempt}/answers`, { method: 'POST', body: answer });
+        pendingAnswers.clear();
+        const saved = await api(`/api/attempts/${params.attempt}/submit`, { method: 'POST', body: result });
+        showResult({ ...result, score: saved.score ?? 0, max: saved.max ?? 0, text: `${result.text || ''} Your assignment result is saved.` });
+      } catch (e) {
+        clear(main).append(h('div', { class: 'setup-card' }, h('h2', null, 'Result not saved yet'), h('p', null, e.message),
+          h('button', { class: 'btn primary', type: 'button', onclick: () => ctx.finish(result) }, 'Retry submission'),
+          h('a', { class: 'btn', href: assignmentLink }, 'Back to assignment')));
+      }
+    },
+    restart() { location.hash = assignmentLink || `#/play/${encodeURIComponent(song.id)}/${game.id}?r=${Date.now().toString(36)}`; },
     replaceTrack(next) {
       track.destroy();
       track = next;
@@ -158,8 +205,8 @@ export async function render(root, params) {
         text ? h('p', null, text) : null,
         prev !== undefined && max ? h('p', { class: 'small' }, `Best before: ${prev}%`) : null,
         h('div', { class: 'row', style: { justifyContent: 'center', marginTop: '1rem' } },
-          h('button', { class: 'btn primary btn-lg', type: 'button', onclick: () => ctx.restart() }, '🔁 Play again'),
-          h('a', { class: 'btn btn-lg', href: `#/song/${encodeURIComponent(song.id)}` }, '🎵 Other activities'),
+          h('button', { class: 'btn primary btn-lg', type: 'button', onclick: () => ctx.restart() }, assignmentRun ? 'Back to assignment' : '🔁 Play again'),
+          h('a', { class: 'btn btn-lg', href: assignmentLink || `#/song/${encodeURIComponent(song.id)}` }, '🎵 Other activities'),
           getTeams().on ? h('button', { class: 'btn btn-lg', type: 'button', onclick: () => showPodium() }, '🏆 Winner') : null,
         ),
       ));
