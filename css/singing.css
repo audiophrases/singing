@@ -459,6 +459,7 @@ kbd {
     radial-gradient(900px 700px at 105% 110%, hsl(calc(var(--hue) + 70) 85% 30% / 0.9), transparent 70%),
     #0b0c1a;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr auto;
   font-family: var(--font);
   overflow: hidden;

@@ -21,17 +21,25 @@ export async function start(ctx, forced = {}) {
     input: forced.input || params.input || 'type',
     seed: Number(params.seed) || Math.floor(Math.random() * 1e6),
   };
+  const difficultyNote = h('p', { class: 'small' });
+  const describeDifficulty = () => {
+    difficultyNote.textContent = conf.focus
+      ? 'Every matching word in the selected focus is hidden.'
+      : GAP_LEVELS.find((level) => level.id === conf.level)?.desc || '';
+  };
+  describeDifficulty();
 
   // ---------------------------------------------------------------- set-up
   const setupBody = h('div', null,
-    forced.input === 'choose' ? null : h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Level'),
-      choiceRow(GAP_LEVELS.map((l) => [l.id, `${l.emoji} ${l.name}`, l.desc]), conf.level, (v) => { conf.level = v; })),
+    h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Difficulty'),
+      choiceRow(GAP_LEVELS.map((l) => [l.id, `${l.emoji} ${l.name}`, l.desc]), conf.level, (v) => { conf.level = v; describeDifficulty(); })),
     cats.length ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Focus'),
       (() => {
-        const sel = h('select', { class: 'setup-select' }, h('option', { value: '' }, 'Any words (by level)'), cats.map((c) => h('option', { value: c.id, selected: conf.focus === c.id }, `${c.emoji} Only ${c.name.toLowerCase()} (${c.count})`)));
-        sel.addEventListener('change', () => { conf.focus = sel.value; });
+        const sel = h('select', { class: 'setup-select', 'aria-label': 'Word focus' }, h('option', { value: '' }, 'Any words (by difficulty)'), cats.map((c) => h('option', { value: c.id, selected: conf.focus === c.id }, `${c.emoji} Only ${c.name.toLowerCase()} (${c.count})`)));
+        sel.addEventListener('change', () => { conf.focus = sel.value; describeDifficulty(); });
         return sel;
       })()) : null,
+    difficultyNote,
     forced.input ? null : h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Answer by'),
       choiceRow([['type', '⌨️ Typing'], ['bank', '👆 Tapping words']], conf.input, (v) => { conf.input = v; })),
   );
@@ -53,7 +61,7 @@ export async function start(ctx, forced = {}) {
 
   function begin() {
     const rnd = seeded(conf.seed);
-    const mode = conf.focus ? `cat:${conf.focus}` : conf.input === 'choose' ? 'easy' : conf.level;
+    const mode = conf.focus ? `cat:${conf.focus}` : conf.level;
     const gaps = pickGaps(timeline, { mode, seed: conf.seed });
     const pool = wordPool(timeline);
     const items = [];
