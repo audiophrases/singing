@@ -100,7 +100,7 @@ export async function render(root, params) {
     const syncViz = () => viz.setPlaying(track.playing);
     trackOffs = ['play', 'pause', 'end', 'barrier'].map((ev) => track.on(ev, syncViz));
     transport = transportBar(track);
-    defaultBottom = h('div', { class: 'row', style: { width: '100%', flexWrap: 'wrap', gap: '.6rem' } }, transport, knobsBar(track, song));
+    defaultBottom = h('div', { class: 'row', style: { width: '100%', flexWrap: 'wrap', gap: '.6rem' } }, transport, knobsBar(track, song, { vocalGuide: game.id === 'karaoke' }));
     if (assignmentRun && ['bingo', 'hotmic'].includes(game.id)) defaultBottom.append(h('button', { class: 'btn', type: 'button', onclick: () => ctx.finish({ title: 'Practice complete', text: 'Classroom activity marked complete.' }) }, 'Mark practice complete'));
     if (ctx) ctx.transport = transport;
   };

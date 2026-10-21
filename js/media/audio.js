@@ -7,6 +7,7 @@
  * setSinger(on) and the games' setMute('lead', true) (Echo's "your turn",
  * Pitch Pal's "I know it") switch to the karaoke version, as the band does
  * when its melody is muted. song.karaoke.offset: karaoke time = song time + offset.
+ * With isolated vocals, setVocalGuide(0..1) mixes a quiet guide into karaoke.
  */
 import { PolledTrack } from './base.js';
 import { getMedia } from './store.js';
@@ -41,6 +42,7 @@ export class AudioTrack extends PolledTrack {
     this.vocOffset = Number(song.vocals?.offset) || 0;
     this.vocalsOnly = false;
     this.singer = true;
+    this.vocalGuide = 0;
     this.leadMuted = false;
     this.objectUrls = [];
     this.lastFix = 0;
@@ -112,6 +114,17 @@ export class AudioTrack extends PolledTrack {
 
   get hasKaraoke() { return !!this.kar || !!(this.song.audio?.stems && this.voc); }
   get hasVocals() { return !!this.voc; }
+  get hasVocalGuide() { return this.hasKaraoke && this.hasVocals; }
+
+  // Add just the isolated voice to the backing, without doubling the band.
+  setVocalGuide(level) {
+    if (!this.hasVocalGuide) return;
+    this.vocalGuide = Math.max(0, Math.min(1, Number(level) || 0));
+    this.singer = false;
+    this.vocalsOnly = false;
+    this.applyVoice(!this.playing);
+    this.emit('change', { vocalGuide: this.vocalGuide, singer: false, vocalsOnly: false });
+  }
 
   setVocalsOnly(on) {
     this.vocalsOnly = !!on && this.hasVocals;
@@ -122,8 +135,9 @@ export class AudioTrack extends PolledTrack {
   // The singer on (the song) or off (the karaoke version).
   setSinger(on) {
     this.singer = !!on;
-    this.applyVoice();
-    this.emit('change', { singer: this.singer });
+    this.vocalGuide = 0;
+    this.applyVoice(!this.playing);
+    this.emit('change', { singer: this.singer, vocalGuide: 0 });
   }
 
   // Games mute the "lead" for a moment, like the band's melody.
@@ -136,25 +150,27 @@ export class AudioTrack extends PolledTrack {
   applyVoice(now = false) {
     const voice = this.singer && !this.leadMuted;
     const solo = this.vocalsOnly && voice;
-    const set = (el, ng, on) => {
+    const guide = !this.singer && !this.leadMuted && this.hasVocalGuide ? this.vocalGuide : 0;
+    const set = (el, ng, level) => {
       if (!el) return;
+      const value = Number(level);
       if (ng) {
         const t = ng.gain.context.currentTime;
         ng.gain.gain.cancelScheduledValues(t);
-        if (now) ng.gain.gain.setValueAtTime(on ? 1 : 0, t);
-        else ng.gain.gain.setTargetAtTime(on ? 1 : 0, t, 0.04);
+        if (now) ng.gain.gain.setValueAtTime(value, t);
+        else ng.gain.gain.setTargetAtTime(value, t, 0.04);
       } else {
-        el.volume = on ? 1 : 0;
+        el.volume = value;
       }
     };
     if (this.song.audio?.stems) {
       set(this.audio, this.main, !solo);
       set(this.kar, this.karNode, false);
-      set(this.voc, this.vocNode, voice);
+      set(this.voc, this.vocNode, voice ? 1 : guide);
     } else {
       set(this.audio, this.main, (!this.kar || voice) && !solo);
       set(this.kar, this.karNode, !voice);
-      set(this.voc, this.vocNode, solo);
+      set(this.voc, this.vocNode, solo ? 1 : guide);
     }
   }
 

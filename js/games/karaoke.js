@@ -64,6 +64,25 @@ export function paintLine(el, t) {
   return active;
 }
 
+// The ball cues the next syllable slightly early. All times remain on the
+// recording's timeline; rate scales the cue so its real-time lead stays steady.
+export const BALL_LEAD = 0.08;
+export function ballHop(syllables, t, rate = 1) {
+  if (!syllables.length) return null;
+  const speed = Math.max(0.1, Number(rate) || 1);
+  const lead = BALL_LEAD * speed;
+  const next = syllables.findIndex((s) => s.start > t + lead);
+  const previous = next < 0 ? syllables.length - 1 : next - 1;
+  const hold = () => previous >= 0 && t < syllables[previous].end ? { from: previous, to: previous, progress: 1 } : null;
+  if (next < 0) return hold();
+  const arrival = syllables[next].start - lead;
+  const departure = Math.max(previous >= 0 ? syllables[previous].start - lead : -Infinity, arrival - 0.22 * speed);
+  if (t < departure) return hold();
+  // After a long rest, bounce above the new syllable instead of flying across.
+  const from = previous >= 0 && syllables[next].start - syllables[previous].end <= 0.4 * speed ? previous : next;
+  return { from, to: next, progress: Math.max(0, Math.min(1, (t - departure) / Math.max(0.001, arrival - departure))) };
+}
+
 export async function start(ctx) {
   const { track, timeline, main, settings } = ctx;
   const opts = {
@@ -110,7 +129,9 @@ export async function start(ctx) {
   if (track.hasKaraoke) track.setSinger(false);
 
   ctx.options(() => h('div', null,
-    track.hasKaraoke ? toggle('🎤 The singer on the recording', track.singer, (v) => track.setSinger(v)) : null,
+    track.hasVocalGuide
+      ? h('p', { class: 'small' }, 'Vocal help starts muted. Raise the slider at the bottom to hear a little of the singer while you practise.')
+      : track.hasKaraoke ? toggle('🎤 The singer on the recording', track.singer, (v) => track.setSinger(v)) : null,
     toggle('🟡 Bouncing ball', opts.ball, (v) => { opts.ball = v; setSettings({ ball: v }); }),
     toggle('🖼️ Pictures', opts.pics, (v) => { opts.pics = v; setSettings({ showPics: v }); lastIdx = -99; }),
     toggle('🌍 Translations (when the song has them)', opts.tr, (v) => { opts.tr = v; setSettings({ translations: v }); lastIdx = -99; }),
@@ -121,8 +142,8 @@ export async function start(ctx) {
 
   let lastIdx = -99;
   let cur = null;
-  let lastActive = null;
-  let ballFrom = null;
+  let syllableElements = [];
+  let syllables = [];
   let peak = 0;
   let loudSum = 0;
   let loudN = 0;
@@ -150,7 +171,8 @@ export async function start(ctx) {
       if (p) pic.classList.add('pop');
     }
     tr.textContent = opts.tr && line && line.translation ? line.translation : '';
-    lastActive = null;
+    syllableElements = cur ? [...cur.querySelectorAll('.syl')] : [];
+    syllables = syllableElements.map((el) => el._syl);
   };
 
   const countdown = (t) => {
@@ -166,7 +188,7 @@ export async function start(ctx) {
   let lastCount = '';
   const loop = () => {
     const t = track.time();
-    const idx = currentLineAt(timeline, t);
+    const idx = currentLineAt(timeline, t + (track.playing ? BALL_LEAD * track.rate : 0));
     if (idx !== lastIdx) {
       draw(idx);
       lastIdx = idx;
@@ -177,29 +199,19 @@ export async function start(ctx) {
       clear(banner);
       if (c) banner.append(h('div', { class: 'k-count' }, c));
     }
-    if (cur) {
-      const active = paintLine(cur, t);
-      // Ball: hop from the previous syllable to this one.
-      if (opts.ball && active && track.playing) {
-        if (active !== lastActive) {
-          ballFrom = lastActive ? center(lastActive, lines) : null;
-          lastActive = active;
-        }
-        const to = center(active, lines);
-        const s = active._syl;
-        const hop = Math.min(0.22, (s.end - s.start) * 0.6);
-        const u = Math.min(1, (t - s.start) / Math.max(0.05, hop));
-        const from = ballFrom || { x: to.x, y: to.y };
-        const x = from.x + (to.x - from.x) * easeOut(u);
-        const height = Math.min(60, Math.abs(to.x - from.x) * 0.35 + 18);
-        const y = to.y - Math.sin(Math.PI * u) * height;
-        ball.style.left = `${x}px`;
-        ball.style.top = `${y}px`;
-        ball.classList.add('show');
-      } else if (!active || !opts.ball) {
-        ball.classList.remove('show');
-      }
-    }
+    if (cur) paintLine(cur, t);
+    const hop = opts.ball && track.playing ? ballHop(syllables, t, track.rate) : null;
+    if (hop) {
+      const from = center(syllableElements[hop.from], lines);
+      const to = center(syllableElements[hop.to], lines);
+      const u = hop.progress;
+      const x = from.x + (to.x - from.x) * easeOut(u);
+      const height = Math.min(60, Math.abs(to.x - from.x) * 0.35 + 18);
+      const y = from.y + (to.y - from.y) * easeOut(u) - Math.sin(Math.PI * u) * height;
+      ball.style.left = `${x}px`;
+      ball.style.top = `${y}px`;
+      ball.classList.add('show');
+    } else ball.classList.remove('show');
     if (opts.meter && mic) {
       const lv = mic.level();
       if (track.playing) { loudSum += lv; loudN += 1; }

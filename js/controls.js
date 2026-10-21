@@ -85,7 +85,7 @@ export function transportBar(track, { onToggle } = {}) {
   return el;
 }
 
-export function knobsBar(track, song) {
+export function knobsBar(track, song, { vocalGuide = false } = {}) {
   const wrap = h('div', { class: 'knobs' });
 
   // Speed
@@ -139,8 +139,20 @@ export function knobsBar(track, song) {
     wrap.append(h('div', { class: 'knob', title: 'Who sings the melody' }, h('span', { class: 'knob-label' }, '🎵 Melody'), guideSel));
   }
 
-  // A recording with a karaoke version: the singer on or off.
-  if (track.hasKaraoke || track.hasVocals) {
+  if (vocalGuide && track.hasVocalGuide) {
+    const level = h('input', { type: 'range', min: 0, max: 100, step: 5, value: Math.round(track.vocalGuide * 100), 'aria-label': 'Vocal help' });
+    const value = h('span', { class: 'val' });
+    const sync = () => {
+      level.value = Math.round(track.vocalGuide * 100);
+      value.textContent = track.vocalGuide ? `${level.value}%` : 'Off';
+      level.setAttribute('aria-valuetext', track.vocalGuide ? `${level.value}%` : 'Off');
+    };
+    level.addEventListener('input', () => track.setVocalGuide(Number(level.value) / 100));
+    track.on('change', (event) => { if (event && 'vocalGuide' in event) sync(); });
+    sync();
+    wrap.append(h('div', { class: 'knob', title: 'Raise the singer’s voice for help while the karaoke backing keeps playing' }, h('span', { class: 'knob-label' }, '🗣️ Vocal help'), level, value));
+  } else if (track.hasKaraoke || track.hasVocals) {
+    // Other playback keeps the original, karaoke and vocals-only selector.
     const singerSel = h('select', { 'aria-label': 'Singer' },
       h('option', { value: 'on' }, '🎤 On (the song)'),
       track.hasKaraoke ? h('option', { value: 'off' }, '🙊 Off (karaoke version)') : null,
