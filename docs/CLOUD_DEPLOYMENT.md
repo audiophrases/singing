@@ -5,6 +5,75 @@ and results. Production resources and secrets must be inspected separately befor
 deploying. The old static host still plays built-in songs; new audio saves require
 the cloud Worker and a teacher session.
 
+## Windows quick start
+
+Install **Node.js 22 or later** (including npm) and **Git for Windows**. Then
+double-click **`deploy.bat`** and choose **1: Deploy or update Singing**. There is
+no need to clone PinPlay manually, paste database IDs, install a global Wrangler,
+or copy Cloudflare/PinPlay secrets. The launcher installs the project's pinned
+dependencies when needed and opens Cloudflare's browser login if necessary.
+
+The deployment helper runs preparation first, shows the target account, PinPlay
+source commit and production version, then asks you to type `DEPLOY` once before
+making production changes. You can also use the individual launchers:
+
+PinPlay's release uses its current `main` source plus the companion patch. If
+`main` contains unrelated work that is not ready for production, release or
+reconcile that work before confirming this deployment.
+
+| File | What it does |
+| --- | --- |
+| `deployment/01-prepare.bat` | Prepare an isolated PinPlay checkout, apply/check the identity patch, run the tests, build the static site, and dry-run both Workers. No production changes. |
+| `deployment/02-deploy.bat` | Prepare and test, authenticate, inspect existing deployments, create/reuse private Singing R2 and D1, apply Singing migrations, release the identity adapter and Singing, run public smoke checks, and open the app. |
+| `deployment/03-verify-and-open.bat` | Recheck R2 privacy, Singing bindings, the public page/API and authentication requirement, then open the app. |
+| `deployment/04-google-login-setup.bat` | Show the exact Singing origin to allow and open Google's credentials page. Keep all existing authorized origins. |
+
+Run the same deployment BAT again after an interruption or for a later release.
+Existing Singing resources are reused. Migration failures stop before Worker code
+is released. A recorded staged version can be resumed; an unknown staged release
+or concurrent rollout stops the helper rather than inheriting unreviewed settings.
+No bucket objects, database records or shared identity secrets are deleted.
+
+Local generated files live under **`.deployment/`**, which is ignored by Git and
+excluded from the published site:
+
+- `singing.production.json`: the real account/database IDs and absolute build paths.
+  Source `wrangler.jsonc` keeps its local placeholder unchanged.
+- `pinplay.production.json` and `pinplay/`: the isolated, patched companion source
+  and release config. Source hashes catch unexpected edits before reuse.
+- `state.json`, `releases/`, and command receipts: resource IDs, progress and previous
+  production version IDs, including the original recovery baseline.
+- `NEXT-STEPS.txt`: the live address, Google origin/client information, old-song
+  migration instructions and recovery references.
+
+The helper uses version upload/promotion for PinPlay, with `--keep-vars`; this
+preserves its routes, domains, schedules, existing variables and secrets. Later
+Singing code updates also use version promotion. For intentional changes to routes,
+schedules or other deployment settings, use the manual workflow below and review
+the Cloudflare configuration separately. The helper refuses unexpected existing
+bindings, different accounts/databases and public bucket access.
+
+Two steps still require the service owner's browser:
+
+1. Add the Singing origin to the existing Google OAuth web client's **Authorized
+   JavaScript origins**. `04-google-login-setup.bat` opens the right console and
+   shows the value; the helper cannot edit Google Cloud configuration through
+   Cloudflare. Test real teacher/student sign-in and a private upload afterwards.
+2. For songs stored at an old app address, publish the updated `_site/` build at
+   that address and use the audio-inclusive transfer described below. The helper
+   builds that folder, but does not push to GitHub or replace the old host.
+
+For terminal/CI use, `node tools/deploy-cli.mjs deploy --yes` explicitly skips the
+typed confirmation while retaining all checks. `SINGING_DEPLOY_NO_PAUSE=1` avoids
+the BAT's closing pause; `SINGING_DEPLOY_NO_BROWSER=1` prevents opening browser tabs.
+On a machine without a saved app URL, `SINGING_DEPLOY_URL` can supply its public
+HTTPS origin. Never put tokens or passwords in those settings or BAT files.
+
+If a helper was forcibly stopped, its process lock is removed automatically only
+after confirming the old process is no longer running. A second active helper is
+refused. If source integration or live configuration has changed incompatibly,
+resolve the reported difference rather than bypassing the check.
+
 ## Components
 
 - `cloudflare/worker.js`: Singing API; same-origin assets and secure cookies.
@@ -17,8 +86,8 @@ the cloud Worker and a teacher session.
   key inside PinPlay so legacy PinPlay verifiers cannot accept Singing tokens.
 - Companion PinPlay changes are included in `integrations/pinplay-classroom.patch`
   (apply from a PinPlay repository root with `git apply --check` before `git apply`).
-  They are also prepared in the separate checkout
-  `D:\Admin\pinplay-singing-integration`: `cloudflare/classroom-entry.mjs`,
+  The Windows helper prepares its own checkout under `.deployment/pinplay/`.
+  The patch includes `cloudflare/classroom-entry.mjs`,
   `classroom-identity.mjs`, additive directory handlers/helper exports in `worker.js`,
   and a changed Worker entry file in `cloudflare/wrangler.toml`.
 
@@ -40,6 +109,7 @@ renaming a class. This maintains compatibility with PinPlay's existing roster ed
 npm ci
 npm test
 npm run test:cloud
+npm run test:deploy
 npm run check:worker
 ```
 
@@ -72,8 +142,9 @@ loopback hostname or HTTPS.
    dashboard-managed variables with `--keep-vars` if deploying with Wrangler;
    the existing TOML does not enumerate those variables.
 3. Create the Singing private R2 bucket and Singing D1 database in that account.
-   Set the actual database UUID in `wrangler.jsonc`; its all-zero value is an
-   intentional local placeholder, not a production database.
+   When deploying manually, set the actual database UUID in a release config;
+   `wrangler.jsonc` has an intentional all-zero local placeholder. The Windows
+   helper discovers the UUID and writes `.deployment/singing.production.json`.
 4. Apply Singing's migrations to **that new database only**. Confirm R2 public
    access is disabled. Configure quotas appropriate to the account's budget.
 5. Build the whitelisted static assets and deploy Singing on its own origin.
@@ -144,3 +215,26 @@ Rolling back Worker code does not roll back D1/R2 data. Prefer forward fixes for
 additive schema migrations. If the shared identity service is unavailable, private
 operations refuse access; built-in public songs remain available. Log out remains
 possible without a working shared identity service.
+
+The Windows helper records the original production version IDs in
+`.deployment/state.json` and a before-release record in `.deployment/releases/`.
+For an administrator-reviewed PinPlay code rollback, use the saved UUID with the
+project's pinned CLI, for example:
+
+```
+node node_modules/wrangler/bin/wrangler.js rollback SAVED_VERSION_UUID --config .deployment/pinplay.production.json --yes --message "Restore previous PinPlay code"
+```
+
+Rolling PinPlay back before the identity adapter also makes Singing cloud sign-in
+unavailable. Do not delete databases or R2 objects as a rollback step.
+
+## CLI references
+
+The helper targets the pinned Wrangler version in `package-lock.json`. Command
+behavior was checked against its installed help and the official
+[Worker/version commands](https://developers.cloudflare.com/workers/wrangler/commands/workers/),
+[structured command output](https://developers.cloudflare.com/workers/wrangler/system-environment-variables/),
+[D1 commands](https://developers.cloudflare.com/workers/wrangler/commands/d1/),
+and [R2 commands](https://developers.cloudflare.com/workers/wrangler/commands/r2/).
+Cloudflare's [version upload binding inheritance](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/versions/methods/create/)
+is why the helper checks both the active and latest uploaded version before release.

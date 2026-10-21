@@ -14,6 +14,13 @@ D1 assignments/results, connected to PinPlay's shared identity directory. See
 [repository audit and architecture](docs/CLOUD_ARCHITECTURE.md). Built-in songs still work
 on a static host; new uploaded recordings require cloud sign-in.
 
+On Windows, double-click **`deploy.bat`** for the deployment menu. It installs
+locked dependencies, runs checks, prepares PinPlay, provisions Singing storage and
+deploys both Worker changes. The numbered launchers in `deployment/` also provide
+preparation, verification and Google login setup separately. See the
+[Windows deployment guide](docs/CLOUD_DEPLOYMENT.md#windows-quick-start) for the two
+remaining browser steps and recovery details.
+
 ## What's inside
 
 ### A band in the browser
