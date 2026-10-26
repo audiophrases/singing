@@ -67,10 +67,11 @@ export function paintLine(el, t) {
 // The ball cues the next syllable slightly early. All times remain on the
 // recording's timeline; rate scales the cue so its real-time lead stays steady.
 export const BALL_LEAD = 0.04;
-export function ballHop(syllables, t, rate = 1) {
+// leadSeconds is the user's live fine-tune (negative = later than the syllable).
+export function ballHop(syllables, t, rate = 1, leadSeconds = BALL_LEAD) {
   if (!syllables.length) return null;
   const speed = Math.max(0.1, Number(rate) || 1);
-  const lead = BALL_LEAD * speed;
+  const lead = (Number.isFinite(leadSeconds) ? leadSeconds : BALL_LEAD) * speed;
   const next = syllables.findIndex((s) => s.start > t + lead);
   const previous = next < 0 ? syllables.length - 1 : next - 1;
   const hold = () => previous >= 0 && t < syllables[previous].end ? { from: previous, to: previous, progress: 1 } : null;
@@ -91,6 +92,7 @@ export async function start(ctx) {
     tr: settings.translations !== false,
     meter: false,
     scale: settings.lyricScale || 1,
+    lead: Number.isFinite(settings.ballLead) ? settings.ballLead : BALL_LEAD,
   };
 
   const section = h('div', { class: 'k-section' });
@@ -133,6 +135,7 @@ export async function start(ctx) {
       ? h('p', { class: 'small' }, 'Vocal help starts muted. Raise the slider at the bottom to hear a little of the singer while you practise.')
       : track.hasKaraoke ? toggle('🎤 The singer on the recording', track.singer, (v) => track.setSinger(v)) : null,
     toggle('🟡 Bouncing ball', opts.ball, (v) => { opts.ball = v; setSettings({ ball: v }); }),
+    ballTiming(opts, (v) => { opts.lead = v; setSettings({ ballLead: v }); }),
     toggle('🖼️ Pictures', opts.pics, (v) => { opts.pics = v; setSettings({ showPics: v }); lastIdx = -99; }),
     toggle('🌍 Translations (when the song has them)', opts.tr, (v) => { opts.tr = v; setSettings({ translations: v }); lastIdx = -99; }),
     toggle('📣 Loudness meter (microphone)', opts.meter, (v) => setMeter(v)),
@@ -188,7 +191,7 @@ export async function start(ctx) {
   let lastCount = '';
   const loop = () => {
     const t = track.time();
-    const idx = currentLineAt(timeline, t + (track.playing ? BALL_LEAD * track.rate : 0));
+    const idx = currentLineAt(timeline, t + (track.playing ? Math.max(0, opts.lead) * track.rate : 0));
     if (idx !== lastIdx) {
       draw(idx);
       lastIdx = idx;
@@ -200,7 +203,7 @@ export async function start(ctx) {
       if (c) banner.append(h('div', { class: 'k-count' }, c));
     }
     if (cur) paintLine(cur, t);
-    const hop = opts.ball && track.playing ? ballHop(syllables, t, track.rate) : null;
+    const hop = opts.ball && track.playing ? ballHop(syllables, t, track.rate, opts.lead) : null;
     if (hop) {
       const from = center(syllableElements[hop.from], lines);
       const to = center(syllableElements[hop.to], lines);
@@ -260,6 +263,24 @@ function center(el, container) {
 
 function easeOut(u) {
   return 1 - (1 - u) * (1 - u);
+}
+
+// Live fine-tune of the ball's timing, in milliseconds; applies while playing.
+function ballTiming(opts, onChange) {
+  const ms = () => Math.round(opts.lead * 1000);
+  const text = () => `${ms() > 0 ? '+' : ''}${ms()} ms${ms() === Math.round(BALL_LEAD * 1000) ? ' (default)' : ''}`;
+  const value = h('span', { class: 'small' }, text());
+  const slider = h('input', {
+    type: 'range', min: -150, max: 300, step: 5, value: ms(),
+    oninput: (e) => { onChange(Number(e.target.value) / 1000); value.textContent = text(); },
+  });
+  const reset = h('button', {
+    class: 'btn', type: 'button',
+    onclick: () => { onChange(BALL_LEAD); slider.value = ms(); value.textContent = text(); },
+  }, 'Reset');
+  return h('div', null,
+    h('label', null, '🟡 Ball timing: ', value, ' — later ← → earlier'),
+    slider, ' ', reset);
 }
 
 export function toggle(label, value, onChange) {

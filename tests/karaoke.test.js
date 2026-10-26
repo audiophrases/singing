@@ -36,6 +36,14 @@ test('ball anticipation takes the same real time at slow and fast playback rates
   }
 });
 
+test('a larger live lead cues the ball earlier and a negative lead later', () => {
+  // At t=1.8 the default lead has not landed on syllable 1 yet.
+  assert(ballHop(syllables, 1.8, 1, BALL_LEAD).progress < 1);
+  // A 300 ms lead has already landed on it; a -100 ms lead is still holding syllable 0.
+  assert.deepEqual(ballHop(syllables, 1.8, 1, 0.3), { from: 1, to: 1, progress: 1 });
+  assert.deepEqual(ballHop(syllables, 1.8, 1, -0.1), { from: 0, to: 0, progress: 1 });
+});
+
 test('seeking backwards and tightly spaced syllables do not reuse a previous hop position', () => {
   ballHop(syllables, 3.5);
   assert.equal(ballHop(syllables, 0.95).to, 0);
