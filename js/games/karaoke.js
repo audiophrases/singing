@@ -271,7 +271,7 @@ function ballTiming(opts, onChange) {
   const text = () => `${ms() > 0 ? '+' : ''}${ms()} ms${ms() === Math.round(BALL_LEAD * 1000) ? ' (default)' : ''}`;
   const value = h('span', { class: 'small' }, text());
   const slider = h('input', {
-    type: 'range', min: -150, max: 300, step: 5, value: ms(),
+    type: 'range', min: -150, max: 300, step: 1, value: ms(),
     oninput: (e) => { onChange(Number(e.target.value) / 1000); value.textContent = text(); },
   });
   const reset = h('button', {
