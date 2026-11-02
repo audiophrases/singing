@@ -30,7 +30,7 @@ import http from 'node:http';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
-import { BUILTIN_SONGS as SONGS } from '../js/data/songs/index.js';
+import { STARTER_SONGS as SONGS } from '../js/data/songs/index.js';
 import { composeSong } from '../js/music/composer.js';
 import { compileSong } from '../js/music/score.js';
 import { phonemes, cleanWord } from '../js/lyrics/phonemes.js';

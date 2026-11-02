@@ -14,7 +14,8 @@ export async function render(el, { data }) {
     el.append(h('div', { class: 'empty' }, h('span', { class: 'big' }, '🔗'), `This link does not work: ${e.message}`));
     return null;
   }
-  if (!song.id || getSong(song.id)?.builtin) song.id = newSongId(song.title);
+  // Never shadow a starter or public song with a copy that has the same id.
+  if (!song.id || (getSong(song.id) && !getSong(song.id).mine)) song.id = newSongId(song.title);
   setSharedSong(song);
   const exists = getSong(song.id) && getSong(song.id).mine;
   el.append(h('section', { class: 'card song-head' },

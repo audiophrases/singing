@@ -30,7 +30,7 @@ export async function render(el, { id }) {
     const copy = JSON.parse(JSON.stringify(song));
     copy.id = `${song.id}-remix`;
     copy.title = `${song.title} (remix)`;
-    delete copy.builtin;
+    delete copy.starter;
     if (band) {
       copy.lines = song.lines.map((l, i) => {
         const text = inputs[i].value.trim();

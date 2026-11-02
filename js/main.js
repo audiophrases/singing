@@ -19,12 +19,14 @@ import { openTeamsDialog } from './views/teams.js';
 import { initFolderLibrary, stopWatching } from './media/folder-library.js';
 import { initCloud, cloudSession, onCloudSession } from './cloud/session.js';
 import { teacherArea, teacherAccess, isTeacher, assignmentRoute, teacherUrl, publicUrl } from './cloud/access.js';
-import { refreshCloudLibrary, resolveCloudSong } from './cloud/library.js';
+import { refreshCloudLibrary, resolveCloudSong, loadPublicSongs } from './cloud/library.js';
 import { accountButton, renderSignIn } from './views/account.js';
 
 const cloudReady = initCloud().then(async (session) => {
   if (teacherArea() && isTeacher(session.principal)) {
     try { await refreshCloudLibrary(); } catch (e) { toast(e.message, 'bad'); }
+  } else if (!teacherArea()) {
+    try { await loadPublicSongs(); } catch (e) { toast(e.message, 'bad'); }
   }
   if (teacherAccess()) initFolderLibrary();
 });

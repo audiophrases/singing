@@ -21,13 +21,24 @@ export function visibleSong(document, principal) {
   const { folderImport, sourceFile, about, clientId, ...song } = document;
   return { ...song, mine: false };
 }
+// The public player: band songs the owner switched to public. Only the owner
+// can switch a song to public, and only while it is played by the band. Until
+// the owner first opens their library (started), it plays the starter songs.
+export async function publicSongs(env) {
+  const started = !!(await env.DB.prepare('SELECT 1 FROM public_library WHERE id = 1').first());
+  if (!started) return json({ songs: [], started });
+  const { results } = await env.DB.prepare('SELECT id, revision FROM songs WHERE is_public = 1 AND deleted_at IS NULL AND revision > 0 ORDER BY updated_at DESC LIMIT 500').all();
+  const documents = await Promise.all(results.map((row) => manifest(env, row.id, row.revision)));
+  const songs = documents.filter((doc) => (doc.source || 'band') === 'band').map(({ folderImport, sourceFile, audio, karaoke, vocals, cloud, revision, status, createdAt, ...song }) => ({ ...song, public: true }));
+  return json({ songs, started });
+}
 function cleanSong(input) {
   requireThat(input && typeof input === 'object' && !Array.isArray(input), 400, 'Song required.');
   requireThat(typeof input.title === 'string' && input.title.trim().length > 0 && input.title.length <= 120, 400, 'A song title is required (120 characters maximum).');
   requireThat(['audio', 'youtube', 'none', 'band'].includes(input.source || 'band'), 400, 'Invalid song source.');
   requireThat(Array.isArray(input.synced) || Array.isArray(input.lines), 400, 'Lyrics required.');
   const clean = {};
-  for (const key of ['title', 'artist', 'credit', 'level', 'ages', 'emoji', 'hue', 'grammar', 'themes', 'vocab', 'about', 'source', 'youtube', 'synced', 'lines', 'bpm', 'meter', 'key', 'style', 'intro', 'phrases', 'round', 'duration', 'folderImport']) {
+  for (const key of ['title', 'artist', 'credit', 'level', 'ages', 'emoji', 'hue', 'grammar', 'themes', 'vocab', 'about', 'source', 'youtube', 'synced', 'lines', 'bpm', 'meter', 'key', 'style', 'intro', 'pickup', 'outro', 'phrases', 'round', 'duration', 'composed', 'folderImport']) {
     if (input[key] !== undefined) clean[key] = input[key];
   }
   return clean;
@@ -36,6 +47,7 @@ function cleanSong(input) {
 export async function songRoutes(request, env, path, principal, canReadAssigned = async () => false) {
   if (path === '/api/songs' && request.method === 'GET') {
     teacher(principal);
+    if (principal.role === 'owner') await env.DB.prepare('INSERT OR IGNORE INTO public_library (id, started_at) VALUES (1, ?)').bind(Date.now()).run();
     const { results } = await env.DB.prepare('SELECT id, revision, title, status, created_at, updated_at FROM songs WHERE owner_id = ? AND deleted_at IS NULL AND revision > 0 ORDER BY updated_at DESC LIMIT 1000').bind(principal.id).all();
     return json({ songs: results });
   }
@@ -49,7 +61,7 @@ export async function songRoutes(request, env, path, principal, canReadAssigned 
     requireThat(song, 409, 'This imported song was deleted. Make a new copy to restore it.');
     return json({ id: song.id, revision: song.revision });
   }
-  const match = /^\/api\/songs\/([a-zA-Z0-9_-]+)(?:\/(assets|commit|playback))?$/.exec(path);
+  const match = /^\/api\/songs\/([a-zA-Z0-9_-]+)(?:\/(assets|commit|playback|visibility))?$/.exec(path);
   if (!match) return null;
   const [, id, action] = match;
   let song;
@@ -60,7 +72,18 @@ export async function songRoutes(request, env, path, principal, canReadAssigned 
   if (!action && request.method === 'GET') {
     const revision = Number(new URL(request.url).searchParams.get('revision')) || song.revision;
     if (principal.role === 'student') requireThat(await canReadAssigned(env, id, revision, principal), 404, 'Song not assigned to your class.');
-    return json({ song: visibleSong(await manifest(env, id, revision), principal) });
+    const document = visibleSong(await manifest(env, id, revision), principal);
+    return json({ song: principal.role === 'student' ? document : { ...document, public: song.is_public === 1 } });
+  }
+  if (action === 'visibility' && request.method === 'POST') {
+    const body = await bodyJson(request, 1024);
+    requireThat(typeof body.public === 'boolean', 400, 'Choose public or private.');
+    if (body.public) {
+      requireThat(principal.role === 'owner', 403, 'Only the owner account can put songs on the public page.');
+      requireThat(song.revision > 0 && ((await manifest(env, id, song.revision)).source || 'band') === 'band', 400, 'Only songs played by the band can be public.');
+    }
+    await env.DB.prepare('UPDATE songs SET is_public = ? WHERE id = ?').bind(body.public ? 1 : 0, id).run();
+    return json({ public: body.public });
   }
   if (!action && request.method === 'DELETE') {
     // Keep referenced objects and immutable revisions; media access is revoked immediately.
@@ -109,7 +132,8 @@ export async function songRoutes(request, env, path, principal, canReadAssigned 
     // fails the version foreign key / uniqueness constraint and rolls back the batch.
     try {
       const result = await env.DB.batch([
-        env.DB.prepare('UPDATE songs SET revision = ?, title = ?, status = ?, updated_at = ? WHERE id = ? AND revision = ? AND deleted_at IS NULL').bind(revision, document.title, document.status, document.updatedAt, id, body.baseRevision),
+        // A public song stays public through edits, unless it stops being a band song.
+        env.DB.prepare("UPDATE songs SET revision = ?, title = ?, status = ?, updated_at = ?, is_public = CASE WHEN ? = 'band' THEN is_public ELSE 0 END WHERE id = ? AND revision = ? AND deleted_at IS NULL").bind(revision, document.title, document.status, document.updatedAt, document.source || 'band', id, body.baseRevision),
         env.DB.prepare('INSERT INTO song_versions (song_id,revision,manifest_key,created_at) SELECT id,revision,?,? FROM songs WHERE id = ? AND revision = ?').bind(key, Date.now(), id, revision),
         ...Object.entries(refs).map(([role, asset]) => env.DB.prepare('INSERT INTO version_assets (song_id,revision,role,asset_id) VALUES (?,?,?,?)').bind(id, revision, role, asset.id)),
       ]);
@@ -120,7 +144,7 @@ export async function songRoutes(request, env, path, principal, canReadAssigned 
       if (error.status) throw error;
       throw new HttpError(409, 'This song changed on another device. Reload before saving.');
     }
-    return json({ song: document });
+    return json({ song: { ...document, public: song.is_public === 1 && (document.source || 'band') === 'band' } });
   }
   if (action === 'playback' && request.method === 'POST') {
     requireThat(song.revision > 0, 404, 'Save this song first.');

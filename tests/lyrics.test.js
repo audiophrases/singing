@@ -6,10 +6,10 @@ import { rhymes, rhymePairs } from '../js/lyrics/rhymes.js';
 import { pickGaps, distractors } from '../js/lyrics/gaps.js';
 import { compileSong } from '../js/music/score.js';
 import { timelineFromCompiled } from '../js/music/timeline.js';
-import { BUILTIN_SONGS } from '../js/data/songs/index.js';
+import { STARTER_SONGS } from '../js/data/songs/index.js';
 
 const tl = (id) => {
-  const s = BUILTIN_SONGS.find((x) => x.id === id);
+  const s = STARTER_SONGS.find((x) => x.id === id);
   return timelineFromCompiled(compileSong(s), s.bpm);
 };
 

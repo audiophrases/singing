@@ -2,10 +2,13 @@ import { api, cloudSession, requireTeacher, onCloudSession } from './session.js'
 import { getMedia, putMedia, newMediaId, deleteMedia } from '../media/store.js';
 import { readSongBackup, MEDIA_ROLES } from '../media/backup.js';
 import { mp3Blob } from '../media/mp3.js';
-import { setCloudSongs, localUserSongs, markMigrated, getSong } from '../store.js';
+import { setCloudSongs, setPublicSongs, localUserSongs, markMigrated, getSong } from '../store.js';
+import { addStarterSongs } from './starters.js';
+import { toast } from '../ui.js';
 
 const digest = async (blob) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()))].map((b) => b.toString(16).padStart(2, '0')).join('');
 const cloudSongs = new Map();
+let seeding = null;
 onCloudSession((s) => { if (!s.principal) { cloudSongs.clear(); setCloudSongs([]); } });
 
 export async function refreshCloudLibrary() {
@@ -22,6 +25,36 @@ export async function refreshCloudLibrary() {
   cloudSongs.clear();
   for (const song of documents) cloudSongs.set(song.id, song);
   setCloudSongs([...cloudSongs.values()]);
+  // Missing starter songs are copied in the background; the library works meanwhile.
+  seeding ??= addStarterSongs({ api, principalId: current.id, documents, makePublic: current.role === 'owner' })
+    .then((added) => {
+      if (!added.length || cloudSession().principal?.id !== current.id) return;
+      const rest = [...cloudSongs.values()].filter((s) => !added.some((a) => a.id === s.id));
+      cloudSongs.clear();
+      for (const song of [...added, ...rest]) cloudSongs.set(song.id, song);
+      setCloudSongs([...cloudSongs.values()]);
+    })
+    .catch((e) => toast(`Could not add the starter songs: ${e.message}`, 'bad'))
+    .finally(() => { seeding = null; });
+}
+
+// The public player's songs. It plays the starter songs on a static host
+// without the Singing API, and until the owner first opens their library.
+export async function loadPublicSongs() {
+  try {
+    const { songs, started } = await api('/api/public/songs');
+    setPublicSongs(started ? songs : null);
+  }
+  catch (e) {
+    if (e.status === 404) return;
+    setPublicSongs([]);
+    throw new Error('Could not load the songs. Reload the page to try again.');
+  }
+}
+export async function setSongPublic(song, value) {
+  await api(`/api/songs/${song.id}/visibility`, { method: 'POST', body: { public: value } });
+  const current = cloudSongs.get(song.id);
+  if (current) { cloudSongs.set(song.id, { ...current, public: value }); setCloudSongs([...cloudSongs.values()]); }
 }
 
 async function asMp3(blob, name, onProgress) {

@@ -8,6 +8,9 @@ import { SynthTrack } from '../music/player.js';
 import { compileSong } from '../music/score.js';
 import { transportBar, knobsBar } from '../controls.js';
 import { saveUserSong, newSongId, setSharedSong } from '../store.js';
+import { teacherAccess } from '../cloud/access.js';
+import { saveCloudSong } from '../cloud/library.js';
+import { songPermissionCheckbox } from './song-permission.js';
 import { STOPWORDS } from '../lyrics/wordlists.js';
 import { normWord } from '../lyrics/text.js';
 
@@ -30,6 +33,7 @@ export async function render(el) {
   let track = null;
   let transport = null;
   let song = null;
+  const rights = teacherAccess() ? songPermissionCheckbox() : null;
 
   const saveDraft = () => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(state)); } catch { /* ignore */ } };
   const titleIn = h('input', { type: 'text', value: state.title, placeholder: 'Song title', maxlength: 60 });
@@ -102,7 +106,8 @@ export async function render(el) {
       h('div', { class: 'row top-space' },
         h('button', { class: 'btn', type: 'button', onclick: () => make({ reroll: true }) }, '🎲 Another tune'),
         h('button', { class: 'btn primary', type: 'button', onclick: () => sing() }, '🎤 Sing it (karaoke)'),
-        h('button', { class: 'btn', type: 'button', onclick: () => save() }, '💾 Save to my songs')),
+        h('button', { class: 'btn', type: 'button', onclick: () => save() }, '💾 Save to my songs'),
+        rights ? h('label', { class: 'inline small' }, rights, ' I have permission to store and use these words.') : null),
       h('h3', { class: 'section-title' }, '📜 Your song'),
       lyrics,
     );
@@ -111,12 +116,16 @@ export async function render(el) {
     if (fromButton) preview.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  function save() {
-    if (!song) return null;
+  async function save() {
+    if (!song) return;
     const s = { ...song, id: newSongId(song.title) };
-    saveUserSong(s);
-    toast('Saved in your songs ⭐', 'ok');
-    return s;
+    if (!teacherAccess()) { saveUserSong(s); toast('Saved in your songs ⭐', 'ok'); return; }
+    // Teachers keep their songs in the cloud library, private until they make them public.
+    try {
+      const saved = await saveCloudSong(s, { rightsConfirmed: rights.checked });
+      toast('Saved in your library. It stays private until you make it public.', 'ok');
+      location.hash = `#/song/${encodeURIComponent(saved.id)}`;
+    } catch (e) { toast(e.message, 'bad'); }
   }
 
   function sing() {

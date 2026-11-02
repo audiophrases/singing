@@ -75,7 +75,7 @@ async function createAssignment() {
     finally { save.disabled = false; }
   } }, 'Create assignment');
   const modal = openModal([h('h2', null, 'Create a Singing assignment'), field('Title', title), field('Song', songSelect),
-    h('p', { class: 'small' }, 'Recordings need an original MP3, karaoke MP3 and synchronized lyrics before assigning. Built-in songs can be assigned too.'),
+    h('p', { class: 'small' }, 'Recordings need an original MP3, karaoke MP3 and synchronized lyrics before assigning.'),
     h('h3', null, 'Activities'), activities, field('Listening difficulty', difficulty),
     h('h3', null, 'Classes'), classInputs.length ? classInputs.map((c) => h('label', { class: 'inline' }, c.input, ` ${c.name}`)) : h('p', null, 'No permitted classes yet. Add students and their class in PinPlay, or ask your administrator to grant class access.'),
     field('Deadline (your local time)', due), field('Attempts per activity', limit),

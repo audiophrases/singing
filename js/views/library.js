@@ -51,7 +51,7 @@ export function songCover(song, { big = false } = {}) {
   return cover;
 }
 
-function card(song) {
+function card(song, mineBadge) {
   const link = h('a', { class: 'song-card', href: `#/song/${encodeURIComponent(song.id)}`, style: { '--hue': song.hue ?? 245 } });
   const cover = songCover(song);
   if (!song.source || song.source === 'band') {
@@ -79,7 +79,8 @@ function card(song) {
     h('div', { class: 'song-artist' }, song.artist || ''),
     h('div', { class: 'song-tags' },
       levelBadge(song.level),
-      song.mine ? h('span', { class: 'badge' }, '⭐ Mine') : null,
+      mineBadge && song.mine ? h('span', { class: 'badge' }, '⭐ Mine') : null,
+      song.cloud && song.public ? h('span', { class: 'badge' }, '🌍 Public') : null,
       ...(song.grammar || []).slice(0, 2).map((g) => h('span', { class: 'badge' }, g)),
     ),
   ));
@@ -119,13 +120,17 @@ export async function render(el) {
     songs = allSongs();
     saveFilters(f);
     clear(grid);
-    const list = songs.filter((s) => matches(s, f));
+    // "Mine" only means something next to songs that are not: the teacher's
+    // library holds only their own songs.
+    const mixed = songs.some((s) => s.mine) && songs.some((s) => !s.mine);
+    mineBtn.hidden = !mixed;
+    const list = songs.filter((s) => matches(s, { ...f, mine: mixed && f.mine }));
     count.textContent = `${list.length} song${list.length === 1 ? '' : 's'}`;
     if (!list.length) {
       grid.append(h('li', { class: 'empty', style: { gridColumn: '1 / -1' } }, h('span', { class: 'big' }, '🔍'), 'No songs match. ', teacherAccess() ? h('a', { href: '#/studio' }, 'Make your own song!') : 'Try another search.'));
       return;
     }
-    for (const s of list) grid.append(card(s));
+    for (const s of list) grid.append(card(s, mixed));
   };
 
   const chipRow = (label, items, key) => {

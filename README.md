@@ -11,7 +11,7 @@ The built-in band and activities run in the browser. For static mode, open
 Cloud classroom mode adds a Cloudflare Worker, private R2 songs and Singing-only
 D1 assignments/results, connected to PinPlay's shared identity directory. See
 [cloud setup and migration](docs/CLOUD_DEPLOYMENT.md) and the
-[repository audit and architecture](docs/CLOUD_ARCHITECTURE.md). Built-in songs still work
+[repository audit and architecture](docs/CLOUD_ARCHITECTURE.md). The starter songs still play
 on a static host; new uploaded recordings require cloud sign-in.
 
 The public app needs no login for songs and games. Teachers sign in at
@@ -33,8 +33,12 @@ remaining browser steps and recovery details.
 ## What's inside
 
 ### A band in the browser
-Built-in songs are written as **lyrics + notes + chords** and played live by a
-Web Audio band. Nothing is a recording, so any song can be:
+Band songs, like the starter songs, are written as **lyrics + notes + chords**
+and played live by a Web Audio band. Each teacher gets a copy of every starter
+song in their cloud library, to edit or delete like any other song. The public
+player (no sign-in) shows the owner's band songs that are switched to Public:
+the owner's starter songs start public, new Song maker songs start private, and
+uploaded recordings are always private. Nothing is a recording, so any song can be:
 
 - **slowed down or sped up** (50–130%) with no loss of quality,
 - **moved to another key** to suit children's or adults' voices,
@@ -146,7 +150,7 @@ Singing composes a song for it:
   cloud version; existing assignments keep their pinned version.
 - **Remix**: rewrite any line (new animals, students' names, new verbs). The
   tune bends to fit the new syllables.
-- **Share link**: built-in and lyrics-only songs can travel in a compressed URL.
+- **Share link**: band and lyrics-only songs can travel in a compressed URL.
   Uploaded recordings use private links; students need a class assignment and sign-in.
 - **Worksheets**: lyrics, gap fill with word bank, cut-up strips, bingo cards.
 - **Export to PinPlay**: a PinPlay quiz (context gaps read aloud, word choice,

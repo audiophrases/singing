@@ -24,10 +24,16 @@ async function pipe(bytes, stream) {
   return new Uint8Array(await res.arrayBuffer());
 }
 
+// Songs played by the band travel in the link, even from the cloud library.
+// Uploaded recordings stay private: their link needs sign-in.
+const privateLink = (song) => !!song.cloud && song.source !== 'band';
+
 export function packableSong(song) {
   const s = JSON.parse(JSON.stringify(song));
+  if (s.cloud) for (const key of ['id', 'cloud', 'clientId', 'revision', 'status', 'playbackExpiresAt']) delete s[key];
   delete s.mine;
-  delete s.builtin;
+  delete s.starter;
+  delete s.public;
   delete s.createdAt;
   delete s.updatedAt;
   delete s.folderImport;
@@ -38,7 +44,7 @@ export function packableSong(song) {
 }
 
 export async function encodeSong(song) {
-  if (song.cloud || song.source === 'audio') throw new Error('Share uploaded songs using their private cloud link.');
+  if (privateLink(song) || song.source === 'audio') throw new Error('Share uploaded songs using their private cloud link.');
   const json = new TextEncoder().encode(JSON.stringify(packableSong(song)));
   if (typeof CompressionStream === 'function') {
     const z = await pipe(json, new CompressionStream('deflate-raw'));
@@ -66,7 +72,7 @@ export function appUrl(hash) {
 export async function shareLink(song) {
   let link;
   try {
-    link = song.cloud ? appUrl(`#/song/${encodeURIComponent(song.id)}`) : appUrl(`#/s/${await encodeSong(song)}`);
+    link = privateLink(song) ? appUrl(`#/song/${encodeURIComponent(song.id)}`) : appUrl(`#/s/${await encodeSong(song)}`);
   } catch (e) {
     toast(`Could not make a link: ${e.message}`, 'bad');
     return;
@@ -87,7 +93,7 @@ export async function shareLink(song) {
     : h('p', { class: 'small' }, 'This song is too long for a QR code, but the link works.');
   openModal([
     h('h2', null, '🔗 Share this song'),
-    h('p', { class: 'small' }, song.cloud
+    h('p', { class: 'small' }, privateLink(song)
       ? 'This private link requires sign-in and permission to access the song. Use an assignment to give students access.'
       : 'This link contains the song lyrics, tune and timing.'),
     input,

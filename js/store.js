@@ -2,7 +2,8 @@
  * Browser settings, classroom scores and legacy songs. Private cloud songs stay
  * in memory; authenticated assignments and results live in the Singing API.
  */
-import { BUILTIN_SONGS } from './data/songs/index.js';
+import { STARTER_SONGS } from './data/songs/index.js';
+import { teacherArea } from './cloud/access.js';
 
 const KEYS = {
   songs: 'singing.songs.v1',
@@ -60,9 +61,11 @@ export function setSettings(patch) {
 
 let sharedSong = null; // a song opened from a share link, not saved yet
 let cloudSongs = [];
+let publicSongs = null; // the owner's public songs; null: play the starter songs
 const songListeners = new Set();
 export function onSongs(fn) { songListeners.add(fn); return () => songListeners.delete(fn); }
 export function setCloudSongs(songs) { cloudSongs = songs; for (const fn of songListeners) fn(); }
+export function setPublicSongs(songs) { publicSongs = songs; for (const fn of songListeners) fn(); }
 export function localUserSongs() {
   const list = read(KEYS.songs, []);
   return Array.isArray(list) ? list : [];
@@ -78,14 +81,20 @@ export function userSongs() {
   return [...cloudSongs, ...localUserSongs().filter((s) => !migrated[s.id])];
 }
 
+// Teachers work on their own copies of the starter songs (js/cloud/starters.js).
+// The public player shows the songs the owner made public, or the original
+// starter songs before the owner has chosen (js/cloud/library.js).
 export function allSongs() {
-  return [...userSongs().map((s) => ({ ...s, mine: s.mine !== false })), ...BUILTIN_SONGS];
+  return [...userSongs().map((s) => ({ ...s, mine: s.mine !== false })), ...(teacherArea() ? [] : publicSongs ?? STARTER_SONGS)];
 }
 
 export function getSong(id) {
   if (sharedSong && sharedSong.id === id) return sharedSong;
   const migrated = read('singing.migrated.v1', {});
-  return allSongs().find((s) => s.id === id || s.id === migrated[id]?.cloudId) || null;
+  const songs = allSongs();
+  // Old links to a starter song open the cloud copy of it.
+  return songs.find((s) => s.id === id || s.id === migrated[id]?.cloudId)
+    || songs.find((s) => s.clientId === id) || null;
 }
 
 export function setSharedSong(song) {
@@ -98,7 +107,7 @@ export function saveUserSong(song) {
   const list = localUserSongs();
   const clean = { ...song };
   delete clean.mine;
-  delete clean.builtin;
+  delete clean.starter;
   clean.updatedAt = Date.now();
   if (!clean.createdAt) clean.createdAt = clean.updatedAt;
   const i = list.findIndex((s) => s.id === clean.id);

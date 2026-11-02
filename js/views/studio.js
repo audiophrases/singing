@@ -502,7 +502,7 @@ export async function render(el, { id }) {
 
 // Songs played by the band: edit the song file directly (for the curious).
 function renderBand(el, song) {
-  const area = h('textarea', { class: 'studio-json', rows: 24, spellcheck: false }, JSON.stringify({ ...song, mine: undefined }, null, 2));
+  const area = h('textarea', { class: 'studio-json', rows: 24, spellcheck: false }, JSON.stringify({ ...song, mine: undefined, public: undefined }, null, 2));
   const msg = h('div', { class: 'small' });
   const check = () => {
     try {

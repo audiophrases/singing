@@ -1,6 +1,6 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { saveUserSong, deleteUserSong, localUserSongs, userSongs, setCloudSongs, markMigrated, getSong } from '../js/store.js';
+import { saveUserSong, deleteUserSong, localUserSongs, userSongs, allSongs, setCloudSongs, setPublicSongs, markMigrated, getSong } from '../js/store.js';
 
 let storage;
 beforeEach(() => {
@@ -43,4 +43,31 @@ test('migration keeps the original and resolves old links only while the cloud c
   setCloudSongs([]);
   assert.equal(getSong('legacy'), null, 'signing out does not show the old private lyrics');
   assert.equal(localUserSongs().length, 1, 'the original remains available for recovery');
+});
+
+test('the teacher library holds only their own songs; old starter links open their copy', () => {
+  setCloudSongs([{ id: 'cloud-twinkle', clientId: 'twinkle', title: 'Twinkle (edited)', cloud: true }]);
+  assert.ok(allSongs().some((s) => s.starter), 'the public player shows the starter songs');
+  assert.equal(getSong('twinkle').starter, true);
+  globalThis.location = { pathname: '/create/' };
+  try {
+    assert.deepEqual(allSongs().map((s) => s.id), ['cloud-twinkle']);
+    assert.equal(allSongs()[0].mine, true, 'every song in the teacher library can be edited and deleted');
+    assert.equal(getSong('twinkle').id, 'cloud-twinkle');
+  } finally { delete globalThis.location; }
+});
+
+test("the public player shows the owner's public songs, or the starter songs on a static host", () => {
+  try {
+    setPublicSongs([{ id: 'cloud-hello', clientId: 'hello-song', title: 'Hello, Class 4B', source: 'band', public: true, lines: [] }]);
+    assert.deepEqual(allSongs().map((s) => s.title), ['Hello, Class 4B'], 'deleted and private songs are not there');
+    assert.equal(getSong('hello-song').id, 'cloud-hello', 'an old public link opens the current version');
+    assert.equal(getSong('twinkle'), null);
+    assert.ok(!allSongs()[0].mine, 'nothing on the public page is editable');
+    globalThis.location = { pathname: '/create/' };
+    try { assert.deepEqual(allSongs(), [], "the teacher library shows only the teacher's own songs"); }
+    finally { delete globalThis.location; }
+    setPublicSongs(null);
+    assert.ok(allSongs().some((s) => s.starter && s.id === 'twinkle'));
+  } finally { setPublicSongs(null); }
 });

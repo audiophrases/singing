@@ -11,8 +11,8 @@ import { speak } from '../tts.js';
 import { lineIndexAt } from '../music/timeline.js';
 import { shareLink } from '../share.js';
 import { exportPinPlayQuiz } from '../pinplay-export.js';
-import { deleteCloudSong } from '../cloud/library.js';
-import { teacherAccess } from '../cloud/access.js';
+import { deleteCloudSong, setSongPublic } from '../cloud/library.js';
+import { teacherAccess, isOwner } from '../cloud/access.js';
 
 export async function render(el, { id }) {
   const song = getSong(id);
@@ -72,6 +72,13 @@ export async function render(el, { id }) {
     h('a', { class: 'activity', href: `#/remix/${encodeURIComponent(song.id)}` }, h('span', { class: 'act-emoji' }, '🪄'), h('span', { class: 'act-name' }, 'Remix'), h('span', { class: 'act-desc' }, 'Students write their own verses; the band sings them.')),
     h('a', { class: 'activity', href: `#/print/${encodeURIComponent(song.id)}/gapfill` }, h('span', { class: 'act-emoji' }, '🖨️'), h('span', { class: 'act-name' }, 'Worksheets'), h('span', { class: 'act-desc' }, 'Gap fill, cut-up lines, bingo cards, lyrics sheet - ready to print.')),
     teacherAccess() ? h('button', { class: 'activity', type: 'button', onclick: () => editCopy(song) }, h('span', { class: 'act-emoji' }, song.mine ? '✏️' : '📋'), h('span', { class: 'act-name' }, song.mine ? 'Edit song' : 'Copy and edit'), h('span', { class: 'act-desc' }, song.mine ? 'Change lyrics, timing, pictures and translations.' : 'Make your own version of this song in the Studio.')) : null,
+    // Band songs in the owner's cloud library can go on the public player.
+    teacherAccess() && isOwner() && song.cloud && (song.source || 'band') === 'band' ? h('button', { class: 'activity', type: 'button', 'aria-pressed': String(!!song.public), onclick: async () => {
+      try { await setSongPublic(song, !song.public); } catch (e) { toast(e.message, 'bad'); return; }
+      toast(song.public ? 'Now private: off the public page' : 'Now public: on the public page', 'ok');
+      window.dispatchEvent(new Event('hashchange'));
+    } }, h('span', { class: 'act-emoji' }, song.public ? '🌍' : '🔒'), h('span', { class: 'act-name' }, song.public ? 'Public' : 'Private'),
+    h('span', { class: 'act-desc' }, song.public ? 'Anyone can play it on the public page, without signing in. Click to make it private.' : 'Only you and your assignments. Click to put it on the public page.')) : null,
     h('button', { class: 'activity', type: 'button', onclick: () => shareLink(song) }, h('span', { class: 'act-emoji' }, '🔗'), h('span', { class: 'act-name' }, 'Share link'), h('span', { class: 'act-desc' }, 'A link that opens this song on any computer, nothing to install.')),
     teacherAccess() ? h('button', { class: 'activity', type: 'button', onclick: () => exportPinPlayQuiz(song) }, h('span', { class: 'act-emoji' }, '🎯'), h('span', { class: 'act-name' }, 'Export to PinPlay'), h('span', { class: 'act-desc' }, 'A PinPlay quiz (gap fills, word choice, line order) from this song.')) : null,
     teacherAccess() && song.mine ? h('button', { class: 'activity', type: 'button', onclick: async () => {
@@ -81,7 +88,7 @@ export async function render(el, { id }) {
         toast('Song deleted');
         location.hash = '#/';
       }
-    } }, h('span', { class: 'act-emoji' }, '🗑️'), h('span', { class: 'act-name' }, 'Delete'), h('span', { class: 'act-desc' }, 'Remove this song from this browser.')) : null,
+    } }, h('span', { class: 'act-emoji' }, '🗑️'), h('span', { class: 'act-name' }, 'Delete'), h('span', { class: 'act-desc' }, song.cloud ? 'Remove this song from your cloud library.' : 'Remove this song from this browser.')) : null,
   ));
 
   // ----- lyrics
@@ -167,7 +174,7 @@ function editCopy(song) {
   const copy = JSON.parse(JSON.stringify(song));
   copy.id = newSongId(song.title);
   copy.title = `${song.title} (my version)`;
-  delete copy.builtin;
+  delete copy.starter;
   saveUserSong(copy);
   toast('A copy is now in your songs');
   location.hash = `#/studio/${encodeURIComponent(copy.id)}`;

@@ -1,6 +1,6 @@
 import { json, HttpError, requireThat } from './http.js';
 import { authRoutes, authenticate } from './auth.js';
-import { songRoutes, uploadAsset, serveMedia } from './songs.js';
+import { songRoutes, uploadAsset, serveMedia, publicSongs } from './songs.js';
 import { assignmentRoutes, assignedVersion } from './assignments.js';
 
 export default {
@@ -9,6 +9,7 @@ export default {
     try {
       if (!path.startsWith('/api/')) return env.ASSETS.fetch(request);
       requireThat(env.DB && env.SONGS, 503, 'Cloud storage is not configured.');
+      if (path === '/api/public/songs' && request.method === 'GET') return await publicSongs(env);
       const auth = await authRoutes(request, env, path);
       if (auth) return auth;
       const principal = await authenticate(request, env);

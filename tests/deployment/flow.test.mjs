@@ -139,7 +139,7 @@ async function fixture(t, setup = () => {}) {
       if (args[1] === 'execute') {
         assert.equal(args[2], 'DB');
         if (argument(args, '--command') === 'SELECT name FROM d1_migrations ORDER BY name') {
-          return json([{ success: true, results: (world.migrationNames || ['0001_cloud_library.sql', '0002_assignments.sql']).map((name) => ({ name })) }]);
+          return json([{ success: true, results: (world.migrationNames || ['0001_cloud_library.sql', '0002_assignments.sql', '0003_public_songs.sql']).map((name) => ({ name })) }]);
         }
         assert.equal(argument(args, '--command'), "SELECT name FROM sqlite_master WHERE type = 'table'");
         return json([{ success: true, results: world.tables.map((name) => ({ name })) }]);

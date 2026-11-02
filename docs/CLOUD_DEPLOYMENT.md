@@ -2,7 +2,7 @@
 
 This implementation adds private song bundles, shared sign-in, Singing assignments
 and results. Production resources and secrets must be inspected separately before
-deploying. The old static host still plays built-in songs; new audio saves require
+deploying. The old static host still plays the starter songs; new audio saves require
 the cloud Worker and a teacher session.
 
 ## Windows quick start
@@ -250,7 +250,7 @@ retained revisions. Plan administrator-reviewed retention before raising quotas.
 Preserve the previous Worker versions, old local originals and existing R2 objects.
 Rolling back Worker code does not roll back D1/R2 data. Prefer forward fixes for
 additive schema migrations. If the shared identity service is unavailable, private
-operations refuse access; built-in public songs remain available. Log out remains
+operations refuse access; the public player's starter songs remain available. Log out remains
 possible without a working shared identity service.
 
 The Windows helper records the original production version IDs in

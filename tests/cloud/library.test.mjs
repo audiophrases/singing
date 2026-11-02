@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
+import { STARTER_SONGS } from '../../js/data/songs/index.js';
+import { addStarterSongs } from '../../js/cloud/starters.js';
 
 let mf, db;
 const revoked = new Set();
@@ -20,9 +22,9 @@ before(async () => {
       const path = new URL(request.url).pathname; const body = await request.json();
       if (path === '/config') return Response.json({ googleClientId: 'test-client' });
       if (path === '/login') {
-        if (!['alice', 'bob', 'student', 'outsider', 'quota'].includes(body.password)) return Response.json({ error: 'Wrong password.' }, { status: 401 });
+        if (!['alice', 'bob', 'carol', 'owner', 'student', 'outsider', 'quota'].includes(body.password)) return Response.json({ error: 'Wrong password.' }, { status: 401 });
         const credential = crypto.randomUUID() + crypto.randomUUID();
-        const principal = { id: body.password, role: ['student', 'outsider'].includes(body.password) ? 'student' : 'teacher', displayName: body.password,
+        const principal = { id: body.password, role: ['student', 'outsider'].includes(body.password) ? 'student' : body.password === 'owner' ? 'owner' : 'teacher', displayName: body.password,
           classIds: [body.password === 'outsider' || body.password === 'bob' ? 'class_b' : 'class_a'] };
         upstream.set(credential, principal);
         return Response.json({ credential, principal });
@@ -38,6 +40,8 @@ before(async () => {
   for (const statement of sql.split(';').map((s) => s.trim()).filter(Boolean)) await db.prepare(statement).run();
   const assignments = await readFile(new URL('../../cloudflare/migrations/0002_assignments.sql', import.meta.url), 'utf8');
   for (const statement of assignments.split(';').map((s) => s.trim()).filter(Boolean)) await db.prepare(statement).run();
+  const publicSongs = await readFile(new URL('../../cloudflare/migrations/0003_public_songs.sql', import.meta.url), 'utf8');
+  for (const statement of publicSongs.split(';').map((s) => s.trim()).filter(Boolean)) await db.prepare(statement).run();
 });
 after(async () => mf?.dispose());
 
@@ -248,4 +252,86 @@ test('quota reservations are atomic across concurrent uploads', async () => {
   const reserve = (c) => call(`/api/songs/${id}/assets`, { session, method: 'POST', body: { role: 'audio', size: 524288, name: 'quota.mp3', mime: 'audio/mpeg', checksum: c.repeat(64) } });
   const results = await Promise.all(['a', 'b', 'c'].map(reserve));
   assert.deepEqual(results.map((r) => r.status).sort(), [200, 200, 413]);
+});
+
+test('teachers get starter songs to edit and delete; a deleted one never comes back, on any device', async () => {
+  const carol = await login('carol');
+  const api = async (path, { method = 'GET', body } = {}) => {
+    const { status, data } = await call(path, { session: carol, method, body });
+    if (status >= 400) throw Object.assign(new Error(data.error), { status });
+    return data;
+  };
+  const browser = () => { const m = new Map(); return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) }; };
+  const added = await addStarterSongs({ api, principalId: 'carol', documents: [], storage: browser() });
+  assert.deepEqual(added.map((s) => s.clientId), STARTER_SONGS.map((s) => s.id));
+  for (const original of STARTER_SONGS) {
+    const copy = added.find((s) => s.clientId === original.id);
+    for (const key of ['lines', 'bpm', 'meter', 'key', 'intro', 'pickup', 'outro', 'phrases', 'round']) {
+      assert.deepEqual(copy[key], original[key], `${original.id}.${key} survives the cloud`);
+    }
+  }
+  const birthday = added.find((s) => s.clientId === 'happy-birthday');
+  const edited = await call(`/api/songs/${birthday.id}/commit`, { session: carol, method: 'POST', body: {
+    baseRevision: 1, rightsConfirmed: true, assets: {}, song: { ...birthday, title: 'Happy Birthday, Carol' } } });
+  assert.equal(edited.data.song.title, 'Happy Birthday, Carol');
+  assert.equal((await call(`/api/songs/${birthday.id}`, { session: carol, method: 'DELETE', body: {} })).status, 200);
+  const listed = async () => (await call('/api/songs', { session: carol })).data.songs;
+  const documents = await Promise.all((await listed()).map(async (s) => (await call(`/api/songs/${s.id}`, { session: carol })).data.song));
+  assert.deepEqual(await addStarterSongs({ api, principalId: 'carol', documents, storage: browser() }), [], 'a second device adds nothing');
+  assert.equal((await listed()).length, STARTER_SONGS.length - 1);
+});
+
+const publicList = async () => (await call('/api/public/songs')).data.songs;
+const saveBand = (session, id, song, baseRevision) => call(`/api/songs/${id}/commit`, { session, method: 'POST', body: { baseRevision, rightsConfirmed: true, assets: {}, song } });
+const setPublic = (session, id, value) => call(`/api/songs/${id}/visibility`, { session, method: 'POST', body: { public: value } });
+const band = { title: 'Public band song', source: 'band', bpm: 100, lines: [{ t: 'la la la', n: 'C4 D E' }] };
+
+test('the owner chooses which band songs are public; edits show there and deletes remove them', async () => {
+  const owner = await login('owner'); const alice = await login('alice');
+  assert.equal((await call('/api/public/songs')).data.started, false, 'starter songs play until the owner opens the library');
+  await call('/api/songs', { session: alice });
+  assert.equal((await call('/api/public/songs')).data.started, false, 'other teachers do not start it');
+  await call('/api/songs', { session: owner });
+  assert.equal((await call('/api/public/songs')).data.started, true);
+  const { id } = await song(owner);
+  assert.equal((await saveBand(owner, id, band, 0)).data.song.public, false, 'songs start private');
+  assert.ok(!(await publicList()).some((s) => s.id === id));
+  assert.equal((await setPublic(owner, id, true)).status, 200);
+  const shown = (await publicList()).find((s) => s.id === id);
+  assert.equal(shown.title, 'Public band song');
+  for (const key of ['cloud', 'revision', 'status', 'folderImport']) assert.ok(!(key in shown), `${key} is not on the public page`);
+  assert.equal((await call(`/api/songs/${id}`, { session: owner })).data.song.public, true);
+  assert.equal((await saveBand(owner, id, { ...band, title: 'Edited band song' }, 1)).data.song.public, true, 'an edit keeps the song public');
+  assert.equal((await publicList()).find((s) => s.id === id).title, 'Edited band song');
+
+  const { id: teacherSong } = await song(alice);
+  await saveBand(alice, teacherSong, band, 0);
+  assert.equal((await setPublic(alice, teacherSong, true)).status, 403, 'only the owner publishes');
+  const { id: recording } = await song(owner);
+  await commit(owner, recording, { audio: await upload(owner, recording) });
+  assert.equal((await setPublic(owner, recording, true)).status, 400, 'recordings stay private');
+
+  assert.equal((await saveBand(owner, id, { ...band, source: 'none', synced: [{ text: 'la la la' }] }, 2)).data.song.public, false, 'no longer a band song: private');
+  assert.ok(!(await publicList()).some((s) => s.id === id));
+  const { id: deleted } = await song(owner);
+  await saveBand(owner, deleted, band, 0); await setPublic(owner, deleted, true);
+  assert.ok((await publicList()).some((s) => s.id === deleted));
+  await call(`/api/songs/${deleted}`, { session: owner, method: 'DELETE', body: {} });
+  assert.ok(!(await publicList()).some((s) => s.id === deleted), 'deleting removes it from the public page');
+});
+
+test("the owner's starter songs start public; other teachers' stay private", async () => {
+  const owner = await login('owner');
+  const api = async (path, { method = 'GET', body } = {}) => {
+    const { status, data } = await call(path, { session: owner, method, body });
+    if (status >= 400) throw Object.assign(new Error(data.error), { status });
+    return data;
+  };
+  const browser = () => { const m = new Map(); return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) }; };
+  const added = await addStarterSongs({ api, principalId: 'owner', documents: [], makePublic: true, storage: browser() });
+  assert.ok(added.every((s) => s.public));
+  const starterIds = new Set(STARTER_SONGS.map((s) => s.id));
+  const shown = (await publicList()).filter((s) => starterIds.has(s.clientId));
+  assert.deepEqual(shown.map((s) => s.clientId).sort(), [...starterIds].sort(), "only the owner's copies, once each");
+  assert.deepEqual(shown.find((s) => s.clientId === 'happy-birthday').pickup, STARTER_SONGS.find((s) => s.id === 'happy-birthday').pickup);
 });

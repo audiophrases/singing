@@ -1,17 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BUILTIN_SONGS } from '../js/data/songs/index.js';
+import { STARTER_SONGS } from '../js/data/songs/index.js';
 import { compileSong, chordAt } from '../js/music/score.js';
 import { midiToName } from '../js/music/notes.js';
 
 const LEVELS = ['Pre-A1', 'A1', 'A2', 'B1', 'B2', 'C1'];
 
 test('song ids are unique', () => {
-  const ids = BUILTIN_SONGS.map((s) => s.id);
+  const ids = STARTER_SONGS.map((s) => s.id);
   assert.equal(new Set(ids).size, ids.length);
 });
 
-for (const song of BUILTIN_SONGS) {
+for (const song of STARTER_SONGS) {
   test(`${song.id}: metadata`, () => {
     for (const k of ['id', 'title', 'artist', 'credit', 'level', 'emoji', 'bpm', 'lines']) assert.ok(song[k], `missing ${k}`);
     assert.ok(LEVELS.includes(song.level), `level ${song.level}`);
