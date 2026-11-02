@@ -105,9 +105,13 @@ resolve the reported difference rather than bypassing the check.
   `pinplay-api`. No PinPlay signing keys, owner passwords or Cloudflare credentials
   are provisioned into Singing. Session signing derives an application-specific
   key inside PinPlay so legacy PinPlay verifiers cannot accept Singing tokens.
-- Companion PinPlay changes are included in `integrations/pinplay-classroom.patch`
-  (apply from a PinPlay repository root with `git apply --check` before `git apply`).
-  The Windows helper prepares its own checkout under `.deployment/pinplay/`.
+- Companion PinPlay changes are included in `integrations/pinplay-classroom.patch`.
+  Since PinPlay commit `11c2db5` they are merged into PinPlay `main`, so ordinary
+  PinPlay deploys (`deploy.cmd`) keep the `ClassroomIdentity` entrypoint. The
+  Windows helper prepares its own checkout under `.deployment/pinplay/` and accepts
+  main once `git apply --reverse --check` shows the patch is already applied.
+  Keep the patch identical to what PinPlay main contains; change the adapter in
+  PinPlay first, then refresh the patch.
   The patch includes `cloudflare/classroom-entry.mjs`,
   `classroom-identity.mjs`, additive directory handlers/helper exports in `worker.js`,
   and a changed Worker entry file in `cloudflare/wrangler.toml`.
