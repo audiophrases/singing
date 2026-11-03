@@ -1,7 +1,7 @@
 /*
  * A song's page: listen, change the band, read the lyrics, pick an activity.
  */
-import { h, add, levelBadge, toast, confirmDialog, typingTarget } from '../ui.js';
+import { h, add, levelBadge, toast, confirmDialog, typingTarget, debounce } from '../ui.js';
 import { getSong, deleteUserSong, saveUserSong, newSongId } from '../store.js';
 import { makeTrack } from '../track.js';
 import { transportBar, knobsBar, applyKnobs } from '../controls.js';
@@ -11,7 +11,7 @@ import { speak } from '../tts.js';
 import { lineIndexAt } from '../music/timeline.js';
 import { shareLink } from '../share.js';
 import { exportPinPlayQuiz } from '../pinplay-export.js';
-import { deleteCloudSong, setSongPublic } from '../cloud/library.js';
+import { deleteCloudSong, setSongPublic, saveCloudSong, deleteStudentSong } from '../cloud/library.js';
 import { teacherAccess, isOwner } from '../cloud/access.js';
 
 export async function render(el, { id }) {
@@ -46,9 +46,10 @@ export async function render(el, { id }) {
         ...(song.grammar || []).map((g) => h('span', { class: 'badge' }, g)),
         ...(song.themes || []).map((t) => h('span', { class: 'badge', style: { background: '#fff4e5', color: '#8a5300' } }, t)),
       ),
+      song.madeBy && teacherAccess() ? h('p', { class: 'made-by' }, madeByText(song.madeBy)) : null,
       song.about ? h('p', { class: 'song-about' }, song.about) : null,
       h('div', { class: 'player-bar' }, transport),
-      knobsBar(track, song),
+      knobsBar(track, song, { onChange: teacherAccess() && song.mine && (song.cloud || (song.source || 'band') === 'band') ? keepKnobs(song) : null }),
     ),
   );
 
@@ -81,14 +82,18 @@ export async function render(el, { id }) {
     h('span', { class: 'act-desc' }, song.public ? 'Anyone can play it on the public page, without signing in. Click to make it private.' : 'Only you and your assignments. Click to put it on the public page.')) : null,
     h('button', { class: 'activity', type: 'button', onclick: () => shareLink(song) }, h('span', { class: 'act-emoji' }, '🔗'), h('span', { class: 'act-name' }, 'Share link'), h('span', { class: 'act-desc' }, 'A link that opens this song on any computer, nothing to install.')),
     teacherAccess() ? h('button', { class: 'activity', type: 'button', onclick: () => exportPinPlayQuiz(song) }, h('span', { class: 'act-emoji' }, '🎯'), h('span', { class: 'act-name' }, 'Export to PinPlay'), h('span', { class: 'act-desc' }, 'A PinPlay quiz (gap fills, word choice, line order) from this song.')) : null,
-    teacherAccess() && song.mine ? h('button', { class: 'activity', type: 'button', onclick: async () => {
-      if (await confirmDialog(`Delete "${song.title}"${song.cloud ? ' from your cloud library' : ' from this browser'}?`, { ok: 'Delete', danger: true })) {
-        try { if (song.cloud) await deleteCloudSong(song); else deleteUserSong(song.id); }
+    // Song maker songs go back to the Song maker: a teacher's own, or a student's.
+    song.composed && ((teacherAccess() && song.mine) || song.studentSong) ? h('a', { class: 'activity', href: `#/chant?edit=${encodeURIComponent(song.id)}` }, h('span', { class: 'act-emoji' }, '✨'), h('span', { class: 'act-name' }, 'Change in the Song maker'),
+      h('span', { class: 'act-desc' }, song.studentSong ? 'Change the words or the tune. Saving sends your teacher the new version.' : 'Change the words, the mood or the tune.')) : null,
+    (teacherAccess() && song.mine) || song.studentSong ? h('button', { class: 'activity', type: 'button', onclick: async () => {
+      if (await confirmDialog(`Delete "${song.title}"${song.studentSong ? ' from your songs' : song.cloud ? ' from your cloud library' : ' from this browser'}?`, { ok: 'Delete', danger: true })) {
+        try { if (song.studentSong) await deleteStudentSong(song); else if (song.cloud) await deleteCloudSong(song); else deleteUserSong(song.id); }
         catch (e) { toast(e.message, 'bad'); return; }
         toast('Song deleted');
         location.hash = '#/';
       }
-    } }, h('span', { class: 'act-emoji' }, '🗑️'), h('span', { class: 'act-name' }, 'Delete'), h('span', { class: 'act-desc' }, song.cloud ? 'Remove this song from your cloud library.' : 'Remove this song from this browser.')) : null,
+    } }, h('span', { class: 'act-emoji' }, '🗑️'), h('span', { class: 'act-name' }, 'Delete'),
+    h('span', { class: 'act-desc' }, song.studentSong ? 'Remove it from your songs. Your teacher keeps the copy you sent.' : song.cloud ? 'Remove this song from your cloud library.' : 'Remove this song from this browser.')) : null,
   ));
 
   // ----- lyrics
@@ -164,6 +169,29 @@ export function partHue(part) {
   let x = 0;
   for (const ch of p) x = (x * 31 + ch.charCodeAt(0)) % 360;
   return x;
+}
+
+// "Made by" for a song a student saved: who to congratulate.
+function madeByText({ name, classes = [], version = 1, at }) {
+  return `🎓 Made by ${name}${classes.length ? ` · ${classes.join(', ')}` : ''}${at ? ` · ${new Date(at).toLocaleDateString()}` : ''}${version > 1 ? ` · version ${version}` : ''}`;
+}
+
+// The teacher's changes to Band, Key, Speed and Melody on their own song
+// become the song's settings, for everyone who plays it.
+function keepKnobs(song) {
+  let queue = Promise.resolve();
+  return debounce((knobs) => {
+    queue = queue.then(async () => {
+      const current = getSong(song.id);
+      if (!current) return;
+      const next = { ...current, knobs };
+      delete next.mine;
+      // Only the settings change: the song itself was confirmed when it was saved.
+      if (current.cloud) await saveCloudSong(next, { rightsConfirmed: true });
+      else saveUserSong(next);
+      toast('Saved with the song', 'ok');
+    }).catch((e) => toast(e.message, 'bad'));
+  }, 800);
 }
 
 function editCopy(song) {

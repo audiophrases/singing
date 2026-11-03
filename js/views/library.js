@@ -81,6 +81,7 @@ function card(song, mineBadge) {
       levelBadge(song.level),
       mineBadge && song.mine ? h('span', { class: 'badge' }, '⭐ Mine') : null,
       song.cloud && song.public ? h('span', { class: 'badge' }, '🌍 Public') : null,
+      song.madeBy ? h('span', { class: 'badge', title: `Made by ${song.madeBy.name}` }, `🎓 ${String(song.madeBy.name).split(/\s+/)[0]}`) : null,
       ...(song.grammar || []).slice(0, 2).map((g) => h('span', { class: 'badge' }, g)),
     ),
   ));
@@ -91,6 +92,7 @@ function matches(song, f) {
   if (f.level && song.level !== f.level) return false;
   if (f.ages && song.ages !== f.ages && song.ages !== 'all') return false;
   if (f.mine && !song.mine) return false;
+  if (f.students && !song.madeBy) return false;
   if (f.grammar && !(song.grammar || []).includes(f.grammar)) return false;
   if (f.q) {
     const hay = [song.title, song.artist, ...(song.grammar || []), ...(song.themes || []), ...(song.vocab || [])].join(' ').toLowerCase();
@@ -123,8 +125,10 @@ export async function render(el) {
     // "Mine" only means something next to songs that are not: the teacher's
     // library holds only their own songs.
     const mixed = songs.some((s) => s.mine) && songs.some((s) => !s.mine);
+    const students = songs.some((s) => s.madeBy);
     mineBtn.hidden = !mixed;
-    const list = songs.filter((s) => matches(s, { ...f, mine: mixed && f.mine }));
+    studentsBtn.hidden = !students;
+    const list = songs.filter((s) => matches(s, { ...f, mine: mixed && f.mine, students: students && f.students }));
     count.textContent = `${list.length} song${list.length === 1 ? '' : 's'}`;
     if (!list.length) {
       grid.append(h('li', { class: 'empty', style: { gridColumn: '1 / -1' } }, h('span', { class: 'big' }, '🔍'), 'No songs match. ', teacherAccess() ? h('a', { href: '#/studio' }, 'Make your own song!') : 'Try another search.'));
@@ -163,6 +167,8 @@ export async function render(el) {
 
   const mineBtn = h('button', { class: 'chip', type: 'button', 'aria-pressed': String(!!f.mine) }, '⭐ My songs');
   mineBtn.addEventListener('click', () => { f.mine = !f.mine; mineBtn.setAttribute('aria-pressed', String(f.mine)); draw(); });
+  const studentsBtn = h('button', { class: 'chip', type: 'button', 'aria-pressed': String(!!f.students) }, '🎓 Student songs');
+  studentsBtn.addEventListener('click', () => { f.students = !f.students; studentsBtn.setAttribute('aria-pressed', String(f.students)); draw(); });
 
   let continueCard = null;
   if (progress.last && progress.last.songId) {
@@ -190,7 +196,7 @@ export async function render(el) {
     ),
     ...(folders ? [folders] : []),
     h('div', { class: 'filters' },
-      h('div', { class: 'row' }, search, grammarSel, mineBtn, h('span', { class: 'grow' }), count),
+      h('div', { class: 'row' }, search, grammarSel, mineBtn, studentsBtn, h('span', { class: 'grow' }), count),
       chipRow('Level', LEVELS.map((l) => [l, l]), 'level'),
       chipRow('Ages', AGES, 'ages'),
     ),

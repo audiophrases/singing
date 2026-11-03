@@ -32,13 +32,15 @@ export async function publicSongs(env) {
   const songs = documents.filter((doc) => (doc.source || 'band') === 'band').map(({ folderImport, sourceFile, audio, karaoke, vocals, cloud, revision, status, createdAt, ...song }) => ({ ...song, public: true }));
   return json({ songs, started });
 }
-function cleanSong(input) {
+// Who made a song a student saved (cloudflare/student-songs.js): for the owner only.
+const madeBy = (row) => (row.made_by ? { madeBy: JSON.parse(row.made_by) } : {});
+export function cleanSong(input) {
   requireThat(input && typeof input === 'object' && !Array.isArray(input), 400, 'Song required.');
   requireThat(typeof input.title === 'string' && input.title.trim().length > 0 && input.title.length <= 120, 400, 'A song title is required (120 characters maximum).');
   requireThat(['audio', 'youtube', 'none', 'band'].includes(input.source || 'band'), 400, 'Invalid song source.');
   requireThat(Array.isArray(input.synced) || Array.isArray(input.lines), 400, 'Lyrics required.');
   const clean = {};
-  for (const key of ['title', 'artist', 'credit', 'level', 'ages', 'emoji', 'hue', 'grammar', 'themes', 'vocab', 'about', 'source', 'youtube', 'synced', 'lines', 'bpm', 'meter', 'key', 'style', 'intro', 'pickup', 'outro', 'phrases', 'round', 'duration', 'composed', 'folderImport']) {
+  for (const key of ['title', 'artist', 'credit', 'level', 'ages', 'emoji', 'hue', 'grammar', 'themes', 'vocab', 'about', 'source', 'youtube', 'synced', 'lines', 'bpm', 'meter', 'key', 'style', 'intro', 'pickup', 'outro', 'phrases', 'round', 'duration', 'composed', 'knobs', 'folderImport']) {
     if (input[key] !== undefined) clean[key] = input[key];
   }
   return clean;
@@ -47,7 +49,10 @@ function cleanSong(input) {
 export async function songRoutes(request, env, path, principal, canReadAssigned = async () => false) {
   if (path === '/api/songs' && request.method === 'GET') {
     teacher(principal);
-    if (principal.role === 'owner') await env.DB.prepare('INSERT OR IGNORE INTO public_library (id, started_at) VALUES (1, ?)').bind(Date.now()).run();
+    if (principal.role === 'owner') await env.DB.batch([
+      env.DB.prepare('INSERT OR IGNORE INTO public_library (id, started_at) VALUES (1, ?)').bind(Date.now()),
+      env.DB.prepare('INSERT INTO site_owner (id, principal_id, seen_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET principal_id = excluded.principal_id, seen_at = excluded.seen_at').bind(principal.id, Date.now()),
+    ]);
     const { results } = await env.DB.prepare('SELECT id, revision, title, status, created_at, updated_at FROM songs WHERE owner_id = ? AND deleted_at IS NULL AND revision > 0 ORDER BY updated_at DESC LIMIT 1000').bind(principal.id).all();
     return json({ songs: results });
   }
@@ -73,7 +78,7 @@ export async function songRoutes(request, env, path, principal, canReadAssigned 
     const revision = Number(new URL(request.url).searchParams.get('revision')) || song.revision;
     if (principal.role === 'student') requireThat(await canReadAssigned(env, id, revision, principal), 404, 'Song not assigned to your class.');
     const document = visibleSong(await manifest(env, id, revision), principal);
-    return json({ song: principal.role === 'student' ? document : { ...document, public: song.is_public === 1 } });
+    return json({ song: principal.role === 'student' ? document : { ...document, public: song.is_public === 1, ...madeBy(song) } });
   }
   if (action === 'visibility' && request.method === 'POST') {
     const body = await bodyJson(request, 1024);
@@ -144,7 +149,7 @@ export async function songRoutes(request, env, path, principal, canReadAssigned 
       if (error.status) throw error;
       throw new HttpError(409, 'This song changed on another device. Reload before saving.');
     }
-    return json({ song: { ...document, public: song.is_public === 1 && (document.source || 'band') === 'band' } });
+    return json({ song: { ...document, public: song.is_public === 1 && (document.source || 'band') === 'band', ...madeBy(song) } });
   }
   if (action === 'playback' && request.method === 'POST') {
     requireThat(song.revision > 0, 404, 'Save this song first.');

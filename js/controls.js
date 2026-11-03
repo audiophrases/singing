@@ -1,7 +1,9 @@
 /*
  * Player controls shared by the song page and the stage: play button,
  * progress bar with a tick per line, and the band's knobs (speed, key,
- * style, guide voice). Knob values are remembered per song for the session.
+ * style, guide voice). A song carries its own knob settings (song.knobs); a
+ * listener's changes are remembered for the session only, and the song page
+ * saves its owner's changes into the song (knobsBar onChange).
  * Recordings with a karaoke version get a singer on/off knob instead (not
  * remembered: each game starts with the singer it needs).
  */
@@ -17,13 +19,21 @@ export const ICONS = {
   pause: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="6" y="5" width="4.2" height="14" rx="1.2" fill="currentColor"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.2" fill="currentColor"/></svg>',
 };
 
-export function getKnobs(songId) {
+// The song's own settings, then this session's changes while playing it.
+export function getKnobs(song) {
+  const saved = { rate: 1, transpose: 0, style: '', guide: getSettings().guide, ...(song.knobs || {}) };
   try {
-    const all = JSON.parse(sessionStorage.getItem(KNOB_KEY) || '{}');
-    return { rate: 1, transpose: 0, style: '', guide: getSettings().guide, ...(all[songId] || {}) };
+    return { ...saved, ...(JSON.parse(sessionStorage.getItem(KNOB_KEY) || '{}')[song.id] || {}) };
   } catch {
-    return { rate: 1, transpose: 0, style: '', guide: getSettings().guide };
+    return saved;
   }
+}
+
+// The knobs as they are set on a track, to save with a song.
+export function knobsOf(track) {
+  return track.kind === 'synth'
+    ? { rate: track.rate || 1, transpose: track.transpose || 0, style: track.style, guide: track.guide }
+    : { rate: track.rate || 1 };
 }
 
 export function setKnobs(songId, patch) {
@@ -35,7 +45,10 @@ export function setKnobs(songId, patch) {
 }
 
 export function applyKnobs(track, song) {
-  const k = getKnobs(song.id);
+  setTrackKnobs(track, getKnobs(song));
+}
+
+export function setTrackKnobs(track, k) {
   if (k.rate && k.rate !== 1) track.setRate(k.rate);
   if (track.kind === 'synth') {
     if (k.style && k.style !== track.style) track.setStyle(k.style);
@@ -85,8 +98,9 @@ export function transportBar(track, { onToggle } = {}) {
   return el;
 }
 
-export function knobsBar(track, song, { vocalGuide = false } = {}) {
+export function knobsBar(track, song, { vocalGuide = false, onChange = null } = {}) {
   const wrap = h('div', { class: 'knobs' });
+  const changed = (patch) => { setKnobs(song.id, patch); onChange?.(knobsOf(track)); };
 
   // Speed
   const rateVal = h('span', { class: 'val' }, `${Math.round((track.rate || 1) * 100)}%`);
@@ -95,7 +109,7 @@ export function knobsBar(track, song, { vocalGuide = false } = {}) {
   rate.addEventListener('change', () => {
     const r = Number(rate.value) / 100;
     track.setRate(r);
-    setKnobs(song.id, { rate: r });
+    changed({ rate: r });
   });
   wrap.append(h('div', { class: 'knob', title: 'Slower for learning, faster for fun' }, h('span', { class: 'knob-label' }, '🐢 Speed'), rate, rateVal));
 
@@ -109,7 +123,7 @@ export function knobsBar(track, song, { vocalGuide = false } = {}) {
     const step = (d) => {
       track.setTranspose(track.transpose + d);
       keyVal.textContent = keyName();
-      setKnobs(song.id, { transpose: track.transpose });
+      changed({ transpose: track.transpose });
     };
     wrap.append(h('div', { class: 'knob', title: 'Move the song up or down to suit the voices' },
       h('span', { class: 'knob-label' }, '🎚️ Key'),
@@ -123,7 +137,7 @@ export function knobsBar(track, song, { vocalGuide = false } = {}) {
       h('option', { value: 'none', selected: track.style === 'none' }, '🔇 No band'));
     styleSel.addEventListener('change', () => {
       track.setStyle(styleSel.value);
-      setKnobs(song.id, { style: styleSel.value });
+      changed({ style: styleSel.value });
     });
     wrap.append(h('div', { class: 'knob', title: 'Play the song in another style' }, h('span', { class: 'knob-label' }, '🎨 Band'), styleSel));
 
@@ -133,7 +147,7 @@ export function knobsBar(track, song, { vocalGuide = false } = {}) {
       h('option', { value: 'off', selected: track.guide === 'off' }, '🙊 Off (karaoke)'));
     guideSel.addEventListener('change', () => {
       track.setGuide(guideSel.value);
-      setKnobs(song.id, { guide: guideSel.value });
+      changed({ guide: guideSel.value });
       if (guideSel.value !== 'off') setSettings({ guide: guideSel.value });
     });
     wrap.append(h('div', { class: 'knob', title: 'Who sings the melody' }, h('span', { class: 'knob-label' }, '🎵 Melody'), guideSel));

@@ -21,6 +21,16 @@ export function openAccount() {
   return modal;
 }
 
+// Sign in to save a song from the Song maker. Resolves with who signed in, or null.
+export function signInToSave() {
+  return new Promise((resolve) => {
+    const panel = accountContent({ teacher: false, onChanged: () => modal.close() });
+    const modal = openModal([h('h2', null, 'Sign in to save your song'),
+      h('p', null, 'Use your school Google account, so your teacher can see who made it.'), panel.body, panel.status],
+    { onClose: () => resolve(cloudSession().principal) });
+  });
+}
+
 export function renderSignIn(el, { teacher = false } = {}) {
   const panel = accountContent({ teacher, onChanged: () => window.dispatchEvent(new Event('hashchange')) });
   el.append(h('section', { class: 'card account-card' },

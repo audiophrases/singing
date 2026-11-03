@@ -342,6 +342,7 @@ kbd {
 .song-head h1 { font-family: var(--font-fun); font-size: clamp(1.5rem, 3vw, 2.2rem); margin: 0 0 0.2rem; }
 .song-meta { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.45rem 0; }
 .song-about { color: #3b4554; line-height: 1.5; margin: 0.4rem 0 0; max-width: 70ch; }
+.made-by { color: #2f6b3a; font-weight: 600; margin: 0.4rem 0 0; }
 @media (max-width: 640px) { .song-head { grid-template-columns: 1fr; } .song-head .song-cover { max-width: 160px; } }
 
 .player-bar {

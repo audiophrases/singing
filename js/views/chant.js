@@ -6,10 +6,12 @@ import { h, clear, toast, debounce, fmtTime } from '../ui.js';
 import { composeSong, checkLyrics, MOODS } from '../music/composer.js';
 import { SynthTrack } from '../music/player.js';
 import { compileSong } from '../music/score.js';
-import { transportBar, knobsBar } from '../controls.js';
-import { saveUserSong, newSongId, setSharedSong } from '../store.js';
-import { teacherAccess } from '../cloud/access.js';
-import { saveCloudSong } from '../cloud/library.js';
+import { transportBar, knobsBar, knobsOf, setTrackKnobs } from '../controls.js';
+import { saveUserSong, newSongId, setSharedSong, getSong } from '../store.js';
+import { teacherAccess, isTeacher, teacherUrl } from '../cloud/access.js';
+import { cloudSession } from '../cloud/session.js';
+import { saveCloudSong, saveStudentSong, refreshStudentSongs } from '../cloud/library.js';
+import { signInToSave } from './account.js';
 import { songPermissionCheckbox } from './song-permission.js';
 import { STOPWORDS } from '../lyrics/wordlists.js';
 import { normWord } from '../lyrics/text.js';
@@ -27,12 +29,16 @@ function readDraft() {
   try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch { return null; }
 }
 
-export async function render(el) {
-  const draft = readDraft() || { ...EXAMPLES[0], mood: 'pop', key: 'C' };
+export async function render(el, { edit } = {}) {
+  // #/chant?edit=<id>: change a saved Song maker song, the teacher's own or a student's.
+  const found = edit ? getSong(edit) : null;
+  const editing = found?.composed && ((teacherAccess() && found.mine) || found.studentSong) ? found : null;
+  const draft = editing ? { title: editing.title, ...editing.composed } : readDraft() || { ...EXAMPLES[0], mood: 'pop', key: 'C' };
   const state = { title: draft.title, text: draft.text, mood: draft.mood || 'pop', key: draft.key || 'C', seed: draft.seed || 1 };
   let track = null;
   let transport = null;
   let song = null;
+  let knobs = editing?.knobs || null; // Band, Key, Speed and Melody are saved with the song
   const rights = teacherAccess() ? songPermissionCheckbox() : null;
 
   const saveDraft = () => { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(state)); } catch { /* ignore */ } };
@@ -98,16 +104,20 @@ export async function render(el) {
     if (c.warnings.length) console.warn(c.warnings);
     clear(preview);
     track = new SynthTrack(song);
+    if (knobs) setTrackKnobs(track, knobs);
     transport = transportBar(track);
     const lyrics = h('div', { class: 'lyrics-panel' }, c.lines.map((l) => h('div', { class: 'lp-line' }, l.sectionStart ? h('b', null, `${l.section}: `) : null, l.text)));
     preview.append(
       h('div', { class: 'player-bar' }, transport),
-      knobsBar(track, song),
+      knobsBar(track, song, { onChange: (k) => { knobs = k; } }),
       h('div', { class: 'row top-space' },
         h('button', { class: 'btn', type: 'button', onclick: () => make({ reroll: true }) }, '🎲 Another tune'),
         h('button', { class: 'btn primary', type: 'button', onclick: () => sing() }, '🎤 Sing it (karaoke)'),
-        h('button', { class: 'btn', type: 'button', onclick: () => save() }, '💾 Save to my songs'),
+        h('button', { class: 'btn', type: 'button', onclick: () => save() }, editing ? '💾 Save changes' : '💾 Save to my songs'),
         rights ? h('label', { class: 'inline small' }, rights, ' I have permission to store and use these words.') : null),
+      !teacherAccess() && cloudSession().available ? h('p', { class: 'small' }, editing
+        ? 'Saving updates your song and sends your teacher the new version.'
+        : 'To save, sign in with your school Google account, so your teacher can see who made it.') : null,
       h('h3', { class: 'section-title' }, '📜 Your song'),
       lyrics,
     );
@@ -118,13 +128,26 @@ export async function render(el) {
 
   async function save() {
     if (!song) return;
-    const s = { ...song, id: newSongId(song.title) };
-    if (!teacherAccess()) { saveUserSong(s); toast('Saved in your songs ⭐', 'ok'); return; }
-    // Teachers keep their songs in the cloud library, private until they make them public.
+    const s = { ...song, id: editing?.id || newSongId(song.title), knobs: knobsOf(track) };
+    const open = (saved) => { location.hash = `#/song/${encodeURIComponent(saved.id)}`; };
     try {
-      const saved = await saveCloudSong(s, { rightsConfirmed: rights.checked });
-      toast('Saved in your library. It stays private until you make it public.', 'ok');
-      location.hash = `#/song/${encodeURIComponent(saved.id)}`;
+      if (teacherAccess()) {
+        // Teachers keep their songs in the cloud library, private until they make them public.
+        if (editing && !editing.cloud) { open(saveUserSong(s)); toast('Song saved ⭐', 'ok'); return; }
+        const saved = await saveCloudSong(editing ? { ...s, cloud: true, revision: getSong(editing.id)?.revision ?? editing.revision } : s, { rightsConfirmed: rights.checked });
+        toast(editing ? 'Song saved' : 'Saved in your library. It stays private until you make it public.', 'ok');
+        open(saved);
+        return;
+      }
+      // A host without cloud sign-in keeps songs in this browser.
+      if (!cloudSession().available) { saveUserSong(s); toast('Saved in your songs ⭐', 'ok'); return; }
+      const principal = cloudSession().principal || await signInToSave();
+      if (!principal) return;
+      if (isTeacher(principal)) { toast('Teachers save their songs in the teacher area.'); location.href = teacherUrl('#/chant'); return; }
+      const saved = await saveStudentSong(s, { id: editing?.studentSong ? editing.id : undefined });
+      refreshStudentSongs().catch(() => {});
+      toast('Saved! Your teacher can see your song now.', 'ok');
+      open(saved);
     } catch (e) { toast(e.message, 'bad'); }
   }
 

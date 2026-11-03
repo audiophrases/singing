@@ -13,7 +13,7 @@ const upstream = new Map();
 before(async () => {
   mf = new Miniflare(convertV4MiniflareOptions({ workers: [{ name: 'singing',
     modules: [
-      ...['worker.js', 'http.js', 'auth.js', 'songs.js', 'assignments.js'].map((name) => `cloudflare/${name}`),
+      ...['worker.js', 'http.js', 'auth.js', 'songs.js', 'student-songs.js', 'assignments.js'].map((name) => `cloudflare/${name}`),
       ...['lyrics/gaps.js', 'lyrics/text.js', 'lyrics/wordlists.js', 'lyrics/grammar.js', 'lyrics/rhymes.js', 'music/timeline.js', 'music/score.js', 'music/notes.js', 'ui.js'].map((name) => `js/${name}`),
     ].map((name) => ({ type: 'ESModule', path: fileURLToPath(new URL(`../../${name}`, import.meta.url)) })),
     compatibilityDate: '2026-10-21', d1Databases: ['DB'], r2Buckets: ['SONGS'],
@@ -40,8 +40,10 @@ before(async () => {
   for (const statement of sql.split(';').map((s) => s.trim()).filter(Boolean)) await db.prepare(statement).run();
   const assignments = await readFile(new URL('../../cloudflare/migrations/0002_assignments.sql', import.meta.url), 'utf8');
   for (const statement of assignments.split(';').map((s) => s.trim()).filter(Boolean)) await db.prepare(statement).run();
-  const publicSongs = await readFile(new URL('../../cloudflare/migrations/0003_public_songs.sql', import.meta.url), 'utf8');
-  for (const statement of publicSongs.split(';').map((s) => s.trim()).filter(Boolean)) await db.prepare(statement).run();
+  for (const name of ['0003_public_songs.sql', '0004_student_songs.sql']) {
+    const sql = await readFile(new URL(`../../cloudflare/migrations/${name}`, import.meta.url), 'utf8');
+    for (const statement of sql.split(';').map((s) => s.trim()).filter(Boolean)) await db.prepare(statement).run();
+  }
 });
 after(async () => mf?.dispose());
 
@@ -334,4 +336,45 @@ test("the owner's starter songs start public; other teachers' stay private", asy
   const shown = (await publicList()).filter((s) => starterIds.has(s.clientId));
   assert.deepEqual(shown.map((s) => s.clientId).sort(), [...starterIds].sort(), "only the owner's copies, once each");
   assert.deepEqual(shown.find((s) => s.clientId === 'happy-birthday').pickup, STARTER_SONGS.find((s) => s.id === 'happy-birthday').pickup);
+});
+
+test('students save Song maker songs; the owner gets a credited private copy, and version 2 as a new song', async () => {
+  const owner = await login('owner'); const student = await login('student'); const outsider = await login('outsider'); const alice = await login('alice');
+  await call('/api/songs', { session: owner }); // the owner opens the library
+  const made = { ...band, title: 'My Morning', composed: { text: 'la la la', mood: 'pop', seed: 3, key: 'C' }, knobs: { rate: 0.8, transpose: 2, style: 'reggae', guide: 'robo' } };
+  const save = (session, body) => call('/api/my-songs', { session, method: 'POST', body });
+  const mine = async (session) => (await call('/api/my-songs', { session })).data.songs;
+  const library = async () => Promise.all((await call('/api/songs', { session: owner })).data.songs.map(async (s) => (await call(`/api/songs/${s.id}`, { session: owner })).data.song));
+
+  assert.equal((await save(alice, { clientId: 'teacher-song', song: made })).status, 403, 'teachers save in their own library');
+  const first = await save(student, { clientId: 'my-morning-abc', song: made });
+  assert.equal(first.status, 200, JSON.stringify(first.data));
+  assert.deepEqual(first.data.song.knobs, made.knobs, 'Band, Key, Speed and Melody are saved with the song');
+  assert.deepEqual((await mine(student)).map((s) => s.title), ['My Morning']);
+  assert.deepEqual(await mine(outsider), [], 'students see only their own songs');
+  const v1 = (await library()).find((s) => s.title === 'My Morning');
+  assert.deepEqual({ ...v1.madeBy, at: undefined }, { name: 'student', classes: ['class_a'], version: 1, at: undefined });
+  assert.equal(v1.public, false, 'student songs arrive private');
+  assert.deepEqual(v1.composed, made.composed);
+  assert.deepEqual(v1.knobs, made.knobs);
+  assert.ok(!(await call('/api/songs', { session: alice })).data.songs.some((s) => s.title.startsWith('My Morning')), 'only the owner gets student songs');
+
+  await saveBand(owner, v1.id, { ...v1, title: 'My Morning (edited)' }, 1);
+  await setPublic(owner, v1.id, true);
+  assert.ok(!('madeBy' in (await publicList()).find((s) => s.id === v1.id)), "the student's name is not on the public page");
+  const second = await save(student, { id: first.data.song.id, song: { ...made, lines: [{ t: 'la la la la', n: 'C4 D E F' }] } });
+  assert.equal(second.data.song.revision, 2);
+  assert.equal((await mine(student)).length, 1, 'the student still has one song');
+  const after = await library();
+  const v2 = after.find((s) => s.title === 'My Morning (v2)');
+  assert.equal(v2.madeBy.version, 2);
+  assert.equal(v2.public, false);
+  const kept = after.find((s) => s.id === v1.id);
+  assert.deepEqual([kept.title, kept.public, kept.madeBy.name], ['My Morning (edited)', true, 'student'], 'version 1 stays as the owner edited it');
+
+  assert.equal((await save(student, { clientId: 'recording', song: { title: 'Rec', source: 'audio', synced: [] } })).status, 400, 'recordings cannot be saved here');
+  assert.equal((await call(`/api/my-songs/${first.data.song.id}`, { session: outsider, method: 'DELETE', body: {} })).status, 404);
+  assert.equal((await call(`/api/my-songs/${first.data.song.id}`, { session: student, method: 'DELETE', body: {} })).status, 200);
+  assert.deepEqual(await mine(student), []);
+  assert.equal((await library()).filter((s) => s.title.startsWith('My Morning')).length, 2, "deleting the student's copy keeps the owner's");
 });

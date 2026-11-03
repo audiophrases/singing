@@ -50,7 +50,7 @@ const mf = new Miniflare(convertV4MiniflareOptions({ port: 8788, host: '127.0.0.
   } },
 }] }));
 const db = await mf.getD1Database('DB');
-for (const filename of ['0001_cloud_library.sql', '0002_assignments.sql', '0003_public_songs.sql']) {
+for (const filename of ['0001_cloud_library.sql', '0002_assignments.sql', '0003_public_songs.sql', '0004_student_songs.sql']) {
   const sql = await readFile(new URL(`cloudflare/migrations/${filename}`, root), 'utf8');
   for (const statement of sql.split(';').map((s) => s.trim()).filter(Boolean)) await db.prepare(statement).run();
 }

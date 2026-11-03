@@ -51,6 +51,26 @@ export async function loadPublicSongs() {
     throw new Error('Could not load the songs. Reload the page to try again.');
   }
 }
+// A student's own songs from the Song maker (cloudflare/student-songs.js).
+// Each save also sends the teacher a copy, credited to the student.
+export async function refreshStudentSongs() {
+  const current = cloudSession().principal;
+  if (current?.role !== 'student') return;
+  const { songs } = await api('/api/my-songs');
+  if (cloudSession().principal?.id !== current.id) return;
+  cloudSongs.clear();
+  for (const song of songs) cloudSongs.set(song.id, song);
+  setCloudSongs([...cloudSongs.values()]);
+}
+export async function saveStudentSong(song, { id } = {}) {
+  const { song: saved } = await api('/api/my-songs', { method: 'POST', body: { id, clientId: song.id, song } });
+  cloudSongs.set(saved.id, saved); setCloudSongs([...cloudSongs.values()]);
+  return saved;
+}
+export async function deleteStudentSong(song) {
+  await api(`/api/my-songs/${song.id}`, { method: 'DELETE', body: {} });
+  cloudSongs.delete(song.id); setCloudSongs([...cloudSongs.values()]);
+}
 export async function setSongPublic(song, value) {
   await api(`/api/songs/${song.id}/visibility`, { method: 'POST', body: { public: value } });
   const current = cloudSongs.get(song.id);

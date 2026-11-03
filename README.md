@@ -38,7 +38,12 @@ and played live by a Web Audio band. Each teacher gets a copy of every starter
 song in their cloud library, to edit or delete like any other song. The public
 player (no sign-in) shows the owner's band songs that are switched to Public:
 the owner's starter songs start public, new Song maker songs start private, and
-uploaded recordings are always private. Nothing is a recording, so any song can be:
+uploaded recordings are always private.
+
+Band, Key, Speed and Melody are saved with each song. Students make and play
+songs in the Song maker without signing in; saving asks for their school Google
+account. The student keeps their copy, and the owner's library gets a private
+copy marked with the student's name and class. Saving again sends "(v2)". Nothing is a recording, so any song can be:
 
 - **slowed down or sped up** (50–130%) with no loss of quality,
 - **moved to another key** to suit children's or adults' voices,
