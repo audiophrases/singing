@@ -13,7 +13,7 @@ export function bingoWords(timeline, max = 40) {
   for (const l of timeline.lines) {
     for (const w of l.words) {
       const n = normWord(w.text);
-      if (!n || n.length < 3 || STOPWORDS.has(n) || seen.has(n) || /^\d+$/.test(n)) continue;
+      if (!n || n.length < 3 || STOPWORDS.has(n) || seen.has(n) || /^\d+$/.test(n) || w.text.includes('*')) continue;
       seen.add(n);
       out.push(n);
       if (out.length >= max) return out;

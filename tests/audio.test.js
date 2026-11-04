@@ -25,6 +25,52 @@ test('recordings switch between original, karaoke and vocals, including temporar
   assert.deepEqual(levels(), [0, 0, 1]);
 });
 
+test('clean version: the singer drops out on the word and the karaoke version carries on', () => {
+  const t = track();
+  t.cleanSpans = [[10, 11]];
+  let now = 5;
+  t.time = () => now;
+  const levels = () => [t.audio.volume, t.kar.volume, t.voc.volume];
+  t.applyVoice();
+  t.watchClean();
+  assert.deepEqual(levels(), [1, 0, 0]);
+  now = 10.5;
+  t.watchClean();
+  assert.deepEqual(levels(), [0, 1, 0]);
+  now = 11;
+  t.watchClean();
+  assert.deepEqual(levels(), [1, 0, 0]);
+  now = 9.97;
+  t.watchClean();
+  assert.deepEqual(levels(), [0, 1, 0], 'it starts a moment early: the word must not be heard');
+});
+
+test('clean version: vocal help, vocals only, stems, and no karaoke version', () => {
+  const t = track();
+  t.cleanSpans = [[10, 11]];
+  t.time = () => 10.5;
+  t.setVocalsOnly(true);
+  t.watchClean();
+  assert.deepEqual([t.audio.volume, t.kar.volume, t.voc.volume], [0, 0, 0], 'nothing else is playing');
+  const guided = track();
+  Object.assign(guided, { singer: false, vocalGuide: 0.5, cleanHidden: true });
+  guided.applyVoice();
+  assert.deepEqual([guided.audio.volume, guided.kar.volume, guided.voc.volume], [0, 1, 0], 'the guide voice drops out too');
+  const stems = track(true);
+  stems.cleanHidden = true;
+  stems.applyVoice();
+  assert.deepEqual([stems.audio.volume, stems.voc.volume], [1, 0], 'the instrumental carries on');
+  const plain = track();
+  plain.kar = null;
+  plain.voc = null;
+  plain.cleanHidden = true;
+  plain.applyVoice();
+  assert.equal(plain.audio.volume, 0, 'with no karaoke version all the sound dips');
+  plain.cleanHidden = false;
+  plain.applyVoice();
+  assert.equal(plain.audio.volume, 1);
+});
+
 test('a stem pair combines instrumental and vocals for the song and supports both solo modes', () => {
   const t = track(true);
   t.applyVoice();

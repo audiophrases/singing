@@ -19,7 +19,7 @@ export async function render(el, { id }) {
   }
   const band = !song.source || song.source === 'band';
   const base = band ? compileSong(song) : null;
-  const timeline = songTimeline(song);
+  const timeline = songTimeline(song, { raw: true });
   const inputs = [];
   const counts = [];
   let track = null;

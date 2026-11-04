@@ -5,6 +5,7 @@ import { pickGaps, gapMode } from '../js/lyrics/gaps.js';
 import { checkAnswer } from '../js/lyrics/text.js';
 import { timelineFromSynced, timelineFromCompiled } from '../js/music/timeline.js';
 import { compileSong } from '../js/music/score.js';
+import { cleanTimeline } from '../js/lesson/pack.js';
 
 const ACTIVITIES = new Set(['karaoke', 'echo', 'round', 'pitch', 'gapfill', 'choose', 'wrongword', 'order', 'bingo', 'finish', 'builder', 'hotmic', 'freeze', 'rhyme', 'hunt', 'speak', 'quiz']);
 export async function accessibleAssignment(env, id, principal) {
@@ -38,8 +39,10 @@ async function attemptContext(env, id, principal) {
   return { row, assignment };
 }
 function taskWords(song, activity, settings, seed) {
-  const timeline = song.source === 'band' || !song.source
-    ? timelineFromCompiled(compileSong(song), song.bpm) : timelineFromSynced(song.synced, song.duration || 0);
+  const band = song.source === 'band' || !song.source;
+  const timeline = band ? timelineFromCompiled(compileSong(song), song.bpm) : timelineFromSynced(song.synced, song.duration || 0);
+  // The student's track masks these words, so it picks its gaps from the same text.
+  if (!band) cleanTimeline(timeline, song.lesson);
   const gaps = pickGaps(timeline, { mode: gapMode(settings.focus, settings.level || 'easy'), seed, lesson: song.lesson });
   const words = [];
   for (const line of timeline.lines) for (const index of [...(gaps.get(line.index) || [])].sort((a, b) => a - b)) words.push(line.words[index].text.replace(/^[^A-Za-z0-9'’]+|[^A-Za-z0-9'’]+$/g, ''));

@@ -10,10 +10,15 @@ import { pickGaps, distractors, wordPool } from './lyrics/gaps.js';
 import { rhymePairs } from './lyrics/rhymes.js';
 import { shuffle, seeded } from './ui.js';
 import { normWord } from './lyrics/text.js';
+import { cleanTimeline } from './lesson/pack.js';
 
-export function songTimeline(song) {
+// raw: the lyrics as they are, for the teacher's tools. Otherwise as played:
+// a recording's clean version is masked, on paper as on the stage.
+export function songTimeline(song, { raw = false } = {}) {
   if (!song.source || song.source === 'band') return timelineFromCompiled(compileSong(song), song.bpm || 100);
-  return timelineFromSynced(song.synced || [], song.duration || 0);
+  const timeline = timelineFromSynced(song.synced || [], song.duration || 0);
+  if (!raw) cleanTimeline(timeline, song.lesson);
+  return timeline;
 }
 
 function base(id, type, prompt, extra = {}) {

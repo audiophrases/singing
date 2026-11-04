@@ -7,17 +7,17 @@ import { h, clear } from '../ui.js';
 import { categoriesInTimeline, CATEGORIES } from '../lyrics/grammar.js';
 import { normWord } from '../lyrics/text.js';
 import { setupCard, scoreBox, centerOf } from './common.js';
-import { lessonOf, huntSets, huntKey } from '../lesson/pack.js';
+import { lessonOf, huntSets, huntKey, orderSets, pickSet, setLabel } from '../lesson/pack.js';
 import { sfx, floatEmoji, confetti } from '../sfx.js';
 
 export async function start(ctx) {
   const { timeline, main, track } = ctx;
   const found = categoriesInTimeline(timeline, 1);
-  const sets = huntSets(timeline, lessonOf(ctx.song));
-  const asked = sets.find((s) => `pack:${s.id}` === ctx.params.focus) || sets[0];
-  const conf = { cat: asked ? `pack:${asked.id}` : (found[0] || CATEGORIES[0]).id, music: true };
+  const sets = orderSets(huntSets(timeline, lessonOf(ctx.song)));
+  const first = pickSet(sets, ctx.settings.packLevel);
+  const conf = { cat: first ? `pack:${first.id}` : (found[0] || CATEGORIES[0]).id, music: true };
   const sel = h('select', { class: 'setup-select' },
-    sets.length ? h('optgroup', { label: '🧠 Lesson pack' }, sets.map((s) => h('option', { value: `pack:${s.id}`, selected: `pack:${s.id}` === conf.cat }, `${s.emoji || '🔎'} ${s.name}`))) : null,
+    sets.length ? h('optgroup', { label: '🧠 AI pack' }, sets.map((s) => h('option', { value: `pack:${s.id}`, selected: `pack:${s.id}` === conf.cat }, setLabel(s, '🔎')))) : null,
     found.map((c) => h('option', { value: c.id }, `${c.emoji} ${c.name} (${c.count})`)));
   sel.addEventListener('change', () => { conf.cat = sel.value; });
   const musicBox = h('input', { type: 'checkbox', checked: true });

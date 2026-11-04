@@ -6,6 +6,9 @@ import { createHash } from 'node:crypto';
 import { Miniflare, convertV4MiniflareOptions } from 'miniflare';
 import { STARTER_SONGS } from '../../js/data/songs/index.js';
 import { addStarterSongs } from '../../js/cloud/starters.js';
+import { timelineFromSynced } from '../../js/music/timeline.js';
+import { cleanTimeline } from '../../js/lesson/pack.js';
+import { pickGaps } from '../../js/lyrics/gaps.js';
 
 let mf, db;
 const revoked = new Set();
@@ -410,12 +413,37 @@ test('a lesson pack saves with the song, and its teacher section stays with the 
   assert.ok(alice);
 });
 
+test('a clean version reaches students, and the server marks the same gaps their browser shows', async () => {
+  const alice = await login('alice'); const student = await login('student'); const { id: songId } = await song(alice);
+  const assets = { audio: await upload(alice, songId), karaoke: await upload(alice, songId, 'karaoke') };
+  const lesson = { format: 'singing-lesson-pack', version: 1, teacher: { notes: 'Private plan' }, clean: [{ words: 'damn' }] };
+  // Every line ends on the masked word: the word the easy level would hide first.
+  const synced = ['So damn', 'You are damn', 'Sing it damn', 'Hold on damn'].map((text, i) => ({ text, start: i * 3, end: i * 3 + 2 }));
+  assert.equal((await call(`/api/songs/${songId}/commit`, { session: alice, method: 'POST', body: { baseRevision: 0, assets, song: { title: 'Clean song', source: 'audio', lesson, synced }, rightsConfirmed: true } })).status, 200);
+  const created = await call('/api/assignments', { session: alice, method: 'POST', body: { title: 'Clean homework', classIds: ['class_a'], attemptsLimit: 2, units: [{ songId, activity: 'gapfill', settings: { level: 'easy', input: 'type' } }] } });
+  const { units } = (await call(`/api/assignments/${created.data.id}`, { session: student })).data;
+  const started = await call(`/api/units/${units[0].id}/start`, { session: student, method: 'POST', body: {} });
+  const attempt = await call(`/api/attempts/${started.data.attemptId}`, { session: student });
+  assert.deepEqual(attempt.data.song.lesson.clean, lesson.clean, 'students get the clean version');
+  assert.equal('teacher' in attempt.data.song.lesson, false);
+  // What the student's browser does: mask, then pick the gaps.
+  const timeline = timelineFromSynced(attempt.data.song.synced, 0);
+  cleanTimeline(timeline, attempt.data.song.lesson);
+  const gaps = pickGaps(timeline, { mode: attempt.data.settings.level, seed: attempt.data.settings.seed });
+  const words = timeline.lines.flatMap((line) => [...(gaps.get(line.index) || [])].sort((a, b) => a - b).map((wi) => line.words[wi].text));
+  assert.ok(words.length >= 3);
+  assert.ok(words.every((word) => !word.includes('*')), words.join());
+  for (const [itemId, answer] of words.entries()) assert.equal((await call(`/api/attempts/${started.data.attemptId}/answers`, { session: student, method: 'POST', body: { itemId, answer } })).status, 200);
+  const done = await call(`/api/attempts/${started.data.attemptId}/submit`, { session: student, method: 'POST', body: {} });
+  assert.deepEqual([done.data.score, done.data.max], [words.length, words.length], 'every right answer counts: the server hid the same words');
+});
+
 test('an assigned gap set is what students play, and the server marks it', async () => {
   const alice = await login('alice'); const student = await login('student'); const { id: songId } = await song(alice);
   const assets = { audio: await upload(alice, songId), karaoke: await upload(alice, songId, 'karaoke') };
   const lesson = {
     format: 'singing-lesson-pack', version: 1, teacher: { notes: 'Private plan' },
-    gapSets: [{ id: 'verbs', name: 'Verbs', tier: 'core', gaps: [{ line: 1, words: 'sing', options: ['sang', 'sung'] }, { line: 2, words: 'dance', options: ['danced'] }] }],
+    gapSets: [{ id: 'verbs', name: 'Verbs', level: 'B1', gaps: [{ line: 1, words: 'sing', options: ['sang', 'sung'] }, { line: 2, words: 'dance', options: ['danced'] }] }],
   };
   const lyrics = { title: 'Lesson song', source: 'audio', lesson, synced: [{ text: 'We sing all night', start: 0, end: 3 }, { text: 'We dance all day', start: 3, end: 6 }, { text: 'We sing all night', start: 6, end: 9 }] };
   assert.equal((await call(`/api/songs/${songId}/commit`, { session: alice, method: 'POST', body: { baseRevision: 0, assets, song: lyrics, rightsConfirmed: true } })).status, 200);

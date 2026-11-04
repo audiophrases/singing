@@ -169,7 +169,7 @@ export function pick(arr, rnd = Math.random) {
   return arr[Math.floor(rnd() * arr.length)];
 }
 
-const LEVEL_HUES = { 'Pre-A1': 140, A1: 160, A2: 200, B1: 250, B2: 290, C1: 330 };
+const LEVEL_HUES = { 'Pre-A1': 140, A1: 160, A2: 200, B1: 250, B2: 290, C1: 330, C2: 10 };
 
 export function levelBadge(level) {
   return h('span', { class: 'badge level', style: { '--lvl-hue': LEVEL_HUES[level] || 245 } }, level || '—');

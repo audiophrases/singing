@@ -51,7 +51,7 @@ export async function start(ctx) {
     title: 'Say it!',
     intro: SR ? 'Read the line aloud (or sing it!) into the microphone. Every word you say clearly turns green.' : 'This browser cannot recognise speech. Open Singing in Chrome or Edge to play Say it!',
     body: SR ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Practice'),
-      choiceRow([...(packLines.length ? [['pack', `🧠 Lesson pack (${packLines.length} lines)`]] : []), ['say', '🗣️ Say the lines'], ['memory', '🙈 From memory (line hidden)']], conf.mode, (v) => { conf.mode = v; })) : null,
+      choiceRow([...(packLines.length ? [['pack', `🧠 AI pack (${packLines.length} lines)`]] : []), ['say', '🗣️ Say the lines'], ['memory', '🙈 From memory (line hidden)']], conf.mode, (v) => { conf.mode = v; })) : null,
     onStart: () => { if (SR) { card.destroy(); begin(); } },
   });
   clear(main).append(card);

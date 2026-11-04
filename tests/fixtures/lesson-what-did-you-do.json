@@ -1,228 +1,1121 @@
 {
   "format": "singing-lesson-pack",
   "version": 1,
-  "song": { "title": "What Did You Do Yesterday?", "lines": 28 },
+  "song": {
+    "title": "What Did You Do Yesterday?",
+    "lines": 28
+  },
   "profile": {
     "level": "A2",
-    "grammar": ["Past simple: irregular verbs", "Did you...? + base form", "Short answers"],
-    "themes": ["A crazy day", "Telling stories"],
-    "vocab": ["woke up", "half past eight", "on my own", "made me laugh", "came back home", "flew a kite", "a crazy day"],
+    "grammar": [
+      "Past simple: irregular verbs",
+      "Did you...? + base form",
+      "Short answers"
+    ],
+    "themes": [
+      "A crazy day",
+      "Telling stories"
+    ],
+    "vocab": [
+      "woke up",
+      "half past eight",
+      "on my own",
+      "made me laugh",
+      "came back home",
+      "flew a kite",
+      "a crazy day"
+    ],
     "summary": "Someone tells the story of a very strange day: they woke up late, met a giraffe and came home at night."
   },
   "teacher": {
     "levelWhy": "The vocabulary is A1 to A2. The verbs are the challenge: 14 different irregular pasts in short, clear sentences.",
-    "notes": "Excellent for irregular past verbs: the chorus lists them in a chant, so repetition does the drilling. The Questions section adds the contrast students usually miss: did + base form (Did you go?) against the past form (Yes, I went). Spanish speakers often say 'Did you went?', so spend time here. The melody is slow and easy; the jumps in L2 and L10 are the only hard moments.",
+    "notes": "Excellent for irregular past verbs: the chorus lists them in a chant, so repetition does the drilling. The Questions section adds the contrast students usually miss: did + base form (Did you go?) against the past form (Yes, I went). Catalan speakers often say 'Did you went?', so spend time here. The melody is slow and easy; the jumps in L2 and L10 are the only hard moments.",
     "cautions": [
-      { "line": 4, "words": "on my own", "severity": "mild", "note": "Eating alone can be a sensitive topic for some teenagers. Keep it light." }
-    ],
-    "path": [
-      { "stage": "before", "activity": "quiz", "when": "before", "minutes": 5, "do": "Teams guess what happens in the song from the title." },
-      { "stage": "while", "activity": "gapfill", "set": "chorus-verbs", "minutes": 8, "do": "First listen. Students choose from the word bank." },
-      { "stage": "while", "activity": "hunt", "set": "irregular-past", "minutes": 6, "do": "Teams find every irregular past verb. Stop on any verb they miss." },
-      { "stage": "while", "activity": "echo", "minutes": 8, "do": "Teach the chorus first, then the questions in two groups." },
-      { "stage": "after", "activity": "wrongword", "minutes": 6, "do": "Replay for the sounds Spanish speakers confuse." },
-      { "stage": "after", "activity": "hotmic", "minutes": 10, "do": "Students tell their own crazy day. Correct only the verbs." },
-      { "stage": "after", "activity": "worksheet", "minutes": 2, "do": "Hand out the sheet as homework." }
+      {
+        "line": 4,
+        "words": "on my own",
+        "severity": "mild",
+        "note": "Eating alone can be a sensitive topic for some teenagers. Keep it light."
+      }
     ]
   },
   "lines": [
-    { "line": 1, "translation": "Ayer me desperté tarde,", "plain": "I got up late yesterday." },
-    { "line": 2, "translation": "corrí a la escuela a las ocho y media.", "plain": "I went to school very fast at 8:30." },
-    { "line": 3, "translation": "Perdí mi bolígrafo, rompí mi teléfono,", "plain": "I could not find my pen, and my phone stopped working." },
-    { "line": 4, "translation": "comí mi almuerzo completamente solo.", "plain": "I had lunch alone." },
-    { "line": 5, "translation": "Ayer, ayer,", "plain": "Yesterday, yesterday." },
-    { "line": 6, "translation": "¿qué hiciste ayer?", "plain": "Tell me about your day." },
-    { "line": 7, "translation": "Fui, vi, comí, corrí,", "plain": "A list of the things I did." },
-    { "line": 8, "translation": "¡tuve un día de locos!", "plain": "My day was very strange." },
-    { "line": 9, "translation": "Luego conocí a una jirafa grande,", "plain": "After that, I saw a big giraffe for the first time." },
-    { "line": 10, "translation": "contó un chiste y me hizo reír.", "plain": "Her joke was funny." },
-    { "line": 11, "translation": "Canté una canción, volé una cometa,", "plain": "I sang, and I played with a kite." },
-    { "line": 12, "translation": "volví a casa a las diez de la noche.", "plain": "I got home at 10 p.m." },
-    { "line": 15, "translation": "Conocí, canté, volé, volví,", "plain": "A second list of things I did." },
-    { "line": 17, "translation": "¿Fuiste?", "plain": "Question about the past." },
-    { "line": 18, "translation": "¡Sí, fui!", "plain": "Short answer." },
-    { "line": 19, "translation": "¿Viste?", "plain": "Question about the past." },
-    { "line": 20, "translation": "¡Sí, vi!", "plain": "Short answer." },
-    { "line": 21, "translation": "¿Comiste?", "plain": "Question about the past." },
-    { "line": 22, "translation": "¡Sí, comí!", "plain": "Short answer." },
-    { "line": 23, "translation": "¿Te divertiste?", "plain": "Did you enjoy it?" },
-    { "line": 24, "translation": "¡Sí, me divertí!", "plain": "Yes, I enjoyed it." },
-    { "line": 28, "translation": "¡Tuve un día muy, muy loco!", "plain": "My day was very, very strange." }
+    {
+      "line": 1,
+      "translation": "Ahir em vaig despertar tard,",
+      "plain": "I got up late yesterday."
+    },
+    {
+      "line": 2,
+      "translation": "vaig córrer a l'escola a dos quarts de nou.",
+      "plain": "I went to school very fast at 8:30."
+    },
+    {
+      "line": 3,
+      "translation": "Vaig perdre el boli, vaig trencar el mòbil,",
+      "plain": "I could not find my pen, and my phone stopped working."
+    },
+    {
+      "line": 4,
+      "translation": "vaig dinar tot sol.",
+      "plain": "I had lunch alone."
+    },
+    {
+      "line": 5,
+      "translation": "Ahir, ahir,",
+      "plain": "Yesterday, yesterday."
+    },
+    {
+      "line": 6,
+      "translation": "què vas fer ahir?",
+      "plain": "Tell me about your day."
+    },
+    {
+      "line": 7,
+      "translation": "Vaig anar, vaig veure, vaig menjar, vaig córrer,",
+      "plain": "A list of the things I did."
+    },
+    {
+      "line": 8,
+      "translation": "vaig tenir un dia boig!",
+      "plain": "My day was very strange."
+    },
+    {
+      "line": 9,
+      "translation": "Després vaig conèixer una girafa gran,",
+      "plain": "After that, I saw a big giraffe for the first time."
+    },
+    {
+      "line": 10,
+      "translation": "va explicar un acudit i em va fer riure.",
+      "plain": "Her joke was funny."
+    },
+    {
+      "line": 11,
+      "translation": "Vaig cantar una cançó, vaig fer volar un estel,",
+      "plain": "I sang, and I played with a kite."
+    },
+    {
+      "line": 12,
+      "translation": "vaig tornar a casa a les deu de la nit.",
+      "plain": "I got home at 10 p.m."
+    },
+    {
+      "line": 15,
+      "translation": "Vaig conèixer, vaig cantar, vaig volar, vaig tornar,",
+      "plain": "A second list of things I did."
+    },
+    {
+      "line": 17,
+      "translation": "Hi vas anar?",
+      "plain": "Question about the past."
+    },
+    {
+      "line": 18,
+      "translation": "Sí, hi vaig anar!",
+      "plain": "Short answer."
+    },
+    {
+      "line": 19,
+      "translation": "Ho vas veure?",
+      "plain": "Question about the past."
+    },
+    {
+      "line": 20,
+      "translation": "Sí, ho vaig veure!",
+      "plain": "Short answer."
+    },
+    {
+      "line": 21,
+      "translation": "Vas menjar?",
+      "plain": "Question about the past."
+    },
+    {
+      "line": 22,
+      "translation": "Sí, vaig menjar!",
+      "plain": "Short answer."
+    },
+    {
+      "line": 23,
+      "translation": "T'ho vas passar bé?",
+      "plain": "Did you enjoy it?"
+    },
+    {
+      "line": 24,
+      "translation": "Sí, m'ho vaig passar bé!",
+      "plain": "Yes, I enjoyed it."
+    },
+    {
+      "line": 28,
+      "translation": "Vaig tenir un dia molt, molt boig!",
+      "plain": "My day was very, very strange."
+    }
   ],
   "words": [
-    { "word": "woke up", "meaning": "stopped sleeping", "translation": "me desperté", "emoji": "⏰", "example": "My brother woke up at noon.", "ipa": "/woʊk ʌp/" },
-    { "word": "half past eight", "meaning": "8:30", "translation": "las ocho y media", "emoji": "🕣", "example": "The film starts at half past eight.", "ipa": "/hæf pæst eɪt/" },
-    { "word": "lost", "meaning": "could not find something", "translation": "perdí", "emoji": "🔍", "example": "She lost her keys on the bus.", "ipa": "/lɔːst/" },
-    { "word": "broke", "meaning": "made something stop working", "translation": "rompí", "emoji": "💔", "example": "He broke his glasses.", "ipa": "/broʊk/" },
-    { "word": "on my own", "meaning": "alone", "translation": "yo solo", "emoji": "🧍", "example": "I did my homework on my own.", "ipa": "/ɒn maɪ oʊn/" },
-    { "word": "met", "meaning": "saw someone for the first time", "translation": "conocí", "emoji": "🤝", "example": "We met at a party.", "ipa": "/met/" },
-    { "word": "told a joke", "meaning": "said something funny", "translation": "contó un chiste", "emoji": "😂", "example": "My uncle told a terrible joke.", "ipa": "/toʊld ə dʒoʊk/" },
-    { "word": "made me laugh", "meaning": "was so funny that I laughed", "translation": "me hizo reír", "emoji": "🤣", "example": "That video made me laugh.", "ipa": "/meɪd mi læf/" },
-    { "word": "came back", "meaning": "returned", "translation": "volví", "emoji": "🏠", "example": "They came back on Sunday.", "ipa": "/keɪm bæk/" },
-    { "word": "crazy", "meaning": "very strange or wild", "translation": "loco", "emoji": "🤪", "example": "It was a crazy game.", "ipa": "/ˈkreɪzi/" }
+    {
+      "word": "woke up",
+      "meaning": "stopped sleeping",
+      "translation": "em vaig despertar",
+      "emoji": "⏰",
+      "example": "My brother woke up at noon.",
+      "ipa": "/woʊk ʌp/"
+    },
+    {
+      "word": "half past eight",
+      "meaning": "8:30",
+      "translation": "dos quarts de nou",
+      "emoji": "🕣",
+      "example": "The film starts at half past eight.",
+      "ipa": "/hæf pæst eɪt/"
+    },
+    {
+      "word": "lost",
+      "meaning": "could not find something",
+      "translation": "vaig perdre",
+      "emoji": "🔍",
+      "example": "She lost her keys on the bus.",
+      "ipa": "/lɔːst/"
+    },
+    {
+      "word": "broke",
+      "meaning": "made something stop working",
+      "translation": "vaig trencar",
+      "emoji": "💔",
+      "example": "He broke his glasses.",
+      "ipa": "/broʊk/"
+    },
+    {
+      "word": "on my own",
+      "meaning": "alone",
+      "translation": "tot sol",
+      "emoji": "🧍",
+      "example": "I did my homework on my own.",
+      "ipa": "/ɒn maɪ oʊn/"
+    },
+    {
+      "word": "met",
+      "meaning": "saw someone for the first time",
+      "translation": "vaig conèixer",
+      "emoji": "🤝",
+      "example": "We met at a party.",
+      "ipa": "/met/"
+    },
+    {
+      "word": "told a joke",
+      "meaning": "said something funny",
+      "translation": "va explicar un acudit",
+      "emoji": "😂",
+      "example": "My uncle told a terrible joke.",
+      "ipa": "/toʊld ə dʒoʊk/"
+    },
+    {
+      "word": "made me laugh",
+      "meaning": "was so funny that I laughed",
+      "translation": "em va fer riure",
+      "emoji": "🤣",
+      "example": "That video made me laugh.",
+      "ipa": "/meɪd mi læf/"
+    },
+    {
+      "word": "came back",
+      "meaning": "returned",
+      "translation": "vaig tornar",
+      "emoji": "🏠",
+      "example": "They came back on Sunday.",
+      "ipa": "/keɪm bæk/"
+    },
+    {
+      "word": "crazy",
+      "meaning": "very strange or wild",
+      "translation": "boig",
+      "emoji": "🤪",
+      "example": "It was a crazy game.",
+      "ipa": "/ˈkreɪzi/"
+    }
   ],
   "popups": [
-    { "line": 1, "words": "woke up", "kind": "grammar", "text": "wake → woke. No -ed here!" },
-    { "line": 2, "words": "ran", "kind": "grammar", "text": "run → ran. The vowel changes." },
-    { "line": 2, "words": "half past eight", "kind": "word", "text": "8:30. Spanish says eight and a half, English says half past." },
-    { "line": 3, "words": "lost", "kind": "grammar", "text": "lose → lost" },
-    { "line": 3, "words": "broke", "kind": "grammar", "text": "break → broke" },
-    { "line": 4, "words": "ate", "kind": "sound", "text": "ate sounds exactly like eight!" },
-    { "line": 4, "words": "on my own", "kind": "word", "text": "on my own = alone" },
-    { "line": 6, "words": "did you do", "kind": "grammar", "text": "did + base form: do, not did!" },
-    { "line": 9, "words": "met", "kind": "word", "text": "met = saw for the first time (conocí)" },
-    { "line": 10, "words": "laugh", "kind": "sound", "text": "The gh sounds like f: /læf/" },
-    { "line": 12, "words": "came back", "kind": "grammar", "text": "come → came" },
-    { "line": 18, "words": "went", "kind": "grammar", "text": "Did you go? Yes, I went. Question: go. Answer: went." }
+    {
+      "line": 1,
+      "words": "woke up",
+      "kind": "grammar",
+      "text": "wake → woke. No -ed here!"
+    },
+    {
+      "line": 2,
+      "words": "ran",
+      "kind": "grammar",
+      "text": "run → ran. The vowel changes."
+    },
+    {
+      "line": 2,
+      "words": "half past eight",
+      "kind": "word",
+      "text": "8:30. Catalan counts quarters: dos quarts de nou."
+    },
+    {
+      "line": 3,
+      "words": "lost",
+      "kind": "grammar",
+      "text": "lose → lost"
+    },
+    {
+      "line": 3,
+      "words": "broke",
+      "kind": "grammar",
+      "text": "break → broke"
+    },
+    {
+      "line": 4,
+      "words": "ate",
+      "kind": "sound",
+      "text": "ate sounds exactly like eight!"
+    },
+    {
+      "line": 4,
+      "words": "on my own",
+      "kind": "word",
+      "text": "on my own = alone"
+    },
+    {
+      "line": 6,
+      "words": "did you do",
+      "kind": "grammar",
+      "text": "did + base form: do, not did!"
+    },
+    {
+      "line": 9,
+      "words": "met",
+      "kind": "word",
+      "text": "met = saw for the first time (vaig conèixer)"
+    },
+    {
+      "line": 10,
+      "words": "laugh",
+      "kind": "sound",
+      "text": "The gh sounds like f: /læf/"
+    },
+    {
+      "line": 12,
+      "words": "came back",
+      "kind": "grammar",
+      "text": "come → came"
+    },
+    {
+      "line": 18,
+      "words": "went",
+      "kind": "grammar",
+      "text": "Did you go? Yes, I went. Question: go. Answer: went."
+    }
   ],
   "hunts": [
     {
-      "id": "irregular-past", "name": "Irregular past verbs", "emoji": "🌀", "rule": "Find every irregular verb in the past. They do not end in -ed!",
+      "id": "irregular-past",
+      "name": "Irregular past verbs",
+      "emoji": "🌀",
+      "rule": "Find every irregular verb in the past. They do not end in -ed!",
       "targets": [
-        { "line": 1, "words": "woke", "why": "wake → woke" },
-        { "line": 2, "words": "ran", "why": "run → ran" },
-        { "line": 3, "words": "lost", "why": "lose → lost" },
-        { "line": 3, "words": "broke", "why": "break → broke" },
-        { "line": 4, "words": "ate", "why": "eat → ate" },
-        { "line": 7, "words": "went", "why": "go → went" },
-        { "line": 7, "words": "saw", "why": "see → saw" },
-        { "line": 7, "words": "ate", "why": "eat → ate" },
-        { "line": 7, "words": "ran", "why": "run → ran" },
-        { "line": 8, "words": "had", "why": "have → had" },
-        { "line": 9, "words": "met", "why": "meet → met" },
-        { "line": 10, "words": "told", "why": "tell → told" },
-        { "line": 10, "words": "made", "why": "make → made" },
-        { "line": 11, "words": "sang", "why": "sing → sang" },
-        { "line": 11, "words": "flew", "why": "fly → flew" },
-        { "line": 12, "words": "came", "why": "come → came" }
-      ]
+        {
+          "line": 1,
+          "words": "woke",
+          "why": "wake → woke"
+        },
+        {
+          "line": 2,
+          "words": "ran",
+          "why": "run → ran"
+        },
+        {
+          "line": 3,
+          "words": "lost",
+          "why": "lose → lost"
+        },
+        {
+          "line": 3,
+          "words": "broke",
+          "why": "break → broke"
+        },
+        {
+          "line": 4,
+          "words": "ate",
+          "why": "eat → ate"
+        },
+        {
+          "line": 7,
+          "words": "went",
+          "why": "go → went"
+        },
+        {
+          "line": 7,
+          "words": "saw",
+          "why": "see → saw"
+        },
+        {
+          "line": 7,
+          "words": "ate",
+          "why": "eat → ate"
+        },
+        {
+          "line": 7,
+          "words": "ran",
+          "why": "run → ran"
+        },
+        {
+          "line": 8,
+          "words": "had",
+          "why": "have → had"
+        },
+        {
+          "line": 9,
+          "words": "met",
+          "why": "meet → met"
+        },
+        {
+          "line": 10,
+          "words": "told",
+          "why": "tell → told"
+        },
+        {
+          "line": 10,
+          "words": "made",
+          "why": "make → made"
+        },
+        {
+          "line": 11,
+          "words": "sang",
+          "why": "sing → sang"
+        },
+        {
+          "line": 11,
+          "words": "flew",
+          "why": "fly → flew"
+        },
+        {
+          "line": 12,
+          "words": "came",
+          "why": "come → came"
+        }
+      ],
+      "level": "A2"
     },
     {
-      "id": "after-did", "name": "After did: the base form", "emoji": "❓", "rule": "After did, the verb goes back to its base form. Find these verbs.",
+      "id": "after-did",
+      "name": "After did: the base form",
+      "emoji": "❓",
+      "rule": "After did, the verb goes back to its base form. Find these verbs.",
       "targets": [
-        { "line": 6, "words": "do", "why": "What did you do? Not: What did you did?" },
-        { "line": 17, "words": "go", "why": "Did you go? Not: Did you went?" },
-        { "line": 19, "words": "see", "why": "Did you see? Not: Did you saw?" },
-        { "line": 21, "words": "eat", "why": "Did you eat? Not: Did you ate?" },
-        { "line": 23, "words": "have", "why": "Did you have fun? Not: Did you had fun?" }
-      ]
+        {
+          "line": 6,
+          "words": "do",
+          "why": "What did you do? Not: What did you did?"
+        },
+        {
+          "line": 17,
+          "words": "go",
+          "why": "Did you go? Not: Did you went?"
+        },
+        {
+          "line": 19,
+          "words": "see",
+          "why": "Did you see? Not: Did you saw?"
+        },
+        {
+          "line": 21,
+          "words": "eat",
+          "why": "Did you eat? Not: Did you ate?"
+        },
+        {
+          "line": 23,
+          "words": "have",
+          "why": "Did you have fun? Not: Did you had fun?"
+        }
+      ],
+      "level": "B1"
     }
   ],
   "gapSets": [
     {
-      "id": "chorus-verbs", "name": "Verbs in the chorus", "emoji": "🌱", "tier": "support", "rule": "Listen for the verbs in the chorus. They are all in the past.",
+      "id": "chorus-verbs",
+      "name": "Verbs in the chorus",
+      "emoji": "🌱",
+      "rule": "Listen for the verbs in the chorus. They are all in the past.",
       "gaps": [
-        { "line": 7, "words": "went", "options": ["goed", "go"], "why": "go → went: a completely new word." },
-        { "line": 7, "words": "saw", "options": ["seed", "see"], "why": "see → saw" },
-        { "line": 7, "words": "ate", "options": ["eated", "eat"], "why": "eat → ate" },
-        { "line": 7, "words": "ran", "options": ["runned", "run"], "why": "run → ran" },
-        { "line": 8, "words": "had", "options": ["haved", "have"], "why": "have → had" },
-        { "line": 15, "words": "met", "options": ["meeted", "meet"], "why": "meet → met" },
-        { "line": 15, "words": "sang", "options": ["singed", "sung"], "why": "sing → sang. Sung is for have sung." },
-        { "line": 15, "words": "flew", "options": ["flied", "fly"], "why": "fly → flew" },
-        { "line": 15, "words": "came", "options": ["comed", "come"], "why": "come → came" }
-      ]
+        {
+          "line": 7,
+          "words": "went",
+          "options": [
+            "goed",
+            "go"
+          ],
+          "why": "go → went: a completely new word."
+        },
+        {
+          "line": 7,
+          "words": "saw",
+          "options": [
+            "seed",
+            "see"
+          ],
+          "why": "see → saw"
+        },
+        {
+          "line": 7,
+          "words": "ate",
+          "options": [
+            "eated",
+            "eat"
+          ],
+          "why": "eat → ate"
+        },
+        {
+          "line": 7,
+          "words": "ran",
+          "options": [
+            "runned",
+            "run"
+          ],
+          "why": "run → ran"
+        },
+        {
+          "line": 8,
+          "words": "had",
+          "options": [
+            "haved",
+            "have"
+          ],
+          "why": "have → had"
+        },
+        {
+          "line": 15,
+          "words": "met",
+          "options": [
+            "meeted",
+            "meet"
+          ],
+          "why": "meet → met"
+        },
+        {
+          "line": 15,
+          "words": "sang",
+          "options": [
+            "singed",
+            "sung"
+          ],
+          "why": "sing → sang. Sung is for have sung."
+        },
+        {
+          "line": 15,
+          "words": "flew",
+          "options": [
+            "flied",
+            "fly"
+          ],
+          "why": "fly → flew"
+        },
+        {
+          "line": 15,
+          "words": "came",
+          "options": [
+            "comed",
+            "come"
+          ],
+          "why": "come → came"
+        }
+      ],
+      "level": "A2"
     },
     {
-      "id": "story-verbs", "name": "Verbs in the story", "emoji": "🌿", "tier": "core", "rule": "After did, use the base form. In a story, use the past.",
+      "id": "story-verbs",
+      "name": "Verbs in the story",
+      "emoji": "🌿",
+      "rule": "After did, use the base form. In a story, use the past.",
       "gaps": [
-        { "line": 1, "words": "woke", "options": ["waked", "wake"], "why": "wake → woke" },
-        { "line": 2, "words": "ran", "options": ["run", "runned"], "why": "run → ran" },
-        { "line": 3, "words": "lost", "options": ["losed", "loose"], "why": "lose → lost" },
-        { "line": 3, "words": "broke", "options": ["breaked", "broken"], "why": "break → broke" },
-        { "line": 10, "words": "told", "options": ["telled", "said"], "why": "We tell a joke, not say a joke." },
-        { "line": 10, "words": "made", "options": ["maked", "did"], "why": "It made me laugh: make, not do." },
-        { "line": 11, "words": "flew", "options": ["flyed", "flowed"], "why": "fly → flew" },
-        { "line": 17, "words": "go", "options": ["went", "goes"], "why": "After did, use the base form." },
-        { "line": 19, "words": "see", "options": ["saw", "seen"], "why": "After did, use the base form." },
-        { "line": 21, "words": "eat", "options": ["ate", "eats"], "why": "After did, use the base form." }
-      ]
+        {
+          "line": 1,
+          "words": "woke",
+          "options": [
+            "waked",
+            "wake"
+          ],
+          "why": "wake → woke"
+        },
+        {
+          "line": 2,
+          "words": "ran",
+          "options": [
+            "run",
+            "runned"
+          ],
+          "why": "run → ran"
+        },
+        {
+          "line": 3,
+          "words": "lost",
+          "options": [
+            "losed",
+            "loose"
+          ],
+          "why": "lose → lost"
+        },
+        {
+          "line": 3,
+          "words": "broke",
+          "options": [
+            "breaked",
+            "broken"
+          ],
+          "why": "break → broke"
+        },
+        {
+          "line": 10,
+          "words": "told",
+          "options": [
+            "telled",
+            "said"
+          ],
+          "why": "We tell a joke, not say a joke."
+        },
+        {
+          "line": 10,
+          "words": "made",
+          "options": [
+            "maked",
+            "did"
+          ],
+          "why": "It made me laugh: make, not do."
+        },
+        {
+          "line": 11,
+          "words": "flew",
+          "options": [
+            "flyed",
+            "flowed"
+          ],
+          "why": "fly → flew"
+        },
+        {
+          "line": 17,
+          "words": "go",
+          "options": [
+            "went",
+            "goes"
+          ],
+          "why": "After did, use the base form."
+        },
+        {
+          "line": 19,
+          "words": "see",
+          "options": [
+            "saw",
+            "seen"
+          ],
+          "why": "After did, use the base form."
+        },
+        {
+          "line": 21,
+          "words": "eat",
+          "options": [
+            "ate",
+            "eats"
+          ],
+          "why": "After did, use the base form."
+        }
+      ],
+      "level": "B1"
     }
   ],
   "swaps": [
-    { "line": 2, "words": "ran", "wrong": "run", "why": "ran /æ/ and run /ʌ/: Spanish has one vowel for both." },
-    { "line": 3, "words": "lost", "wrong": "last", "why": "lost /ɔː/ and last /æ/" },
-    { "line": 1, "words": "late", "wrong": "let", "why": "late has the long sound /eɪ/, let has a short /e/." },
-    { "line": 4, "words": "lunch", "wrong": "launch", "why": "lunch /ʌ/ and launch /ɔː/" },
-    { "line": 9, "words": "met", "wrong": "meet", "why": "met is short, meet is long." },
-    { "line": 10, "words": "told", "wrong": "sold", "why": "t and s at the start" },
-    { "line": 11, "words": "sang", "wrong": "sing", "why": "sang /æ/ and sing /ɪ/" },
-    { "line": 12, "words": "came", "wrong": "game", "why": "k and g: the k has a puff of air." }
+    {
+      "line": 2,
+      "words": "ran",
+      "wrong": "run",
+      "why": "ran /æ/ and run /ʌ/: Catalan has neither vowel."
+    },
+    {
+      "line": 3,
+      "words": "lost",
+      "wrong": "last",
+      "why": "lost /ɔː/ and last /æ/"
+    },
+    {
+      "line": 1,
+      "words": "late",
+      "wrong": "let",
+      "why": "late has the long sound /eɪ/, let has a short /e/."
+    },
+    {
+      "line": 4,
+      "words": "lunch",
+      "wrong": "launch",
+      "why": "lunch /ʌ/ and launch /ɔː/"
+    },
+    {
+      "line": 9,
+      "words": "met",
+      "wrong": "meet",
+      "why": "met is short, meet is long."
+    },
+    {
+      "line": 10,
+      "words": "told",
+      "wrong": "sold",
+      "why": "t and s at the start"
+    },
+    {
+      "line": 11,
+      "words": "sang",
+      "wrong": "sing",
+      "why": "sang /æ/ and sing /ɪ/"
+    },
+    {
+      "line": 12,
+      "words": "came",
+      "wrong": "game",
+      "why": "k and g: the k has a puff of air."
+    }
   ],
   "stops": [
-    { "line": 2, "words": "ran", "ask": "You woke up late. What did you do next?" },
-    { "line": 3, "words": "broke", "ask": "A bad day! What happened to the phone?" },
-    { "line": 9, "words": "big giraffe", "ask": "Then I met a big... what? Say an animal!" },
-    { "line": 10, "words": "made me laugh", "ask": "The joke was funny. How did the singer feel?" },
-    { "line": 12, "words": "came back home", "ask": "It is late. What did the singer do?" },
-    { "line": 18, "words": "went", "ask": "Did you go? How do we answer: Yes, I..." }
+    {
+      "line": 2,
+      "words": "ran",
+      "ask": "You woke up late. What did you do next?"
+    },
+    {
+      "line": 3,
+      "words": "broke",
+      "ask": "A bad day! What happened to the phone?"
+    },
+    {
+      "line": 9,
+      "words": "big giraffe",
+      "ask": "Then I met a big... what? Say an animal!"
+    },
+    {
+      "line": 10,
+      "words": "made me laugh",
+      "ask": "The joke was funny. How did the singer feel?"
+    },
+    {
+      "line": 12,
+      "words": "came back home",
+      "ask": "It is late. What did the singer do?"
+    },
+    {
+      "line": 18,
+      "words": "went",
+      "ask": "Did you go? How do we answer: Yes, I..."
+    }
   ],
   "quiz": [
-    { "when": "before", "q": "The song is called \"What Did You Do Yesterday?\". What is it about?", "answer": "The things someone did", "wrong": ["Plans for tomorrow", "A trip next year"], "explain": "Yesterday means the past: this song tells a story." },
-    { "when": "before", "q": "Which sentence is correct?", "answer": "Yesterday I went home", "wrong": ["Yesterday I go home", "Yesterday I goed home"], "explain": "go → went. We will hear many verbs like this." },
-    { "when": "after", "q": "Why did the singer run to school?", "answer": "They woke up late", "wrong": ["They liked running", "They saw a giraffe"], "line": 1, "explain": "They woke up late, so they had to run." },
-    { "when": "after", "q": "What time did the singer run to school?", "answer": "8:30", "wrong": ["8:00", "9:30"], "line": 2, "explain": "Half past eight is 8:30." },
-    { "when": "after", "q": "What happened to the phone?", "answer": "It stopped working", "wrong": ["It was lost", "It rang"], "line": 3, "explain": "The pen was lost. The phone broke." },
-    { "when": "after", "q": "Who did the singer eat lunch with?", "answer": "Nobody", "wrong": ["A giraffe", "A friend"], "line": 4, "explain": "On my own means alone." },
-    { "when": "after", "q": "Who told a joke?", "answer": "The giraffe", "wrong": ["The singer", "A teacher"], "line": 10, "explain": "She is the giraffe from the line before." },
-    { "when": "after", "q": "When did the singer come home?", "answer": "At 10 p.m.", "wrong": ["At 8:30", "At lunchtime"], "line": 12, "explain": "Ten at night is 10 p.m." },
-    { "when": "after", "q": "Which question is correct?", "answer": "Did you go?", "wrong": ["Did you went?", "Do you went?"], "line": 17, "explain": "did + base form" },
-    { "when": "after", "q": "What is the past of \"fly\"?", "answer": "flew", "wrong": ["flied", "flown"], "line": 11, "explain": "fly → flew" }
+    {
+      "when": "before",
+      "q": "The song is called \"What Did You Do Yesterday?\". What is it about?",
+      "answer": "The things someone did",
+      "wrong": [
+        "Plans for tomorrow",
+        "A trip next year"
+      ],
+      "explain": "Yesterday means the past: this song tells a story.",
+      "level": "A1"
+    },
+    {
+      "when": "before",
+      "q": "Which sentence is correct?",
+      "answer": "Yesterday I went home",
+      "wrong": [
+        "Yesterday I go home",
+        "Yesterday I goed home"
+      ],
+      "explain": "go → went. We will hear many verbs like this.",
+      "level": "A1"
+    },
+    {
+      "when": "after",
+      "q": "Why did the singer run to school?",
+      "answer": "They woke up late",
+      "wrong": [
+        "They liked running",
+        "They saw a giraffe"
+      ],
+      "line": 1,
+      "explain": "They woke up late, so they had to run.",
+      "level": "A2"
+    },
+    {
+      "when": "after",
+      "q": "What time did the singer run to school?",
+      "answer": "8:30",
+      "wrong": [
+        "8:00",
+        "9:30"
+      ],
+      "line": 2,
+      "explain": "Half past eight is 8:30.",
+      "level": "A2"
+    },
+    {
+      "when": "after",
+      "q": "What happened to the phone?",
+      "answer": "It stopped working",
+      "wrong": [
+        "It was lost",
+        "It rang"
+      ],
+      "line": 3,
+      "explain": "The pen was lost. The phone broke.",
+      "level": "A2"
+    },
+    {
+      "when": "after",
+      "q": "Who did the singer eat lunch with?",
+      "answer": "Nobody",
+      "wrong": [
+        "A giraffe",
+        "A friend"
+      ],
+      "line": 4,
+      "explain": "On my own means alone.",
+      "level": "A2"
+    },
+    {
+      "when": "after",
+      "q": "Who told a joke?",
+      "answer": "The giraffe",
+      "wrong": [
+        "The singer",
+        "A teacher"
+      ],
+      "line": 10,
+      "explain": "She is the giraffe from the line before.",
+      "level": "A2"
+    },
+    {
+      "when": "after",
+      "q": "When did the singer come home?",
+      "answer": "At 10 p.m.",
+      "wrong": [
+        "At 8:30",
+        "At lunchtime"
+      ],
+      "line": 12,
+      "explain": "Ten at night is 10 p.m.",
+      "level": "A2"
+    },
+    {
+      "when": "after",
+      "q": "Which question is correct?",
+      "answer": "Did you go?",
+      "wrong": [
+        "Did you went?",
+        "Do you went?"
+      ],
+      "line": 17,
+      "explain": "did + base form",
+      "level": "B1"
+    },
+    {
+      "when": "after",
+      "q": "What is the past of \"fly\"?",
+      "answer": "flew",
+      "wrong": [
+        "flied",
+        "flown"
+      ],
+      "line": 11,
+      "explain": "fly → flew",
+      "level": "B1"
+    }
   ],
   "cards": [
-    { "kind": "personal", "emoji": "⏰", "title": "Your morning", "body": "What time did you wake up today? Say: I woke up at...", "answer": "I woke up at seven." },
-    { "kind": "personal", "emoji": "🍽️", "title": "Yesterday's food", "body": "What did you eat yesterday? Say two things.", "answer": "I ate pasta and an apple." },
-    { "kind": "personal", "emoji": "💔", "title": "Oh no!", "body": "Tell us about something you lost or broke.", "answer": "I lost my keys last week." },
-    { "kind": "personal", "emoji": "🤝", "title": "New people", "body": "Who did you meet this year? Say: I met...", "answer": "I met my new teacher." },
-    { "kind": "personal", "emoji": "😂", "title": "Funny!", "body": "What made you laugh this week?", "answer": "A video of a cat made me laugh." },
-    { "kind": "discuss", "emoji": "🤪", "title": "Crazy day", "body": "Was the singer's day good or bad? Why? Use two past verbs.", "answer": "It was good because she met a giraffe." },
-    { "kind": "discuss", "emoji": "🧍", "title": "Alone or together?", "body": "Do you prefer to eat on your own or with friends? Why?" },
-    { "kind": "roleplay", "emoji": "🦒", "title": "Be the giraffe", "body": "You are the giraffe. Tell the class about your day. Use three past verbs." },
-    { "kind": "roleplay", "emoji": "📞", "title": "Call your friend", "body": "Ask a friend: What did you do yesterday? They answer. Change roles." },
-    { "kind": "language", "emoji": "🔄", "title": "Fix it!", "body": "Correct this sentence: Did you went to school?", "answer": "Did you go to school?" },
-    { "kind": "language", "emoji": "🔄", "title": "Fix it!", "body": "Correct this sentence: I eated my lunch.", "answer": "I ate my lunch." },
-    { "kind": "language", "emoji": "❓", "title": "Make a question", "body": "The answer is: Yes, I saw it. What is the question?", "answer": "Did you see it?" },
-    { "kind": "sing", "emoji": "🎤", "title": "New verse", "body": "Change the chorus line with your own verbs: I went, I ..., I ..., I ...!", "answer": "I went, I slept, I ate, I fell!" },
-    { "kind": "sing", "emoji": "🎶", "title": "Question and answer", "body": "Sing Did you go? and choose a friend to sing the answer." }
+    {
+      "kind": "personal",
+      "emoji": "⏰",
+      "title": "Your morning",
+      "body": "What time did you wake up today? Say: I woke up at...",
+      "answer": "I woke up at seven.",
+      "level": "A2"
+    },
+    {
+      "kind": "personal",
+      "emoji": "🍽️",
+      "title": "Yesterday's food",
+      "body": "What did you eat yesterday? Say two things.",
+      "answer": "I ate pasta and an apple.",
+      "level": "A2"
+    },
+    {
+      "kind": "personal",
+      "emoji": "💔",
+      "title": "Oh no!",
+      "body": "Tell us about something you lost or broke.",
+      "answer": "I lost my keys last week.",
+      "level": "A2"
+    },
+    {
+      "kind": "personal",
+      "emoji": "🤝",
+      "title": "New people",
+      "body": "Who did you meet this year? Say: I met...",
+      "answer": "I met my new teacher.",
+      "level": "A2"
+    },
+    {
+      "kind": "personal",
+      "emoji": "😂",
+      "title": "Funny!",
+      "body": "What made you laugh this week?",
+      "answer": "A video of a cat made me laugh.",
+      "level": "A2"
+    },
+    {
+      "kind": "discuss",
+      "emoji": "🤪",
+      "title": "Crazy day",
+      "body": "Was the singer's day good or bad? Why? Use two past verbs.",
+      "answer": "It was good because she met a giraffe.",
+      "level": "B1"
+    },
+    {
+      "kind": "discuss",
+      "emoji": "🧍",
+      "title": "Alone or together?",
+      "body": "Do you prefer to eat on your own or with friends? Why?",
+      "level": "B1"
+    },
+    {
+      "kind": "roleplay",
+      "emoji": "🦒",
+      "title": "Be the giraffe",
+      "body": "You are the giraffe. Tell the class about your day. Use three past verbs.",
+      "level": "B1"
+    },
+    {
+      "kind": "roleplay",
+      "emoji": "📞",
+      "title": "Call your friend",
+      "body": "Ask a friend: What did you do yesterday? They answer. Change roles.",
+      "level": "B1"
+    },
+    {
+      "kind": "language",
+      "emoji": "🔄",
+      "title": "Fix it!",
+      "body": "Correct this sentence: Did you went to school?",
+      "answer": "Did you go to school?",
+      "level": "A2"
+    },
+    {
+      "kind": "language",
+      "emoji": "🔄",
+      "title": "Fix it!",
+      "body": "Correct this sentence: I eated my lunch.",
+      "answer": "I ate my lunch.",
+      "level": "A2"
+    },
+    {
+      "kind": "language",
+      "emoji": "❓",
+      "title": "Make a question",
+      "body": "The answer is: Yes, I saw it. What is the question?",
+      "answer": "Did you see it?",
+      "level": "A2"
+    },
+    {
+      "kind": "sing",
+      "emoji": "🎤",
+      "title": "New verse",
+      "body": "Change the chorus line with your own verbs: I went, I ..., I ..., I ...!",
+      "answer": "I went, I slept, I ate, I fell!",
+      "level": "A2"
+    },
+    {
+      "kind": "sing",
+      "emoji": "🎶",
+      "title": "Question and answer",
+      "body": "Sing Did you go? and choose a friend to sing the answer.",
+      "level": "A2"
+    }
   ],
   "pairs": [
     {
-      "id": "base-past", "name": "Base and past", "emoji": "🔄",
+      "id": "base-past",
+      "name": "Base and past",
+      "emoji": "🔄",
       "pairs": [
-        { "a": "go", "b": "went" }, { "a": "see", "b": "saw" }, { "a": "eat", "b": "ate" }, { "a": "run", "b": "ran" },
-        { "a": "wake", "b": "woke" }, { "a": "break", "b": "broke" }, { "a": "tell", "b": "told" }, { "a": "fly", "b": "flew" },
-        { "a": "come", "b": "came" }, { "a": "meet", "b": "met" }
-      ]
+        {
+          "a": "go",
+          "b": "went"
+        },
+        {
+          "a": "see",
+          "b": "saw"
+        },
+        {
+          "a": "eat",
+          "b": "ate"
+        },
+        {
+          "a": "run",
+          "b": "ran"
+        },
+        {
+          "a": "wake",
+          "b": "woke"
+        },
+        {
+          "a": "break",
+          "b": "broke"
+        },
+        {
+          "a": "tell",
+          "b": "told"
+        },
+        {
+          "a": "fly",
+          "b": "flew"
+        },
+        {
+          "a": "come",
+          "b": "came"
+        },
+        {
+          "a": "meet",
+          "b": "met"
+        }
+      ],
+      "level": "A2"
     },
     {
-      "id": "english-spanish", "name": "English and Spanish", "emoji": "🌍", "translated": true,
+      "id": "english-catalan",
+      "name": "English and Catalan",
+      "emoji": "🌍",
+      "translated": true,
       "pairs": [
-        { "a": "woke up", "b": "me desperté" }, { "a": "lost", "b": "perdí" }, { "a": "broke", "b": "rompí" }, { "a": "ran", "b": "corrí" },
-        { "a": "met", "b": "conocí" }, { "a": "came back", "b": "volví" }, { "a": "on my own", "b": "yo solo" }, { "a": "half past eight", "b": "las ocho y media" }
-      ]
+        {
+          "a": "woke up",
+          "b": "em vaig despertar"
+        },
+        {
+          "a": "lost",
+          "b": "vaig perdre"
+        },
+        {
+          "a": "broke",
+          "b": "vaig trencar"
+        },
+        {
+          "a": "ran",
+          "b": "vaig córrer"
+        },
+        {
+          "a": "met",
+          "b": "vaig conèixer"
+        },
+        {
+          "a": "came back",
+          "b": "vaig tornar"
+        },
+        {
+          "a": "on my own",
+          "b": "tot sol"
+        },
+        {
+          "a": "half past eight",
+          "b": "dos quarts de nou"
+        }
+      ],
+      "level": "A2"
     }
   ],
   "moves": [
-    { "word": "woke", "text": "Stretch and yawn!", "emoji": "🥱" },
-    { "word": "ran", "text": "Run on the spot!", "emoji": "🏃" },
-    { "word": "broke", "text": "Snap it in two!", "emoji": "💥" },
-    { "word": "ate", "text": "Eat a big sandwich!", "emoji": "🥪" },
-    { "word": "flew", "text": "Fly your kite!", "emoji": "🪁" },
-    { "word": "laugh", "text": "Hold your tummy and laugh!", "emoji": "😂" }
+    {
+      "word": "woke",
+      "text": "Stretch and yawn!",
+      "emoji": "🥱"
+    },
+    {
+      "word": "ran",
+      "text": "Run on the spot!",
+      "emoji": "🏃"
+    },
+    {
+      "word": "broke",
+      "text": "Snap it in two!",
+      "emoji": "💥"
+    },
+    {
+      "word": "ate",
+      "text": "Eat a big sandwich!",
+      "emoji": "🥪"
+    },
+    {
+      "word": "flew",
+      "text": "Fly your kite!",
+      "emoji": "🪁"
+    },
+    {
+      "word": "laugh",
+      "text": "Hold your tummy and laugh!",
+      "emoji": "😂"
+    }
   ],
   "say": [
-    { "line": 2, "words": "to school", "skill": "s + consonant", "tip": "Start with the s: school, not eschool. Keep your mouth closed until the k." },
-    { "line": 5, "words": "Yesterday", "skill": "word stress", "tip": "Stress the first part: YES-ter-day. Y is soft, not like j." },
-    { "line": 10, "words": "made me laugh", "skill": "final consonant", "tip": "Finish the d in made. In laugh, end with f: your teeth touch your lip." },
-    { "line": 11, "words": "sang a song", "skill": "linking", "tip": "Link them: sang-a-song. The a is very short." },
-    { "line": 28, "words": "crazy day", "skill": "vowel", "tip": "The last note is long. Hold the eɪ sound and end on a small i, not a flat e." }
+    {
+      "line": 2,
+      "words": "to school",
+      "skill": "s + consonant",
+      "tip": "Start with the s: school, not eschool. Keep your mouth closed until the k."
+    },
+    {
+      "line": 5,
+      "words": "Yesterday",
+      "skill": "word stress",
+      "tip": "Stress the first part: YES-ter-day. Y is soft, not like j."
+    },
+    {
+      "line": 10,
+      "words": "made me laugh",
+      "skill": "final consonant",
+      "tip": "Finish the d in made. In laugh, end with f: your teeth touch your lip."
+    },
+    {
+      "line": 11,
+      "words": "sang a song",
+      "skill": "linking",
+      "tip": "Link them: sang-a-song. The a is very short."
+    },
+    {
+      "line": 28,
+      "words": "crazy day",
+      "skill": "vowel",
+      "tip": "The last note is long. Hold the eɪ sound and end on a small i, not a flat e."
+    }
   ],
   "echo": [
-    { "from": 5, "to": 6, "why": "The hook: slow and repeated." },
-    { "from": 7, "to": 8, "why": "The verb list everyone should know." },
-    { "from": 17, "to": 20, "why": "Short call and response in two groups." },
-    { "from": 1, "to": 2, "why": "Verse 1. L2 has a big jump." },
-    { "from": 9, "to": 10, "why": "Verse 2, the funniest part." }
+    {
+      "from": 5,
+      "to": 6,
+      "why": "The hook: slow and repeated."
+    },
+    {
+      "from": 7,
+      "to": 8,
+      "why": "The verb list everyone should know."
+    },
+    {
+      "from": 17,
+      "to": 20,
+      "why": "Short call and response in two groups."
+    },
+    {
+      "from": 1,
+      "to": 2,
+      "why": "Verse 1. L2 has a big jump."
+    },
+    {
+      "from": 9,
+      "to": 10,
+      "why": "Verse 2, the funniest part."
+    }
   ],
   "chant": {
     "title": "Tell Me, Tell Me",

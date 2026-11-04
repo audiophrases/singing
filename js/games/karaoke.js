@@ -142,7 +142,7 @@ export async function start(ctx) {
     ballTiming(opts, (v) => { opts.lead = v; setSettings({ ballLead: v }); }),
     toggle('🖼️ Pictures', opts.pics, (v) => { opts.pics = v; setSettings({ showPics: v }); lastIdx = -99; }),
     toggle('🌍 Translations (when the song has them)', opts.tr, (v) => { opts.tr = v; setSettings({ translations: v }); lastIdx = -99; }),
-    popups.size ? toggle('💡 Language pop-ups (from the lesson pack)', opts.popups, (v) => { opts.popups = v; setSettings({ popups: v }); lastIdx = -99; }) : null,
+    popups.size ? toggle('💡 Language pop-ups (from the AI pack)', opts.popups, (v) => { opts.popups = v; setSettings({ popups: v }); lastIdx = -99; }) : null,
     toggle('📣 Loudness meter (microphone)', opts.meter, (v) => setMeter(v)),
     h('label', null, 'Lyrics size'),
     h('input', { type: 'range', min: 0.6, max: 1.6, step: 0.1, value: opts.scale, oninput: (e) => { opts.scale = Number(e.target.value); wrap.style.setProperty('--k-scale', opts.scale); setSettings({ lyricScale: opts.scale }); } }),

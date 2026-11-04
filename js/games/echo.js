@@ -15,7 +15,7 @@ export async function start(ctx) {
   const synth = track.kind === 'synth';
   const kar = !synth && !!track.hasKaraoke;
   if (kar) track.setSinger(true);
-  // chunk 0: the teaching order from the song's lesson pack.
+  // chunk 0: the teaching order from the song's AI pack.
   const steps = lessonEcho(timeline, lessonOf(ctx.song));
   const conf = { chunk: steps.length ? 0 : 1, music: true };
   const lines = timeline.lines.filter((l) => !l.instrumental);
@@ -26,7 +26,7 @@ export async function start(ctx) {
     intro: 'Listen to a line, then sing it back! Great for learning a new song. The class sings over the music with the melody turned off.',
     body: h('div', null,
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Echo'),
-        choiceRow([...(steps.length ? [[0, `🧠 Lesson pack order (${steps.length} steps)`]] : []), [1, 'Line by line'], [2, 'Two lines at a time']], conf.chunk, (v) => { conf.chunk = v; })),
+        choiceRow([...(steps.length ? [[0, `🧠 AI order (${steps.length} steps)`]] : []), [1, 'Line by line'], [2, 'Two lines at a time']], conf.chunk, (v) => { conf.chunk = v; })),
       synth ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Your turn'),
         choiceRow([[true, '🎹 With the band'], [false, '🗣️ Voices only']], conf.music, (v) => { conf.music = v; })) : null,
       kar ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Your turn'),

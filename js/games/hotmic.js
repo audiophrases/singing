@@ -9,8 +9,8 @@ import { rhymePairs, rhymesFrom } from '../lyrics/rhymes.js';
 import { categoryById, baseForm } from '../lyrics/grammar.js';
 import { normWord } from '../lyrics/text.js';
 import { STOPWORDS, IRREGULAR_VERBS, rhymeFamily } from '../lyrics/wordlists.js';
-import { lessonOf } from '../lesson/pack.js';
-import { getTeams, addPoints } from '../store.js';
+import { lessonOf, packLevels } from '../lesson/pack.js';
+import { getTeams, addPoints, setSettings } from '../store.js';
 import { sfx } from '../sfx.js';
 import { speak } from '../tts.js';
 
@@ -30,7 +30,7 @@ export function makeCards(timeline, song, rnd = Math.random) {
   const rhymable = [...new Set([...pairs.flatMap((p) => [p.a, p.b]), ...words.filter((w) => rhymeFamily(w))])];
   const cards = [];
   for (const c of lessonOf(song)?.cards || []) {
-    cards.push({ type: 'lesson', emoji: c.emoji || '🧠', title: c.title || 'Your turn!', body: c.body, answer: c.answer || '' });
+    cards.push({ type: 'lesson', level: c.level, emoji: c.emoji || '🧠', title: c.title || 'Your turn!', body: c.body, answer: c.answer || '' });
   }
   for (let i = 0; i < lines.length - 1; i += 1) {
     cards.push({ type: 'next', emoji: '🎤', title: 'Sing the next line!', body: `"${lines[i].text}"`, answer: lines[i + 1].text });
@@ -67,10 +67,13 @@ const TYPES = [
 
 export async function start(ctx) {
   const { track, timeline, main, song } = ctx;
-  // A lesson pack's cards play on their own: among the automatic ones they get lost.
-  const packed = lessonOf(song)?.cards?.length || 0;
-  const types = packed ? [['lesson', `🧠 Lesson pack (${packed})`], ...TYPES] : TYPES;
-  const conf = { min: 6, max: 18, types: new Set(packed ? ['lesson'] : TYPES.map((t) => t[0])) };
+  // Plenty of cards from the AI pack play on their own: among the automatic ones
+  // they get lost. A few would come round again and again, so those are mixed in.
+  const packCards = lessonOf(song)?.cards || [];
+  const packed = packCards.length;
+  const levels = packLevels(packCards);
+  const types = packed ? [['lesson', `🧠 AI pack (${packed})`], ...TYPES] : TYPES;
+  const conf = { min: 6, max: 18, level: levels.includes(ctx.settings.packLevel) ? ctx.settings.packLevel : '', types: new Set(packed >= 12 ? ['lesson'] : types.map((t) => t[0])) };
   const typeBoxes = h('div', { class: 'type-boxes' }, types.map(([id, label]) => {
     const input = h('input', { type: 'checkbox', checked: conf.types.has(id) });
     input.addEventListener('change', () => { if (input.checked) conf.types.add(id); else conf.types.delete(id); });
@@ -83,6 +86,8 @@ export async function start(ctx) {
     body: h('div', null,
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Music stops'),
         choiceRow([['fast', 'Fast (3-10 s)'], ['medium', 'Medium (6-18 s)'], ['slow', 'Slow (10-30 s)']], 'medium', (v) => { [conf.min, conf.max] = { fast: [3, 10], medium: [6, 18], slow: [10, 30] }[v]; })),
+      levels.length > 1 ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Level'),
+        choiceRow([['', 'All'], ...levels.map((l) => [l, l])], conf.level, (v) => { conf.level = v; setSettings({ packLevel: v }); })) : null,
       typeBoxes),
     onStart: () => { card.destroy(); begin(); },
   });
@@ -93,7 +98,7 @@ export async function start(ctx) {
 
   function begin() {
     const rnd = seeded(Date.now() % 1e6);
-    let deck = shuffle(makeCards(timeline, song, rnd).filter((c) => conf.types.has(c.type)), rnd);
+    let deck = shuffle(makeCards(timeline, song, rnd).filter((c) => conf.types.has(c.type) && (!conf.level || !c.level || c.level === conf.level)), rnd);
     if (!deck.length) deck = shuffle(makeCards(timeline, song, rnd), rnd);
     let di = 0;
     const area = h('div', { class: 'hm-area' });

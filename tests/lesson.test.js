@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ACTIVITY_IDS, CHANT_MOODS, POPUP_KINDS, applyPack, readAloud, gapNotes, huntKey, huntSets, lessonEcho, lessonGaps, lessonMoves, lessonOf, lessonPopups, lessonQuiz, lessonSay, lessonStops, lessonSwaps, plainLines, readPack, removePack, spots, staleCount, stepHash } from '../js/lesson/pack.js';
-import { AMOUNTS, EXAMPLE_LYRICS, PACK_EXAMPLE, buildPrompt, hasMelody, melodyFacts, repairPrompt } from '../js/lesson/prompt.js';
+import { ACTIVITY_IDS, CHANT_MOODS, LEVELS, POPUP_KINDS, addCleanWord, applyPack, cleanTimeline, readAloud, gapNotes, huntKey, huntSets, lessonEcho, lessonGaps, lessonMoves, lessonOf, lessonPopups, lessonQuiz, lessonSay, lessonStops, lessonSwaps, mergePacks, orderSets, packCounts, packLevels, pickSet, plainLines, readPack, removePack, setLabel, spots, staleCount } from '../js/lesson/pack.js';
+import { AI_KINDS, BATCH_SIZE, EXAMPLE_LYRICS, PACK_EXAMPLE, buildPrompt, hasMelody, levelsAround, melodyFacts, morePrompt, nextBatchPrompt, planBatches, repairPrompt } from '../js/lesson/prompt.js';
 import { gapMode, pickGaps } from '../js/lyrics/gaps.js';
 import { packableSong } from '../js/share.js';
 import { GAMES } from '../js/games/index.js';
@@ -48,10 +48,11 @@ test('the example in the prompt imports with no problems at all', () => {
   assert.equal(res.fatal, undefined);
   assert.deepEqual(res.problems, []);
   assert.equal(res.moved, 0);
-  for (const key of ['profile', 'teacher', 'lines', 'words', 'popups', 'hunts', 'gapSets', 'swaps', 'stops', 'quiz', 'cards', 'pairs', 'moves', 'say', 'echo', 'chant']) {
+  for (const key of ['profile', 'teacher', 'clean', 'lines', 'words', 'popups', 'hunts', 'gapSets', 'swaps', 'stops', 'quiz', 'cards', 'pairs', 'moves', 'say', 'echo', 'chant']) {
     assert.ok(res.pack[key], `the example should show ${key}`);
   }
-  assert.equal(res.pack.teacher.path.length, 3);
+  assert.equal(res.batch, 1);
+  assert.equal(res.pack.pairs[1].translated, true);
 });
 
 test('a reply is found inside whatever the AI wrote around it', () => {
@@ -109,7 +110,7 @@ test('invalid items go, and the rest of the pack stays', () => {
     pairs: [{ name: 'Too small', pairs: [{ a: 'a', b: 'b' }] }],
     moves: [{ word: 'flying', text: 'Fly!' }, { word: 'Walking', text: 'Walk!', emoji: 'not an emoji' }],
     echo: [{ from: 3, to: 2 }, { from: 1, to: 99 }, { from: 1, to: 2 }],
-    teacher: { path: [{ activity: 'tiktok' }, { activity: 'hunt', set: 'missing' }, { activity: 'quiz', when: 'sometimes', minutes: 500 }] },
+    teacher: { path: [{ activity: 'quiz', minutes: 45 }], notes: 'A note' },
     lines: [{ line: 0, plain: 'x' }, { line: 2, emoji: 'nope', plain: 'y' }],
     popups: 'not a list',
   }), t);
@@ -122,13 +123,12 @@ test('invalid items go, and the rest of the pack stays', () => {
   assert.deepEqual(res.pack.echo, [{ from: 1, to: 2 }]);
   const long = lyrics(['One', 'Two', 'Three', 'Four', 'Five']);
   assert.deepEqual(readPack(reply({ echo: [{ from: 1, to: 5 }, { from: 1, to: 4 }] }), long).pack.echo, [{ from: 1, to: 4 }], 'a step has 4 lines at most');
-  assert.deepEqual(res.pack.teacher.path, [{ stage: 'while', activity: 'hunt' }, { stage: 'while', activity: 'quiz', minutes: 120 }]);
+  assert.deepEqual(res.pack.teacher, { notes: 'A note' }, 'lesson plans from older replies are dropped');
   assert.deepEqual(res.pack.lines, [{ line: 2, plain: 'y' }]);
   assert.equal(res.pack.popups, undefined);
   assert.equal(res.pack.surprise, undefined);
   assert.ok(res.problems.some((p) => /surprise/.test(p)));
-  assert.ok(res.problems.some((p) => /"tiktok" is not an activity/.test(p)));
-  assert.ok(res.problems.some((p) => /no set "missing"/.test(p)));
+  assert.ok(res.problems.some((p) => /a memory game needs at least 3 pairs/.test(p)));
 });
 
 test('Wrong word and Finish the line take one item on each line, repeats included', () => {
@@ -152,7 +152,7 @@ test('set ids stay unique, and only what was asked for survives in a set', () =>
   assert.equal(res.pack.hunts[0].secret, undefined);
   assert.equal(res.pack.gapSets[0].id, 'same-3', 'ids are unique across all sets, because links name them');
   assert.deepEqual(res.pack.gapSets[0].gaps[0].options, ['liver', 'wave'], 'three at most, and never the answer');
-  assert.equal(res.pack.gapSets[0].tier, 'core');
+  assert.equal(res.pack.gapSets[0].level, undefined);
 });
 
 test('nothing executable or unbounded comes through', () => {
@@ -279,23 +279,19 @@ test('edited lyrics: stale items are counted, and games skip them', () => {
   assert.equal(lessonPopups(after, pack).size, 0);
 });
 
-test('plan steps link to the right game with the right set', () => {
-  assert.equal(stepHash('a b', { activity: 'gapfill', set: 'verbs' }), '#/play/a%20b/gapfill?focus=pack%3Averbs');
-  assert.equal(stepHash('s', { activity: 'quiz', when: 'before' }), '#/play/s/quiz?when=before');
-  assert.equal(stepHash('s', { activity: 'karaoke' }), '#/play/s/karaoke');
-  assert.equal(stepHash('s', { activity: 'worksheet' }), '#/print/s/lesson');
-  assert.equal(stepHash('s', { activity: 'chant' }), '#/chant?lesson=s');
-  assert.deepEqual([...new URLSearchParams('focus=pack%3Averbs')], [['focus', 'pack:verbs']]);
+test('the teacher can open the chant and the worksheet without a plan', () => {
+  assert.equal(new URLSearchParams('lesson=a%20b').get('lesson'), 'a b');
 });
 
 test('the prompt carries the class, the lyrics and the format', () => {
   const { song, timeline } = band('what-did-you-do');
-  const prompt = buildPrompt(song, timeline, { level: 'A2', age: 'kids', language: 'Spanish', focus: 'irregular verbs', minutes: 30 });
-  assert.match(prompt, /Level: A2 \(CEFR\)/);
+  const prompt = buildPrompt(song, timeline, { level: 'A2', age: 'kids', language: 'Spanish', focus: 'irregular verbs' });
+  assert.match(prompt, /this class is A2, so write activities for A1, A2, B1 \(CEFR\)/);
   assert.match(prompt, /young learners/);
   assert.match(prompt, /typical Spanish-speaker mistakes/);
-  assert.match(prompt, /irregular verbs/);
-  assert.match(prompt, /30 minutes/);
+  assert.match(prompt, /What to work on: "irregular verbs"/);
+  assert.match(prompt, /Do not plan a lesson/);
+  assert.doesNotMatch(prompt, /minutes|"path"|"tier"|Activity ids/);
   assert.match(prompt, /L1 Yesterday I woke up late,/);
   assert.match(prompt, /"format": "singing-lesson-pack"/);
   assert.match(prompt, /natural Spanish/);
@@ -334,7 +330,8 @@ test('a prompt without a class language asks for no translations', () => {
   const { song, timeline } = band('twinkle');
   const prompt = buildPrompt(song, timeline, {});
   assert.match(prompt, /Leave out every "translation" field/);
-  assert.match(prompt, /Decide which CEFR level/);
+  assert.match(prompt, /how abstract its meaning is/);
+  assert.match(prompt, /a B1 song gets A2, B1 and B2/);
   assert.doesNotMatch(prompt, /"translation":/);
 });
 
@@ -346,14 +343,6 @@ test('repeated lines are sent once and point at the first', () => {
   const first = sung.findIndex((l) => l.text === sung[repeat].text);
   assert.ok(prompt.includes(`L${repeat + 1} = L${first + 1}`));
   assert.ok(sung.every((l, i) => prompt.includes(`L${i + 1} `)));
-});
-
-test('the pack size changes what the prompt asks for', () => {
-  const { song, timeline } = band('twinkle');
-  assert.match(buildPrompt(song, timeline, { amount: 'light' }), /"quiz" \(about 6\)/);
-  assert.match(buildPrompt(song, timeline, { amount: 'rich' }), /"quiz" \(about 16\)/);
-  assert.match(buildPrompt(song, timeline, { amount: 'nonsense' }), /"quiz" \(about 10\)/);
-  for (const amount of Object.values(AMOUNTS)) assert.ok(amount.label);
 });
 
 test('UltraStar: the AI gets measured facts, not the raw file', () => {
@@ -401,20 +390,10 @@ test('no timing, or the melody switched off: no timing section', () => {
   assert.doesNotMatch(buildPrompt(song, timeline, { melody: false }), /# The melody/);
 });
 
-test('only activities that fit the song are offered in the plan', () => {
-  const { song, timeline } = band('what-did-you-do');
-  const prompt = buildPrompt(song, timeline, {});
-  assert.match(prompt, /Activity ids: karaoke \(Karaoke\)/);
-  assert.doesNotMatch(prompt, /round \(Round\)/, 'this song is not a round');
-  assert.match(prompt, /worksheet \(printed sheet/);
-  const t = lyrics(['We ride tonight']);
-  assert.doesNotMatch(buildPrompt({ title: 'T', source: 'youtube', synced: [{ text: 'We ride tonight', start: 1 }] }, t, {}), /pitch \(Pitch Pal\)/);
-});
-
 test('fix-up messages name what went wrong', () => {
   const list = repairPrompt({ problems: ['popups 2: "x" is not in L3'] });
   assert.match(list, /popups 2/);
-  assert.match(list, /complete JSON/);
+  assert.match(list, /send only them again/);
   assert.match(repairPrompt({ cut: true }), /cut off/);
   assert.match(repairPrompt({ fatal: 'This is not valid JSON' }), /not valid JSON/);
 });
@@ -446,11 +425,11 @@ test('a full pack written from the prompt imports cleanly and reaches every game
   assert.equal(lessonEcho(timeline, pack).length, 5);
   assert.equal(lessonSay(timeline, pack).size, 5 + 2, 'a line in the chorus repeats');
   assert.equal(lessonQuiz(timeline, pack, 'before').length, 2);
-  for (const step of pack.teacher.path) assert.match(stepHash(song.id, step), /^#\//);
+  assert.equal(packCounts(pack).hotmic, 14);
   const next = applyPack({ ...song }, pack, timeline, { pictures: false });
   const again = timelineFromCompiled(compileSong(next), next.bpm);
-  assert.equal(again.lines[0].translation, 'Ayer me desperté tarde,');
-  assert.equal(again.lines.at(-1).translation, '¡Tuve un día muy, muy loco!');
+  assert.equal(again.lines[0].translation, 'Ahir em vaig despertar tard,');
+  assert.equal(again.lines.at(-1).translation, 'Vaig tenir un dia molt, molt boig!');
   assert.deepEqual(readPack(JSON.stringify(next.lesson), again, { title: song.title }).problems.filter((p) => !/^format|^song/.test(p)), [], 'a saved pack reads back the same');
 });
 
@@ -463,4 +442,204 @@ test('the prompt tells the AI what not to quote, and repeats no facts', () => {
   const entries = held.replace('Longest held syllables: ', '').split('; ');
   assert.equal(new Set(entries).size, entries.length, held);
   assert.doesNotMatch(held, /[,?!]"/, 'no punctuation inside a syllable');
+});
+
+test('every level to C2, and the levels next to the class', () => {
+  assert.equal(LEVELS.at(-1), 'C2');
+  assert.deepEqual(levelsAround('B1'), ['A2', 'B1', 'B2']);
+  assert.deepEqual(levelsAround('Pre-A1'), ['Pre-A1', 'A1']);
+  assert.deepEqual(levelsAround('C2'), ['C1', 'C2']);
+  assert.deepEqual(levelsAround(''), []);
+});
+
+test('levels stay on sets and items, and games read them easiest first', () => {
+  const t = exampleTimeline();
+  const { pack } = readPack(reply({
+    gapSets: [{ id: 'hard', name: 'Hard', level: 'C2', gaps: [{ line: 1, words: 'river' }] }, { id: 'easy', name: 'Easy', level: 'A1', emoji: '🌱', gaps: [{ line: 1, words: 'walking' }] }, { id: 'odd', name: 'Odd', level: 'Z9', gaps: [{ line: 1, words: 'by' }] }],
+    quiz: [{ q: 'Q1', answer: 'A', wrong: ['B'], level: 'B2' }, { q: 'Q2', answer: 'A', wrong: ['B'], level: 'A2' }],
+    cards: [{ body: 'Talk', level: 'B1' }],
+  }), t);
+  assert.equal(pack.gapSets[2].level, undefined, 'not a level');
+  assert.deepEqual(orderSets(pack.gapSets).map((s) => s.id), ['odd', 'easy', 'hard']);
+  assert.equal(pickSet(orderSets(pack.gapSets), 'C2').id, 'hard');
+  assert.equal(pickSet(orderSets(pack.gapSets), 'B1').id, 'odd', 'nothing at that level: the first set');
+  assert.equal(setLabel(pack.gapSets[1]), '🌱 A1: Easy');
+  assert.deepEqual(packLevels(pack.quiz), ['A2', 'B2']);
+  assert.equal(pack.cards[0].level, 'B1');
+});
+
+test('batches: sized by the teacher, in order, with no set cut in two', () => {
+  const count = (size) => planBatches({ batchSize: size }).length;
+  assert.ok(count(10) > count(20) && count(20) > count(30) && count(30) > count(60));
+  assert.equal(planBatches({ batchSize: 999 }).length, count(BATCH_SIZE.most), 'held to the most one reply can hold');
+  assert.equal(planBatches({ batchSize: 1 }).length, count(BATCH_SIZE.least));
+  assert.equal(planBatches({ batchSize: 'x' }).length, count(BATCH_SIZE.usual));
+  const plan = planBatches({ batchSize: 20, level: 'B1' });
+  assert.match(plan[0].parts.join(), /"profile"/);
+  assert.match(plan[0].parts.join(), /"clean"/);
+  const text = plan.flatMap((b) => b.parts).join(' | ');
+  for (const level of ['A2', 'B1', 'B2']) assert.ok(text.includes(`one "gapSets" set of 10 gaps for ${level}`), text);
+  const words = plan.flatMap((b) => b.parts).filter((p) => /^\d+ "words"/.test(p)).reduce((n, p) => n + parseInt(p, 10), 0);
+  assert.equal(words, 16);
+  assert.equal(planBatches({ batchSize: 60 }).length, 5, 'the biggest batches: one for each family of games');
+  for (const batch of planBatches({ batchSize: 20 })) {
+    const families = new Set(batch.parts.map((p) => (/gapSets|swaps|stops/.test(p) ? 'listening' : /hunts|quiz/.test(p) ? 'grammar' : /cards|say|echo|moves/.test(p) ? 'speaking' : /pairs|chant/.test(p) ? 'memory' : 'song')));
+    assert.equal(families.size, 1, `one family in a batch: ${batch.parts.join(' + ')}`);
+  }
+  const split = planBatches({ batchSize: 5 }).flatMap((b) => b.parts).filter((p) => /"gapSets"/.test(p));
+  assert.equal(split.length, 3, 'a set of 10 stays whole in batches of 5');
+  assert.match(planBatches({ batchSize: 20 }).flatMap((b) => b.parts).join(), /your lowest level/);
+});
+
+test('the prompt holds the whole plan, asks for one batch at a time and ends on it', () => {
+  const { song, timeline } = band('twinkle');
+  const prompt = buildPrompt(song, timeline, { batchSize: 20, focus: 'rhymes' });
+  const plan = planBatches({ batchSize: 20 });
+  assert.match(prompt, new RegExp(`comes in ${plan.length} batches of at most 20 items`));
+  for (let i = 0; i < plan.length; i += 1) assert.ok(prompt.includes(`Batch ${i + 1}: `), `batch ${i + 1}`);
+  assert.match(prompt, /count its items against this plan/);
+  assert.match(prompt, /part1\.json/);
+  assert.ok(prompt.indexOf('# The teacher\'s own words') < prompt.indexOf('# The class'), 'the teacher comes first');
+  assert.match(prompt.slice(-200), /re-read "The teacher's own words".*Send batch 1 now and stop/s, 'and last');
+  assert.doesNotMatch(buildPrompt(song, timeline, {}), /own words/, 'no section when the teacher typed nothing');
+});
+
+test('an agent does everything in one run, goes deeper and checks its work', () => {
+  const { song, timeline } = band('twinkle');
+  assert.ok(AI_KINDS.agent && AI_KINDS.chatbot);
+  assert.equal(planBatches({ ai: 'agent' }).length, 1);
+  const count = (plan, name) => plan.flatMap((b) => b.parts).filter((p) => p.includes(name)).reduce((n, p) => n + parseInt(p, 10), 0);
+  assert.ok(count(planBatches({ ai: 'agent' }), '"cards"') > count(planBatches({}), '"cards"'));
+  assert.equal(planBatches({ ai: 'agent' }).flatMap((b) => b.parts).filter((p) => /"gapSets"/.test(p)).length, 6, 'two sets for each level');
+  const prompt = buildPrompt(song, timeline, { ai: 'agent', focus: 'rhymes' });
+  assert.match(prompt, /autonomous agent/);
+  assert.match(prompt, /twinkle[^\n]*-pack\.json/i);
+  assert.match(prompt, /write a small script/);
+  assert.match(prompt, /Check every fact/);
+  assert.match(prompt.slice(-200), /finish the whole pack in this run/);
+  assert.doesNotMatch(prompt, /# Batches|Send batch 1|"batch": 1/);
+  const chatbot = buildPrompt(song, timeline, {});
+  assert.match(chatbot, /# Batches/);
+  assert.match(chatbot, /downloadable file named "[^"]*-part1\.json"/);
+  assert.doesNotMatch(chatbot, /autonomous agent/);
+});
+
+test('next-batch and more messages name the work', () => {
+  const plan = planBatches({ batchSize: 20 });
+  const next = nextBatchPrompt(plan, 3);
+  assert.match(next, new RegExp(`batch 3 of ${plan.length}`));
+  assert.ok(next.includes(plan[2].parts[0]));
+  assert.match(next, /"batch": 3/);
+  assert.match(nextBatchPrompt(plan, plan.length + 1), /last batch/);
+  assert.match(morePrompt('quiz'), /"quiz".*at least 10 new items/);
+  assert.match(morePrompt('cards', 'B2'), /at level B2/);
+});
+
+test('batches join into one pack, and the same batch twice adds nothing', () => {
+  const t = lyrics(['We ride tonight', 'The stars are high', 'We ride tonight']);
+  const one = readPack(reply({ batch: 1, profile: { level: 'B1' }, teacher: { notes: 'Notes', cautions: [{ note: 'Careful' }] }, lines: [{ line: 1, plain: 'First' }], words: [{ word: 'ride', meaning: 'travel' }] }), t).pack;
+  const two = readPack(reply({ batch: 2, words: [{ word: 'Ride', meaning: 'again' }, { word: 'stars', meaning: 'lights' }], lines: [{ line: 1, emoji: '🌙' }, { line: 2, plain: 'Second' }], teacher: { cautions: [{ note: 'Careful' }, { note: 'Also' }] }, quiz: [{ q: 'Q', answer: 'A', wrong: ['B'] }], gapSets: [{ id: 'verbs', name: 'Verbs', gaps: [{ line: 1, words: 'ride' }] }] }), t).pack;
+  const three = readPack(reply({ batch: 3, gapSets: [{ id: 'verbs', name: 'Verbs', gaps: [{ line: 1, words: 'ride' }, { line: 2, words: 'stars' }] }, { id: 'more', name: 'More', gaps: [{ line: 2, words: 'high' }] }], swaps: [{ line: 1, words: 'ride', wrong: 'write' }], chant: { text: 'Sing it now' } }), t).pack;
+  let pack = mergePacks(mergePacks(one, two), three);
+  assert.equal(pack.profile.level, 'B1');
+  assert.equal(pack.teacher.notes, 'Notes', 'a later batch does not wipe what it does not send');
+  assert.deepEqual(pack.teacher.cautions.map((c) => c.note), ['Careful', 'Also']);
+  assert.deepEqual(pack.lines, [{ line: 1, plain: 'First', emoji: '🌙' }, { line: 2, plain: 'Second' }]);
+  assert.deepEqual(pack.words.map((w) => w.word), ['ride', 'stars'], 'a word already there is not added again');
+  assert.deepEqual(pack.gapSets.map((s) => [s.id, s.gaps.length]), [['verbs', 2], ['more', 1]], 'a set with the same id grows');
+  assert.equal(pack.chant.text, 'Sing it now');
+  const size = JSON.stringify(pack).length;
+  assert.equal(JSON.stringify(mergePacks(pack, three)).length, size, 'pasting a batch twice changes nothing');
+  assert.equal(pack.format, 'singing-lesson-pack');
+  const reread = readPack(JSON.stringify(pack), t);
+  assert.deepEqual(reread.problems, []);
+  assert.equal(reread.pack.gapSets[0].gaps.length, 2);
+});
+
+test('joining batches keeps one wrong word to a line', () => {
+  const t = lyrics(['We ride tonight', 'The stars are high']);
+  const a = readPack(reply({ swaps: [{ line: 1, words: 'ride', wrong: 'write' }] }), t).pack;
+  const b = readPack(reply({ swaps: [{ line: 1, words: 'tonight', wrong: 'tonite' }, { line: 2, words: 'high', wrong: 'hi' }] }), t).pack;
+  const joined = readPack(JSON.stringify(mergePacks(a, b)), t).pack;
+  assert.deepEqual(joined.swaps.map((s) => s.words), ['ride', 'high']);
+});
+
+test('"translated" counts on the set or on each pair, as a real AI wrote it', () => {
+  const t = exampleTimeline();
+  const pairs = [{ a: 'river', b: 'riu', translated: true }, { a: 'rain', b: 'pluja', translated: true }, { a: 'road', b: 'carretera', translated: true }];
+  const { pack } = readPack(reply({ pairs: [{ name: 'Catalan', pairs }] }), t);
+  assert.equal(pack.pairs[0].translated, true);
+  assert.deepEqual(pack.pairs[0].pairs[0], { a: 'river', b: 'riu' });
+  assert.equal(readAloud(pack.pairs[0], 'b'), false);
+});
+
+test('tiles show what a pack adds to each game', () => {
+  const t = lyrics(['We ride tonight', 'The stars are high']);
+  const { pack } = readPack(reply({ gapSets: [{ name: 'G', gaps: [{ line: 1, words: 'ride' }, { line: 2, words: 'stars' }] }], quiz: [{ q: 'Q', answer: 'A', wrong: ['B'] }] }), t);
+  const counts = packCounts(pack);
+  assert.equal(counts.gapfill, 2);
+  assert.equal(counts.choose, 2);
+  assert.equal(counts.quiz, 1);
+  assert.equal(counts.hotmic, 0);
+  assert.deepEqual(packCounts(null), {});
+});
+
+const CLEAN = [
+  { text: 'You are so damn special', start: 0, end: 4, notes: [[0, 0.5, 60, 'You '], [0.5, 1, 60, 'are '], [1, 1.5, 60, 'so '], [1.5, 2, 62, 'damn '], [2, 2.5, 60, 'spe'], [2.5, 3, 60, 'cial ']] },
+  { text: 'The sky is blue', start: 5, end: 8 },
+  { text: 'You are so damn special', start: 9, end: 13, notes: [[9, 9.5, 60, 'You '], [9.5, 10, 60, 'are '], [10, 10.5, 60, 'so '], [10.5, 11, 62, 'damn '], [11, 11.5, 60, 'spe'], [11.5, 12, 60, 'cial ']] },
+];
+
+test('the clean version masks the word and says when to drop the singer', () => {
+  const t = timelineFromSynced(JSON.parse(JSON.stringify(CLEAN)), 15);
+  const spans = cleanTimeline(t, { clean: [{ words: 'damn' }] });
+  assert.equal(spans.length, 2, 'wherever it is sung');
+  assert.deepEqual(spans.map(([a, b]) => [Math.round(a * 100) / 100, Math.round(b * 100) / 100]), [[1.45, 2.12], [10.45, 11.12]]);
+  assert.equal(t.lines[0].text, 'You are so d*** special');
+  assert.equal(t.lines[0].words[3].text, 'd***');
+  assert.equal(t.lines[0].words[3].syllables[0].text, 'd***');
+  assert.equal(t.lines[1].text, 'The sky is blue');
+  assert.equal(t.lines[2].text, 'You are so d*** special');
+  assert.equal(t.lines[0].notes.find((n) => n.start === 1.5).text, '', 'Pitch Pal does not show it either');
+});
+
+test('the clean version: off, empty, a word over two notes, and spans that touch', () => {
+  const raw = () => timelineFromSynced(JSON.parse(JSON.stringify(CLEAN)), 15);
+  assert.deepEqual(cleanTimeline(raw(), null), []);
+  assert.deepEqual(cleanTimeline(raw(), { clean: [] }), []);
+  const off = raw();
+  assert.deepEqual(cleanTimeline(off, { clean: [{ words: 'damn' }], cleanOff: true }), []);
+  assert.equal(off.lines[0].text, 'You are so damn special', 'switched off: nothing is masked');
+  const two = raw();
+  assert.equal(cleanTimeline(two, { clean: [{ words: 'special' }] }).length, 2);
+  assert.equal(two.lines[0].text, 'You are so damn s******');
+  assert.deepEqual(two.lines[0].words[4].syllables.map((s) => s.text), ['s**', '****']);
+  const together = raw();
+  assert.equal(cleanTimeline(together, { clean: [{ words: 'damn' }, { words: 'special' }] }).length, 2, 'next to each other they are one span');
+});
+
+test('words for the clean list are read from the reply and can be added by hand', () => {
+  const t = timelineFromSynced(JSON.parse(JSON.stringify(CLEAN)), 15);
+  const res = readPack(reply({ clean: [{ words: 'damn', why: 'Swearing' }, { words: 'nothing here' }, { why: 'no words' }] }), t);
+  assert.deepEqual(res.pack.clean, [{ words: 'damn', why: 'Swearing' }]);
+  assert.equal(res.problems.length, 2);
+  const pack = { format: 'singing-lesson-pack' };
+  assert.equal(addCleanWord(pack, t, 'DAMN'), 2);
+  assert.equal(addCleanWord(pack, t, 'damn'), 2);
+  assert.equal(pack.clean.length, 1, 'added once');
+  assert.equal(addCleanWord(pack, t, 'zebra'), 0);
+  assert.equal(pack.clean.length, 1);
+  assert.equal(mergePacks({ clean: [{ words: 'damn' }] }, { cleanOff: true, clean: [{ words: 'Damn' }] }).clean.length, 1);
+});
+
+test('a masked word never becomes a gap, and anchors to it drop out', () => {
+  const t = timelineFromSynced(JSON.parse(JSON.stringify(CLEAN)), 15);
+  const pack = readPack(reply({ clean: [{ words: 'damn' }], popups: [{ line: 1, words: 'damn', text: 'A note' }, { line: 1, words: 'special', text: 'Kept' }] }), t).pack;
+  cleanTimeline(t, pack);
+  for (const mode of ['easy', 'medium', 'hard', 'all']) {
+    for (const seed of [1, 2, 3]) {
+      for (const [index, set] of pickGaps(t, { mode, seed })) for (const wi of set) assert.ok(!t.lines[index].words[wi].text.includes('*'), mode);
+    }
+  }
+  assert.deepEqual(lessonPopups(t, pack).get(0).map((p) => p.text), ['Kept']);
 });

@@ -7,7 +7,7 @@
  */
 import { h, clear, shuffle, seeded } from '../ui.js';
 import { pickGaps, distractors, wordPool, gapMode, matchCase, GAP_LEVELS } from '../lyrics/gaps.js';
-import { lessonOf, gapNotes } from '../lesson/pack.js';
+import { lessonOf, gapNotes, orderSets, pickSet, setLabel } from '../lesson/pack.js';
 import { categoriesInTimeline } from '../lyrics/grammar.js';
 import { checkAnswer, normWord, hintFor } from '../lyrics/text.js';
 import { lineStops, setupCard, choiceRow, scoreBox, lyricView, stars, centerOf } from './common.js';
@@ -17,11 +17,12 @@ export async function start(ctx, forced = {}) {
   const { track, timeline, main, params } = ctx;
   const cats = categoriesInTimeline(timeline, 2).filter((c) => !['colour', 'animal', 'body', 'family', 'food', 'weather', 'time', 'clothes', 'feeling', 'action'].includes(c.id) || c.count >= 3);
   const lesson = lessonOf(ctx.song);
-  const sets = lesson?.gapSets || [];
+  const sets = orderSets(lesson?.gapSets);
+  const first = pickSet(sets, ctx.settings.packLevel);
   const conf = {
     level: params.level || forced.level || 'easy',
     // An assignment plays exactly what the server checks.
-    focus: params.focus || (!ctx.assignment && sets[0] ? `pack:${sets[0].id}` : ''),
+    focus: params.focus || (!ctx.assignment && first ? `pack:${first.id}` : ''),
     input: forced.input || params.input || 'type',
     seed: Number(params.seed) || Math.floor(Math.random() * 1e6),
   };
@@ -41,7 +42,7 @@ export async function start(ctx, forced = {}) {
     cats.length || sets.length ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Focus'),
       (() => {
         const sel = h('select', { class: 'setup-select', 'aria-label': 'Word focus' }, h('option', { value: '' }, 'Any words (by difficulty)'),
-          sets.length ? h('optgroup', { label: '🧠 Lesson pack' }, sets.map((s) => h('option', { value: `pack:${s.id}`, selected: conf.focus === `pack:${s.id}` }, `${s.emoji || '🧠'} ${s.name}`))) : null,
+          sets.length ? h('optgroup', { label: '🧠 AI pack' }, sets.map((s) => h('option', { value: `pack:${s.id}`, selected: conf.focus === `pack:${s.id}` }, setLabel(s)))) : null,
           cats.map((c) => h('option', { value: c.id, selected: conf.focus === c.id }, `${c.emoji} Only ${c.name.toLowerCase()} (${c.count})`)));
         sel.addEventListener('change', () => { conf.focus = sel.value; describeDifficulty(); });
         return sel;

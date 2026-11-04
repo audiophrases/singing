@@ -65,7 +65,7 @@ export function pickGaps(timeline, { mode = 'easy', seed = 1, lesson = null } = 
     const scored = l.words.map((w, i) => {
       const norm = normWord(w.text);
       return { i, norm, score: gapScore(norm, { last: i === l.words.length - 1, count: counts.get(norm) || 0, mode }) + rnd() * 0.5 };
-    }).filter((x) => x.score > 0);
+    }).filter((x) => x.score > 0 && !l.words[x.i].text.includes('*')); // not a clean version's masked word
     if (!scored.length) continue;
     let chosen = [];
     if (cat) {

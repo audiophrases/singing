@@ -13,7 +13,7 @@ import { shareLink } from '../share.js';
 import { exportPinPlayQuiz } from '../pinplay-export.js';
 import { deleteCloudSong, setSongPublic, saveCloudSong, deleteStudentSong } from '../cloud/library.js';
 import { teacherAccess, isOwner } from '../cloud/access.js';
-import { lessonOf, plainLines, stepHash, STAGES } from '../lesson/pack.js';
+import { lessonOf, packCounts, plainLines } from '../lesson/pack.js';
 
 export async function render(el, { id }) {
   const song = getSong(id);
@@ -57,6 +57,7 @@ export async function render(el, { id }) {
 
   // ----- activities
   const acts = h('div');
+  const counts = teacherAccess() ? packCounts(lesson) : {};
   for (const g of GROUPS) {
     const list = GAMES.filter((x) => x.group === g.id && gameFits(x, song, sung.length));
     if (!list.length) continue;
@@ -68,11 +69,13 @@ export async function render(el, { id }) {
     h('span', { class: 'act-emoji' }, x.emoji),
     h('span', { class: 'act-name' }, x.name),
     h('span', { class: 'act-desc' }, x.desc),
-    x.mic ? h('span', { class: 'act-tag badge' }, '🎙️ mic') : null))));
+    x.mic ? h('span', { class: 'act-tag badge' }, '🎙️ mic') : null,
+    counts[x.id] ? h('span', { class: 'act-pack badge', title: `${counts[x.id]} items from the AI pack` }, `🧠 ${counts[x.id]}`) : null))));
   }
   acts.append(h('h3', { class: 'section-title' }, '✏️ Make and share'));
   acts.append(h('div', { class: 'activity-grid' },
-    teacherAccess() ? h('a', { class: 'activity', href: `#/lesson/${encodeURIComponent(song.id)}` }, h('span', { class: 'act-emoji' }, '🧠'), h('span', { class: 'act-name' }, 'AI lesson pack'), h('span', { class: 'act-desc' }, lesson ? 'See or replace this song\'s lesson pack.' : 'A prompt for any AI: it studies the lyrics and writes tailored games for your class.')) : null,
+    teacherAccess() ? h('a', { class: 'activity', href: `#/lesson/${encodeURIComponent(song.id)}` }, h('span', { class: 'act-emoji' }, '🧠'), h('span', { class: 'act-name' }, 'AI song pack'), h('span', { class: 'act-desc' }, lesson ? 'See this song\'s pack, add to it or replace it.' : 'A prompt for any AI: it studies the lyrics and adds depth to the games.')) : null,
+    teacherAccess() && lesson?.chant ? h('a', { class: 'activity', href: `#/chant?lesson=${encodeURIComponent(song.id)}` }, h('span', { class: 'act-emoji' }, '✨'), h('span', { class: 'act-name' }, 'AI chant'), h('span', { class: 'act-desc' }, lesson.chant.teaches ? `An original chant: ${lesson.chant.teaches}.` : 'An original chant on the same language, for the Song maker.')) : null,
     h('a', { class: 'activity', href: `#/remix/${encodeURIComponent(song.id)}` }, h('span', { class: 'act-emoji' }, '🪄'), h('span', { class: 'act-name' }, 'Remix'), h('span', { class: 'act-desc' }, 'Students write their own verses; the band sings them.')),
     h('a', { class: 'activity', href: `#/print/${encodeURIComponent(song.id)}/gapfill` }, h('span', { class: 'act-emoji' }, '🖨️'), h('span', { class: 'act-name' }, 'Worksheets'), h('span', { class: 'act-desc' }, 'Gap fill, cut-up lines, bingo cards, lyrics sheet - ready to print.')),
     teacherAccess() ? h('button', { class: 'activity', type: 'button', onclick: () => editCopy(song) }, h('span', { class: 'act-emoji' }, song.mine ? '✏️' : '📋'), h('span', { class: 'act-name' }, song.mine ? 'Edit song' : 'Copy and edit'), h('span', { class: 'act-desc' }, song.mine ? 'Change lyrics, timing, pictures and translations.' : 'Make your own version of this song in the Studio.')) : null,
@@ -136,7 +139,7 @@ export async function render(el, { id }) {
   add(el,
     h('div', { class: 'row', style: { marginBottom: '.6rem' } }, h('a', { class: 'btn btn-sm ghost', href: '#/' }, '← All songs')),
     head,
-    teacherAccess() ? lessonPlan(song, lesson, sung.length) : null,
+    teacherAccess() ? contentWarnings(lesson) : null,
     acts,
     h('h3', { class: 'section-title' }, '📜 Lyrics'),
     h('section', { class: 'card' }, plainToggle ? h('div', { class: 'row', style: { marginBottom: '.5rem' } }, plainToggle) : null, lyrics),
@@ -175,29 +178,12 @@ export async function render(el, { id }) {
   };
 }
 
-// The lesson plan from the song's pack, for the teacher: each step opens its game.
-function lessonPlan(song, lesson, sungCount) {
-  const path = (lesson?.teacher?.path || []).filter((step) => {
-    const game = GAMES.find((g) => g.id === step.activity);
-    return !game || gameFits(game, song, sungCount);
-  });
+// What the AI asks the teacher to look at before pressing play.
+function contentWarnings(lesson) {
   const cautions = lesson?.teacher?.cautions || [];
-  if (!path.length && !cautions.length) return null;
-  const minutes = path.reduce((sum, step) => sum + (step.minutes || 0), 0);
-  const named = (step) => {
-    const game = GAMES.find((g) => g.id === step.activity);
-    return game ? `${game.emoji} ${game.name}` : step.activity === 'chant' ? '✨ Song maker' : '🖨️ Worksheet';
-  };
-  const stages = { before: 'Before', while: 'While', after: 'After' };
-  return h('div', null,
-    h('h3', { class: 'section-title' }, `🧭 Lesson plan${minutes ? ` · ${minutes} min` : ''}`),
-    h('section', { class: 'card lesson-plan' },
-      cautions.map((c) => h('p', { class: `lesson-caution ${c.severity}` }, `${c.severity === 'serious' ? '🛑' : '⚠️'} ${c.line ? `Line ${c.line}${c.words ? ` (“${c.words}”)` : ''}: ` : ''}${c.note}`)),
-      STAGES.map((stage) => path.filter((step) => step.stage === stage).map((step) => h('a', { class: 'lesson-step', href: stepHash(song.id, step) },
-        h('span', { class: 'badge' }, stages[stage]),
-        h('span', { class: 'ls-name' }, named(step)),
-        step.minutes ? h('span', { class: 'small' }, `${step.minutes} min`) : null,
-        step.do ? h('span', { class: 'ls-do' }, step.do) : null)))));
+  if (!cautions.length) return null;
+  return h('section', { class: 'card lesson-warnings' },
+    cautions.map((c) => h('p', { class: `lesson-caution ${c.severity}` }, `${c.severity === 'serious' ? '🛑' : '⚠️'} ${c.line ? `Line ${c.line}${c.words ? ` (“${c.words}”)` : ''}: ` : ''}${c.note}`)));
 }
 
 export function partHue(part) {

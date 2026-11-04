@@ -109,26 +109,37 @@ Singing composes a song for it:
 
 🎲 *Another tune* re-rolls it. Made songs work in every game.
 
-### 🧠 AI lesson packs
-An external AI can read a song's lyrics and decide what that song is good for,
-for one particular class. On any of your songs, choose **AI lesson pack**:
+### 🧠 AI song packs
+An external AI can study a song's lyrics and add depth to Singing's games. It does
+not plan lessons: teachers choose when and how to use each game. On any of your
+songs, choose **AI song pack**:
 
-1. Describe the class: level (or let the AI decide), age, first language, what
-   you want to work on, time and pack size.
-2. Copy the prompt into ChatGPT, Claude, Gemini or any other AI. It holds the
-   lyrics, the melody, the instructions and the JSON format. The app sends nothing
-   itself, and no API key is needed.
-3. Paste the reply back. Singing finds the JSON in whatever the AI wrote around
+1. Describe the class: age, first language and, if you like, what to work on.
+   Leave **Level** empty and the AI rates the song from how abstract its meaning
+   is and how hard its vocabulary is. Either way the activities cover that level
+   and the one on each side of it, up to C2.
+2. Copy the prompt into a chatbot like ChatGPT, Claude or Gemini, or hand it to an
+   AI agent. It holds the lyrics, the melody, the instructions and the JSON format.
+   The app sends nothing itself, and no API key is needed.
+3. Bring the results back. As with long PinPlay quizzes, a chatbot works in batches:
+   **Create in batches of** sets the size, the prompt carries the whole plan, and
+   the AI sends one JSON object per reply and stops, one family of games at a time
+   (a size of 60 gives five batches). Paste each reply in and copy the message for
+   the next batch, or choose all its files at once with **Open files**. An **AI
+   agent** instead does the whole job in one run, goes deeper, checks its own work
+   and leaves one file. Each reply is added to the pack, unsaved batches wait in
+   this browser, pasting a batch twice adds nothing, and any section can ask the AI
+   for more later. Singing finds the JSON in whatever the AI wrote around
    it and checks every item against the lyrics. Items quote words rather than count
    them, so a wrong line number is corrected from the quote, and anything else that
-   does not match is listed and left out. If something is wrong, it writes the
-   message to send back to the AI.
+   does not match is listed and left out, with a message to send back to the AI.
 4. Read through the pack, remove what you do not want, and save it with the song.
 
 | In the pack | Where it goes |
 |---|---|
 | Profile | The song's level, grammar, themes, key words and summary |
-| Teacher notes, content warnings, lesson plan | The song page, teachers only; each step opens its game on the right set |
+| Teacher notes, content warnings | Teachers only: the notes on the pack page, the warnings on the song page |
+| Clean | The clean version (below) |
 | Lines | Pictures, translations and a "in simple English" view of the lyrics |
 | Words | Key word cards: meaning, translation, example, IPA; click to hear |
 | Pop-ups | Language notes in Karaoke, beside the highlighted words |
@@ -136,20 +147,29 @@ for one particular class. On any of your songs, choose **AI lesson pack**:
 | Gap sets | Fill the gaps, Choose the word and worksheets; real mistakes as wrong answers. Can be assigned as homework, marked by the server |
 | Swaps | Wrong word: what learners with this first language really mishear |
 | Stops | Finish the line: the music stops before a word and asks a question |
-| Quiz | Song quiz, before and after listening; Listen replays the line that answers it |
-| Cards | Hot mic: questions about students' own lives, role plays, fix-the-sentence |
+| Quiz | Song quiz, before and after listening, by level; Listen replays the line that answers it |
+| Cards | Hot mic, by level: questions about students' own lives, role plays, fix-the-sentence |
 | Pairs | Rhyme memory with any pairs: base and past, word and meaning, English and first language |
 | Moves | Freeze dance: a gesture for a word, shown as the word is sung |
 | Say | Say it!: the lines worth practising, the words to watch, and a tip |
 | Echo | The order to teach the song in, easiest and most useful first |
 | Chant | An original chant on the same language point, opened in the Song maker |
 
-Every set is also on the printed **Lesson worksheet**. The melody goes to the AI as
+A 🧠 number on an activity shows what the pack added to it, and the printed **AI
+worksheet** gathers one level of the pack on a sheet. The melody goes to the AI as
 measured facts rather than as the raw UltraStar file, whose beat numbers need
 #BPM and #GAP arithmetic: seconds per syllable, long notes, rests, jumps, the fastest
 and slowest lines. So it can plan vowel work on held notes, warn about fast lines
 and about stress the melody bends, and choose where to pause. Band songs send
 the same facts from their score; songs timed by line get line timing only.
+
+**Clean version:** on a recording, words on the pack's clean list are masked on
+screen and on paper, and the singer drops out on them while the music plays on,
+because the karaoke version takes over for that moment. Without a karaoke version
+all the sound dips for the word instead, and a video can only mask its lyrics. The
+AI suggests the words, and teachers can add their own. Word times are exact with
+an UltraStar file and estimated with line timing. Masked words never become gaps,
+and the server masks them too, so homework is marked on what students saw.
 
 Students and the public player receive the pack without its teacher section, and
 share links leave the pack out. A pack belongs to one saved version of a song: if
@@ -246,7 +266,7 @@ js/main.js            router (#/, #/song/<id>, #/play/<id>/<game>, #/studio, #/c
 js/music/             notes, score (song format), synth, band (styles), player, composer, timeline
 js/media/             YouTube, audio file and lyrics-only players (same interface as the band), timing files, auto-align
 js/lyrics/            word lists, grammar spotter, rhymes, syllables, phonemes (robot singer), gaps & distractors, bingo, Studio lyrics format
-js/lesson/            AI lesson packs: pack.js reads and checks a reply and feeds the games, prompt.js writes the prompt
+js/lesson/            AI song packs: pack.js reads, checks and joins replies and feeds the games, prompt.js writes the prompt
 js/games/             one module per activity
 js/views/             library, song, stage, studio, lesson, song maker, remix, print, party, help, card
 js/data/songs/        the songbook

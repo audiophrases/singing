@@ -5,6 +5,7 @@
  */
 import { Emitter } from '../music/player.js';
 import { timelineFromSynced } from '../music/timeline.js';
+import { cleanTimeline } from '../lesson/pack.js';
 
 export class PolledTrack extends Emitter {
   constructor(song) {
@@ -15,6 +16,8 @@ export class PolledTrack extends Emitter {
     this.playing = false;
     // Lines with no time yet get an estimated one.
     this.timeline = timelineFromSynced(Array.isArray(song.synced) ? song.synced : [], song.duration || 0);
+    // The clean version from the song's pack: masked words, and when they are sung.
+    this.cleanSpans = cleanTimeline(this.timeline, song.lesson);
     this.pollTimer = null;
   }
 

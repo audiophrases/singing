@@ -6,7 +6,7 @@ import { songPermissionCheckbox } from './song-permission.js';
 import { allSongs } from '../store.js';
 import { saveCloudSong } from '../cloud/library.js';
 import { GAMES, gameFits } from '../games/index.js';
-import { lessonOf } from '../lesson/pack.js';
+import { lessonOf, orderSets, setLabel } from '../lesson/pack.js';
 
 const field = (label, input) => h('label', { class: 'studio-field' }, h('span', null, label), input);
 const run = async (fn) => { try { await fn(); } catch (e) { toast(e.message, 'bad', 5000); } };
@@ -42,8 +42,8 @@ async function createAssignment() {
   const gapSet = h('select', { 'aria-label': 'Gap set' });
   const gapSetField = field('Gaps for Fill the gaps and Choose the word', gapSet);
   const drawGapSets = () => {
-    const sets = lessonOf(songs.find((s) => s.id === songSelect.value))?.gapSets || [];
-    clear(gapSet).append(h('option', { value: '' }, 'By listening difficulty'), ...sets.map((set) => h('option', { value: `pack:${set.id}` }, `🧠 ${set.name}`)));
+    const sets = orderSets(lessonOf(songs.find((s) => s.id === songSelect.value))?.gapSets);
+    clear(gapSet).append(h('option', { value: '' }, 'By listening difficulty'), ...sets.map((set) => h('option', { value: `pack:${set.id}` }, `🧠 ${setLabel(set, '')}`)));
     gapSetField.hidden = !sets.length;
   };
   const classInputs = classes.map((c) => ({ ...c, input: h('input', { type: 'checkbox', 'aria-label': c.name }) }));

@@ -10,6 +10,7 @@ const KEYS = {
   settings: 'singing.settings.v1',
   teams: 'singing.teams.v1',
   progress: 'singing.progress.v1',
+  lessonDrafts: 'singing.lessonDrafts.v1',
 };
 
 function read(key, fallback) {
@@ -123,6 +124,17 @@ export function deleteUserSong(id) {
 export function newSongId(title = 'song') {
   const slug = String(title).toLowerCase().normalize('NFKD').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 32) || 'song';
   return `${slug}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+// An AI pack still arriving in batches waits here until the teacher saves it.
+export function getLessonDraft(songId) {
+  return read(KEYS.lessonDrafts, {})[songId] || null;
+}
+
+export function setLessonDraft(songId, pack) {
+  const drafts = read(KEYS.lessonDrafts, {});
+  if (pack) drafts[songId] = pack; else delete drafts[songId];
+  write(KEYS.lessonDrafts, drafts);
 }
 
 // --------------------------------------------------------------------- teams

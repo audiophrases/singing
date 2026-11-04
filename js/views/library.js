@@ -10,7 +10,7 @@ import { onFolderStatus } from '../media/folder-library.js';
 import { teacherAccess } from '../cloud/access.js';
 
 const FILTER_KEY = 'singing.libraryFilters.v1';
-const LEVELS = ['Pre-A1', 'A1', 'A2', 'B1', 'B2'];
+const LEVELS = ['Pre-A1', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const AGES = [['kids', '🧒 Kids'], ['teens', '🧑 Teens'], ['all', '👪 Everyone']];
 
 let preview = null;

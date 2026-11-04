@@ -8,6 +8,10 @@
  * Pitch Pal's "I know it") switch to the karaoke version, as the band does
  * when its melody is muted. song.karaoke.offset: karaoke time = song time + offset.
  * With isolated vocals, setVocalGuide(0..1) mixes a quiet guide into karaoke.
+ *
+ * The clean version: while a word in cleanSpans is sung, the singer drops out
+ * and the karaoke version carries on, which is why this needs no second file.
+ * Without a karaoke version all the sound dips for the word instead.
  */
 import { PolledTrack } from './base.js';
 import { getMedia } from './store.js';
@@ -147,10 +151,23 @@ export class AudioTrack extends PolledTrack {
     this.applyVoice();
   }
 
-  applyVoice(now = false) {
-    const voice = this.singer && !this.leadMuted;
-    const solo = this.vocalsOnly && voice;
-    const guide = !this.singer && !this.leadMuted && this.hasVocalGuide ? this.vocalGuide : 0;
+  // Polling every 30 ms, so start a moment early: the word must not be heard.
+  watchClean() {
+    if (!this.cleanSpans?.length) return;
+    const t = this.time();
+    const early = 0.06 * (this.rate || 1);
+    const hide = this.cleanSpans.some(([from, to]) => t >= from - early && t < to);
+    if (hide === !!this.cleanHidden) return;
+    this.cleanHidden = hide;
+    this.applyVoice(false, 0.012);
+  }
+
+  applyVoice(now = false, fade = 0.04) {
+    const hidden = !!this.cleanHidden;
+    const lead = this.singer && !this.leadMuted;
+    const voice = lead && !hidden;
+    const solo = this.vocalsOnly && lead;
+    const guide = !this.singer && !this.leadMuted && this.hasVocalGuide && !hidden ? this.vocalGuide : 0;
     const set = (el, ng, level) => {
       if (!el) return;
       const value = Number(level);
@@ -158,7 +175,7 @@ export class AudioTrack extends PolledTrack {
         const t = ng.gain.context.currentTime;
         ng.gain.gain.cancelScheduledValues(t);
         if (now) ng.gain.gain.setValueAtTime(value, t);
-        else ng.gain.gain.setTargetAtTime(value, t, 0.04);
+        else ng.gain.gain.setTargetAtTime(value, t, fade);
       } else {
         el.volume = value;
       }
@@ -168,9 +185,9 @@ export class AudioTrack extends PolledTrack {
       set(this.kar, this.karNode, false);
       set(this.voc, this.vocNode, voice ? 1 : guide);
     } else {
-      set(this.audio, this.main, (!this.kar || voice) && !solo);
-      set(this.kar, this.karNode, !voice);
-      set(this.voc, this.vocNode, solo ? 1 : guide);
+      set(this.audio, this.main, (!this.kar || voice) && !solo && !(hidden && !this.kar));
+      set(this.kar, this.karNode, !voice && !solo);
+      set(this.voc, this.vocNode, solo ? !hidden : guide);
     }
   }
 
@@ -203,6 +220,7 @@ export class AudioTrack extends PolledTrack {
     if (this.song.cloud && this.song.playbackExpiresAt - Date.now() < 60000 && !this.refreshing && !this.destroyed) this.refreshPlayback().catch(() => {});
     super.poll();
     this.syncKaraoke();
+    this.watchClean();
   }
 
   time() { return this.renewPosition ?? (this.audio.currentTime || 0); }
@@ -256,6 +274,7 @@ export class AudioTrack extends PolledTrack {
     this.audio.currentTime = sec;
     if (this.kar) this.kar.currentTime = Math.max(0, Math.min(sec + this.karOffset, this.kar.duration || 0));
     if (this.voc) this.voc.currentTime = Math.max(0, Math.min(sec + this.vocOffset, this.voc.duration || 0));
+    this.watchClean();
   }
 
   rawRate(r) {

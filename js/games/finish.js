@@ -22,7 +22,7 @@ export async function start(ctx) {
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Hide'),
         choiceRow([[1, 'Last word'], [2, 'Last 2 words'], [3, 'Last 3 words'], [0, 'Half the line']], conf.hide, (v) => { conf.hide = v; })),
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Stop at'),
-        choiceRow([...(packStops.size ? [['pack', `🧠 Lesson pack (${packStops.size})`]] : []), ['all', 'Every line'], ['some', 'Every other line'], ['few', '6 surprise lines']], conf.which, (v) => { conf.which = v; })),
+        choiceRow([...(packStops.size ? [['pack', `🧠 AI pack (${packStops.size})`]] : []), ['all', 'Every line'], ['some', 'Every other line'], ['few', '6 surprise lines']], conf.which, (v) => { conf.which = v; })),
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Timer'),
         choiceRow([[0, 'None'], [5, '5 s'], [10, '10 s'], [15, '15 s']], conf.timer, (v) => { conf.timer = v; })),
     ),

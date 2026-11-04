@@ -22,7 +22,7 @@ export async function start(ctx) {
     intro: 'Read the lyrics while you listen. In each line one word is WRONG. Click it as fast as you can!',
     body: h('div', null,
       swaps.size ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Wrong words'),
-        choiceRow([['pack', `🧠 Lesson pack (${swaps.size} lines)`], ['auto', '🤖 Made by Singing']], conf.source, (v) => { conf.source = v; })) : null,
+        choiceRow([['pack', `🧠 AI pack (${swaps.size} lines)`], ['auto', '🤖 Made by Singing']], conf.source, (v) => { conf.source = v; })) : null,
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Lines'),
         choiceRow([[1, 'Every line'], [2, 'Every other line']], conf.every, (v) => { conf.every = v; }))),
     onStart: () => { card.destroy(); begin(); },
@@ -46,7 +46,7 @@ export async function start(ctx) {
       if (k % conf.every !== 0) return;
       const cands = l.words.map((w, i) => i).filter((i) => {
         const n = normWord(l.words[i].text);
-        return n.length >= 3 && !STOPWORDS.has(n);
+        return n.length >= 3 && !STOPWORDS.has(n) && !l.words[i].text.includes('*');
       });
       if (!cands.length) return;
       const wi = cands[Math.floor(rnd() * cands.length)];

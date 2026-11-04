@@ -7,7 +7,7 @@ import { getSong } from '../store.js';
 import { songTimeline } from '../pinplay-export.js';
 import { bingoWords, makeCard, cardSize } from '../lyrics/bingo.js';
 import { pickGaps, GAP_LEVELS } from '../lyrics/gaps.js';
-import { lessonOf } from '../lesson/pack.js';
+import { lessonOf, orderSets, setLabel } from '../lesson/pack.js';
 
 const KINDS = [
   ['lyrics', '📜 Lyrics'],
@@ -21,7 +21,7 @@ export async function render(el, params) {
   if (!song) { el.append(h('div', { class: 'empty' }, 'Song not found.')); return null; }
   const timeline = songTimeline(song);
   const lesson = lessonOf(song);
-  const kinds = lesson ? [...KINDS, ['lesson', '🧠 Lesson worksheet']] : KINDS;
+  const kinds = lesson ? [...KINDS, ['lesson', '🧠 AI worksheet']] : KINDS;
   const kind = params.kind;
   const sheet = h('div', { class: 'sheet' });
   const opts = { level: params.level || 'easy', size: Number(params.size) || 4, count: Number(params.n) || 12, seed: Number(params.seed) || 7 };
@@ -70,18 +70,20 @@ export async function render(el, params) {
         h('td', null, w.emoji || ''), h('td', null, h('b', null, w.word), w.ipa ? h('span', { class: 'small' }, ` ${w.ipa}`) : null), h('td', null, w.meaning), h('td', null, w.translation || '')))));
     }
     const set = lesson.gapSets?.find((s) => `pack:${s.id}` === opts.level) || lesson.gapSets?.[0];
+    // One level on one sheet: the gap set's, when it has one.
+    const fits = (item) => !set?.level || !item.level || item.level === set.level;
     let bank = [];
     if (set) {
-      sheet.append(h('h3', null, `${set.emoji || '✏️'} ${set.name}`), h('p', { class: 'sheet-task' }, set.rule || '🎧 Listen to the song and fill the gaps.'));
+      sheet.append(h('h3', null, setLabel(set, '✏️')), h('p', { class: 'sheet-task' }, set.rule || '🎧 Listen to the song and fill the gaps.'));
       bank = gapLines(`pack:${set.id}`);
       sheet.append(wordBank(bank));
     }
-    const questions = (lesson.quiz || []).filter((q) => q.when !== 'before');
+    const questions = (lesson.quiz || []).filter((q) => q.when !== 'before' && fits(q));
     if (questions.length) {
       sheet.append(h('h3', null, '❓ Questions'), h('ol', { class: 'sheet-questions' }, questions.map((q, i) => h('li', null, q.q,
         h('div', { class: 'sheet-options' }, shuffle([q.answer, ...q.wrong], seeded(opts.seed + i)).map((o) => h('span', null, `☐ ${o}`)))))));
     }
-    const talk = (lesson.cards || []).filter((c) => c.kind === 'discuss' || c.kind === 'personal');
+    const talk = (lesson.cards || []).filter((c) => (c.kind === 'discuss' || c.kind === 'personal') && fits(c));
     if (talk.length) sheet.append(h('h3', null, '💬 Talk about it'), h('ul', { class: 'sheet-questions' }, talk.map((c) => h('li', null, c.body))));
     sheet.append(h('details', { class: 'no-print' }, h('summary', null, 'Answers'),
       bank.length ? h('p', { class: 'small' }, `Gaps: ${bank.join(', ')}`) : null,
@@ -109,7 +111,7 @@ export async function render(el, params) {
 
   const levelSel = h('select', { style: { width: 'auto' } },
     kind === 'gapfill' ? GAP_LEVELS.map((l) => h('option', { value: l.id, selected: l.id === opts.level }, `${l.emoji} ${l.name}`)) : null,
-    (lesson?.gapSets || []).map((s) => h('option', { value: `pack:${s.id}`, selected: `pack:${s.id}` === opts.level }, `🧠 ${s.name}`)));
+    orderSets(lesson?.gapSets).map((s) => h('option', { value: `pack:${s.id}`, selected: `pack:${s.id}` === opts.level }, `🧠 ${setLabel(s, '')}`)));
   levelSel.addEventListener('change', () => go({ level: levelSel.value }));
   const sizeSel = h('select', { style: { width: 'auto' } }, [3, 4, 5].map((n) => h('option', { value: n, selected: n === opts.size }, `${n}×${n}`)));
   sizeSel.addEventListener('change', () => go({ size: sizeSel.value }));

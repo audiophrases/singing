@@ -10,8 +10,8 @@ import { distractors, wordPool } from '../lyrics/gaps.js';
 import { categoryById, baseForm } from '../lyrics/grammar.js';
 import { normWord } from '../lyrics/text.js';
 import { STOPWORDS, IRREGULAR_PAST } from '../lyrics/wordlists.js';
-import { lessonOf, lessonQuiz } from '../lesson/pack.js';
-import { getTeams, addPoints, setTeams } from '../store.js';
+import { lessonOf, lessonQuiz, packLevels } from '../lesson/pack.js';
+import { getTeams, addPoints, setTeams, setSettings } from '../store.js';
 import { sfx, confetti } from '../sfx.js';
 
 export function makeQuestions(timeline, rnd, count = 10) {
@@ -78,9 +78,9 @@ export function makeQuestions(timeline, rnd, count = 10) {
   return shuffle(qs, rnd).slice(0, count);
 }
 
-// The lesson pack's questions, in their own order: "before" ones come first.
-export function packQuestions(timeline, lesson, when, rnd) {
-  return lessonQuiz(timeline, lesson, when).map((q) => {
+// The AI pack's questions, in their own order.
+export function packQuestions(timeline, lesson, { when = '', level = '' } = {}, rnd = Math.random) {
+  return lessonQuiz(timeline, lesson, when).filter((q) => !level || !q.level || q.level === level).map((q) => {
     const options = shuffle([q.answer, ...q.wrong], rnd);
     return { kind: 'lesson', emoji: q.when === 'before' ? '🔮' : '🧠', q: q.q, answer: q.answer, options, explain: q.explain || '', line: q.line, long: options.some((o) => o.length > 24) };
   });
@@ -92,16 +92,20 @@ const SHAPES = ['▲', '◆', '●', '■'];
 export async function start(ctx) {
   const { timeline, main, track } = ctx;
   const lesson = lessonOf(ctx.song);
-  const when = ['before', 'after'].includes(ctx.params.when) ? ctx.params.when : '';
-  const packed = lessonQuiz(timeline, lesson, when).length;
-  const conf = { count: 10, timer: packed ? 30 : 20, source: packed ? 'pack' : 'auto' };
+  const packed = lessonQuiz(timeline, lesson);
+  const levels = packLevels(packed);
+  const conf = { count: 10, timer: packed.length ? 30 : 20, source: packed.length ? 'pack' : 'auto', when: '', level: levels.includes(ctx.settings.packLevel) ? ctx.settings.packLevel : '' };
   const card = setupCard({
     emoji: '❓',
     title: 'Song quiz',
     intro: 'Questions about the words of the song. Answer with the mouse or the keys 1, 2, 3 and 4. In teams, each team gets a question in turn.',
     body: h('div', null,
-      packed ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Questions from'),
-        choiceRow([['pack', `🧠 Lesson pack (${packed})`], ['auto', '🤖 Made by Singing']], conf.source, (v) => { conf.source = v; })) : null,
+      packed.length ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Questions from'),
+        choiceRow([['pack', `🧠 AI pack (${packed.length})`], ['auto', '🤖 Made by Singing']], conf.source, (v) => { conf.source = v; })) : null,
+      levels.length > 1 ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Level'),
+        choiceRow([['', 'All'], ...levels.map((l) => [l, l])], conf.level, (v) => { conf.level = v; setSettings({ packLevel: v }); })) : null,
+      packed.some((q) => q.when === 'before') && packed.some((q) => q.when === 'after') ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'When'),
+        choiceRow([['', 'All'], ['before', '🔮 Before listening'], ['after', '🎧 After listening']], conf.when, (v) => { conf.when = v; })) : null,
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Questions'),
         choiceRow([[5, '5'], [10, '10'], [15, '15']], conf.count, (v) => { conf.count = v; })),
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Timer'),
@@ -116,7 +120,7 @@ export async function start(ctx) {
   function begin() {
     track.pause();
     const rnd = seeded(Date.now() % 1e6);
-    const qs = conf.source === 'pack' ? packQuestions(timeline, lesson, when, rnd).slice(0, conf.count) : makeQuestions(timeline, rnd, conf.count);
+    const qs = conf.source === 'pack' ? packQuestions(timeline, lesson, conf, rnd).slice(0, conf.count) : makeQuestions(timeline, rnd, conf.count);
     if (!qs.length) {
       clear(main).append(h('div', { class: 'setup-card' }, h('h2', null, 'No questions for this song yet')));
       return;

@@ -1,7 +1,15 @@
 /*
  * The prompt a teacher copies into an external AI (ChatGPT, Claude, Gemini...).
  * It holds the class, the lyrics, a digest of the melody and the JSON format
- * that js/lesson/pack.js reads back.
+ * that js/lesson/pack.js reads back. The AI adds depth to Singing's games; it
+ * does not plan lessons.
+ *
+ * A chatbot works in batches of a size the teacher sets, as PinPlay's quizzes
+ * do: one prompt with the whole plan, one JSON object per reply, and each next
+ * batch when the teacher asks for it. Asked for everything in one reply, it
+ * spreads itself thin: 16 questions asked for came back as 4. An agent (PinPlay's
+ * other choice) has no reply to fill: it does the whole job in one run, goes
+ * deeper and checks its own work, and leaves a file to import.
  *
  * The melody comes from the song's UltraStar file (or the band's score), but
  * the AI gets measured facts rather than the raw file. An UltraStar row is
@@ -9,7 +17,6 @@
  * before they mean anything, and that is where a language model goes wrong.
  * So the app does the arithmetic and the AI does the teaching.
  */
-import { GAMES, gameFits } from '../games/index.js';
 import { midiToName } from '../music/notes.js';
 import { sungLines } from '../music/timeline.js';
 import { lineSyllables } from '../lyrics/syllables.js';
@@ -22,21 +29,20 @@ export const AGES = {
   adults: 'adults: mature topics are fine, respect their experience',
 };
 
-// How much to ask for. A long reply can be cut off on a free AI plan.
-export const AMOUNTS = {
-  light: { label: 'Light (short reply)', words: 6, popups: 6, hunts: 1, gapSets: 1, gaps: 8, swaps: 5, stops: 4, quiz: 6, cards: 8, pairs: 1, moves: 4, say: 3, echo: 3 },
-  standard: { label: 'Standard', words: 10, popups: 12, hunts: 2, gapSets: 2, gaps: 10, swaps: 8, stops: 6, quiz: 10, cards: 14, pairs: 2, moves: 6, say: 5, echo: 5 },
-  rich: { label: 'Rich (long reply)', words: 16, popups: 20, hunts: 3, gapSets: 3, gaps: 14, swaps: 12, stops: 8, quiz: 16, cards: 22, pairs: 3, moves: 8, say: 8, echo: 8 },
-};
+// PinPlay's limit too: the most one AI reply is asked to hold.
+export const BATCH_SIZE = { usual: 20, least: 3, most: 60 };
 
-export const CLASS_DEFAULTS = { level: '', age: 'teens', language: '', focus: '', minutes: 45, amount: 'standard', melody: true };
+export const AI_KINDS = { chatbot: '💬 AI chatbot', agent: '🦾 AI agent (one run, one file)' };
+
+export const CLASS_DEFAULTS = { level: '', age: 'teens', language: '', focus: '', ai: 'chatbot', batchSize: BATCH_SIZE.usual, melody: true };
 
 // The model answer in the prompt, for a four-line song made up for the purpose.
 // The test suite imports this into that song, so it always matches the reader.
-export const EXAMPLE_LYRICS = ['We have been walking by the river', 'Gonna find a place to stay', 'If the rain comes down tomorrow', 'We will be dancing anyway'];
+export const EXAMPLE_LYRICS = ['We have been walking by the river', 'Gonna find a damn place to stay', 'If the rain comes down tomorrow', 'We will be dancing anyway'];
 export const PACK_EXAMPLE = {
   format: PACK_FORMAT,
   version: PACK_VERSION,
+  batch: 1,
   song: { title: 'River Road', lines: 4 },
   profile: {
     level: 'B1',
@@ -46,28 +52,27 @@ export const PACK_EXAMPLE = {
     summary: 'Two friends keep walking and stay happy, whatever the weather.',
   },
   teacher: {
-    levelWhy: 'Short clauses and everyday words, but the conditional and continuous forms need B1.',
+    levelWhy: 'The story is literal and the words are everyday, but the conditional and continuous forms need B1.',
     notes: 'Good for the first conditional because the frame is short and easy to sing. L2 drops its subject, which is normal in songs but not in writing.',
     cautions: [{ line: 2, words: 'Gonna', severity: 'mild', note: 'Accept "going to" in writing.' }],
-    path: [
-      { stage: 'before', activity: 'quiz', when: 'before', minutes: 5, do: 'Teams predict the story from the title.' },
-      { stage: 'while', activity: 'gapfill', set: 'if-clauses', minutes: 10, do: 'Play it once, then again for the gaps.' },
-      { stage: 'after', activity: 'hotmic', minutes: 15, do: 'Students answer about their own plans.' },
-    ],
   },
+  clean: [{ words: 'damn', why: 'Mild swearing.' }],
   lines: [{ line: 1, emoji: '🌊', translation: 'A natural translation, only when the class language is given', plain: 'We started walking a while ago and we are still walking.' }],
   words: [{ word: 'anyway', meaning: 'even so, it does not matter', translation: 'the word in the class language', emoji: '🤷', example: 'It was cold, but we went out anyway.', ipa: '/ˈeniweɪ/' }],
   popups: [{ line: 2, words: 'Gonna', kind: 'song-english', text: 'Gonna = going to. Say it in songs and chats, not in essays.' }],
-  hunts: [{ id: 'future-after-if', name: 'Talking about tomorrow', emoji: '🔮', rule: 'Find the words that point to the future.', targets: [{ line: 4, words: 'will be', why: 'will + be: the result of the if-clause' }] }],
-  gapSets: [{ id: 'if-clauses', name: 'If-clauses', emoji: '🌧️', tier: 'core', rule: 'After "if" we use the present, even for the future.', gaps: [{ line: 3, words: 'comes', options: ['will come', 'came'], why: 'After if, use the present: if the rain comes.' }] }],
-  swaps: [{ line: 1, words: 'river', wrong: 'liver', why: 'R and L sound alike to many learners.' }],
+  gapSets: [{ id: 'if-clauses', name: 'If-clauses', emoji: '🌧️', level: 'B1', rule: 'After "if" we use the present, even for the future.', gaps: [{ line: 3, words: 'comes', options: ['will come', 'came'], why: 'After if, use the present: if the rain comes.' }] }],
+  swaps: [{ line: 1, words: 'river', wrong: 'liver', why: '/r/ and /l/: the tongue touches the mouth only for /l/.' }],
   stops: [{ line: 4, words: 'dancing', ask: 'If it rains, what do you think they will do?' }],
+  hunts: [{ id: 'future-after-if', name: 'Talking about tomorrow', emoji: '🔮', level: 'B1', rule: 'Find the words that point to the future.', targets: [{ line: 4, words: 'will be', why: 'will + be: the result of the if-clause' }] }],
   quiz: [
-    { when: 'before', q: 'A song is called "River Road". What do you expect?', answer: 'A journey', wrong: ['A wedding', 'A football match'], explain: 'Roads and rivers suggest travel.' },
-    { when: 'after', q: 'What will they do if it rains?', answer: 'Keep dancing', wrong: ['Go home', 'Find a roof'], line: 4, explain: '"Anyway" tells us the rain changes nothing.' },
+    { when: 'before', level: 'A2', q: 'A song is called "River Road". What do you expect?', answer: 'A journey', wrong: ['A wedding', 'A football match'], explain: 'Roads and rivers suggest travel.' },
+    { when: 'after', level: 'B1', q: 'What will they do if it rains?', answer: 'Keep dancing', wrong: ['Go home', 'Find a roof'], line: 4, explain: '"Anyway" tells us the rain changes nothing.' },
   ],
-  cards: [{ kind: 'personal', emoji: '☔', title: 'Your rainy day', body: 'If it rains tomorrow, what will you do? Answer with "If it rains, I will..."', answer: 'If it rains, I will stay at home and read.' }],
-  pairs: [{ id: 'chunks', name: 'Word and meaning', emoji: '🃏', pairs: [{ a: 'anyway', b: 'even so' }, { a: 'a place to stay', b: 'somewhere to sleep' }, { a: 'tomorrow', b: 'the day after today' }] }],
+  cards: [{ kind: 'personal', level: 'B1', emoji: '☔', title: 'Your rainy day', body: 'If it rains tomorrow, what will you do? Answer with "If it rains, I will..."', answer: 'If it rains, I will stay at home and read.' }],
+  pairs: [
+    { id: 'chunks', name: 'Word and meaning', emoji: '🃏', level: 'A2', pairs: [{ a: 'anyway', b: 'even so' }, { a: 'a place to stay', b: 'somewhere to sleep' }, { a: 'tomorrow', b: 'the day after today' }] },
+    { id: 'first-language', name: 'English and first language', emoji: '🌍', level: 'A2', translated: true, pairs: [{ a: 'river', b: 'in the class language' }, { a: 'rain', b: 'in the class language' }, { a: 'tomorrow', b: 'in the class language' }] },
+  ],
   moves: [{ word: 'walking', text: 'Walk on the spot!', emoji: '🚶' }],
   say: [{ line: 2, words: 'Gonna find', skill: 'linking', tip: 'Run them together: gonna-find. Keep the vowel in "-na" very short.' }],
   echo: [{ from: 3, to: 4, why: 'Slow, and the key grammar is here.' }, { from: 1, to: 2, why: 'Faster, so teach it second.' }],
@@ -76,7 +81,7 @@ export const PACK_EXAMPLE = {
 
 // What a general AI gets wrong about a class language. Left to itself it treats
 // Catalan speakers as Spanish speakers, whose problem sounds are different.
-const LANGUAGE_NOTES = [[/catal|valenci/i, 'Catalan is not Spanish, so do not reuse lists of Spanish-speaker mistakes. These students usually speak Spanish too, so Spanish interference can appear, but write every translation in correct standard Catalan, never in Spanish. Catalan has /ʃ/, /ʒ/, /dʒ/, /z/ and, in most of Catalonia, schwa, so these are not the weak points they are for Spanish speakers, and schwa is a bridge to English weak forms. The real problems: final consonants lose their voice (bed sounds like bet, made like mate); b and v are one sound in most of Catalonia (very, berry); there is no vowel length contrast and no /ɪ/, /æ/ or /ʌ/ (ship and sheep, cat and cut). The everyday past is vaig + infinitive (vaig anar), so learners may keep the base form or overuse did. The perfect is used for things that happened today (avui he anat), and this carries into English. False friends include parents (relatives), sensible (sensitive), llarg (long), actualment (currently), assistir (attend) and constipat (having a cold).']];
+const LANGUAGE_NOTES = [[/catal|valenci/i, 'Catalan is not Spanish, so do not reuse lists of Spanish-speaker mistakes. These students usually speak Spanish too, so Spanish interference can appear, but write every translation in correct standard Catalan, never in Spanish and with no Castilianisms. Catalan has /ʃ/, /ʒ/, /dʒ/, /z/ and, in most of Catalonia, schwa, so these are not the weak points they are for Spanish speakers, and schwa is a bridge to English weak forms. The real problems: final consonants lose their voice (bed sounds like bet, made like mate); b and v are one sound in most of Catalonia (very, berry); there is no vowel length contrast and no /ɪ/, /æ/ or /ʌ/ (ship and sheep, cat and cut). The everyday past is vaig + infinitive (vaig anar), so learners may keep the base form or overuse did. The perfect is used for things that happened today (avui he anat), and this carries into English. False friends include parents (relatives), sensible (sensitive), llarg (long), actualment (currently), assistir (attend) and constipat (having a cold).']];
 
 const clock = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 const secs = (x) => x.toFixed(1).replace(/^0/, '');
@@ -214,23 +219,24 @@ Use the melody as evidence for the singing and pronunciation work:
 - Start "echo" with the slow, repeated lines with a narrow range. Leave the big jumps and fast lines for last.`;
 }
 
-function activityList(song, timeline) {
-  const count = sungLines(timeline).length;
-  return [...GAMES.filter((g) => gameFits(g, song, count)).map((g) => `${g.id} (${g.name})`), 'worksheet (printed sheet from this pack)', 'chant (the Song maker, with your chant)'].join(', ');
+// The level, and the one on each side: what the activities are written for.
+export function levelsAround(level) {
+  const i = LEVELS.indexOf(level);
+  return i < 0 ? [] : LEVELS.slice(Math.max(0, i - 1), i + 2);
 }
 
 function classBlock(klass) {
   const row = (label, value) => `- ${label}: ${value}`;
   const note = LANGUAGE_NOTES.find(([name]) => name.test(klass.language))?.[1];
   return [
-    row('Level', klass.level ? `${klass.level} (CEFR)` : 'not given. Decide which CEFR level this song suits, then design for that level'),
+    row('Levels', klass.level
+      ? `this class is ${klass.level}, so write activities for ${levelsAround(klass.level).join(', ')} (CEFR)`
+      : 'not given. You decide, as described in "Levels" below'),
     row('Age', AGES[klass.age] || AGES.teens),
     row('First language', klass.language
       ? `${klass.language}. Use this: false friends, typical ${klass.language}-speaker mistakes and sounds that do not exist in ${klass.language} should shape your wrong answers and pronunciation tips`
       : 'not given. Leave out every "translation" field'),
     note ? row(`About ${klass.language}`, note) : '',
-    row('The teacher wants to work on', klass.focus || 'nothing in particular, so choose what this song teaches best'),
-    row('Time', `${klass.minutes} minutes. One screen on a projector, the whole class together, usually in teams`),
   ].filter(Boolean).join('\n');
 }
 
@@ -244,23 +250,92 @@ function songBlock(song) {
   return `Title: ${song.title}${song.artist ? `\nArtist: ${song.artist}` : ''}${known.length ? `\nTags already in the app (they may be wrong, so check them): ${known.join('; ')}` : ''}`;
 }
 
+// All the work, one list for each family of games. A "whole" part is never cut
+// in two. An agent has no reply to fill, so it is asked to go deeper.
+function workPlan(levels, agent) {
+  const each = (make) => levels.flatMap(make);
+  const sets = (name, kids, size) => each((level) => (agent ? [1, 2] : [1]).map(() => ({ what: `one "${name}" set of ${size} ${kids} for ${level}`, n: size, whole: true })));
+  return [
+    [{ what: '"words"', n: agent ? 24 : 16 }, { what: '"popups"', n: agent ? 40 : 20 }],
+    [...sets('gapSets', 'gaps', agent ? 12 : 10), { what: '"swaps"', n: agent ? 20 : 12 }, { what: '"stops"', n: agent ? 12 : 8 }],
+    [...sets('hunts', 'targets', agent ? 12 : 10), { what: '"quiz" questions with when "before"', n: agent ? 6 : 4 },
+      ...each((level) => ({ what: `"quiz" questions with when "after" for ${level}`, n: agent ? 15 : 8 }))],
+    [...each((level) => ({ what: `"cards" for ${level}`, n: agent ? 20 : 10 })), { what: '"say"', n: agent ? 16 : 10 }, { what: '"echo" steps', n: agent ? 8 : 6 }, { what: '"moves"', n: agent ? 16 : 10 }],
+    [...sets('pairs', 'pairs', agent ? 10 : 8), { what: 'the "chant"', n: 1, whole: true }],
+  ];
+}
+
+const SONG_PART = '"song", "profile", "teacher", "clean" and "lines"';
+const partText = (part, n = part.n) => (part.whole ? part.what : `${n} ${part.what}`);
+const batchSizeOf = (size) => Math.max(BATCH_SIZE.least, Math.min(BATCH_SIZE.most, Math.round(Number(size)) || BATCH_SIZE.usual));
+
+/*
+ * The batches for a size: [{ parts: ['16 "words"', ...] }]. A batch holds one
+ * family of games, because an AI thinks better about one kind of task at a
+ * time, and at most size items, so a big family takes several. Batch 1 also has
+ * the song itself. A set is never cut in two, so it can run over a small size.
+ * An agent gets everything as one batch: it has no reply to fill.
+ */
+export function planBatches({ batchSize = BATCH_SIZE.usual, level = '', ai = 'chatbot' } = {}) {
+  const agent = ai === 'agent';
+  const levels = level ? levelsAround(level) : ['your lowest level', 'your middle level', 'your highest level'];
+  const work = workPlan(levels, agent);
+  if (agent) return [{ parts: [SONG_PART, ...work.flat().map((part) => partText(part))] }];
+  const size = batchSizeOf(batchSize);
+  const batches = [{ parts: [SONG_PART] }];
+  let current = batches[0];
+  let room = size;
+  const open = () => { current = { parts: [] }; batches.push(current); room = size; };
+  work.forEach((family, f) => {
+    if (f) open();
+    for (const part of family) {
+      let left = part.n;
+      while (left > 0) {
+        if (room <= 0 || (part.whole && left > room && current.parts.length)) open();
+        const take = part.whole ? left : Math.min(left, room);
+        current.parts.push(partText(part, take));
+        room -= take;
+        left -= take;
+      }
+    }
+  });
+  return batches;
+}
+
+const batchLine = (batch, i) => `Batch ${i + 1}: ${batch.parts.join(', ')}.`;
+
 export function buildPrompt(song, timeline, options = {}) {
   const klass = { ...CLASS_DEFAULTS, ...options };
-  const n = AMOUNTS[klass.amount] || AMOUNTS.standard;
+  const agent = klass.ai === 'agent';
   const sung = sungLines(timeline);
   const pictures = sung.some((l) => l.pic);
   const translated = !!klass.language;
+  const plan = planBatches(klass);
+  const file = bare(song.title).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-') || 'song';
   const example = JSON.parse(JSON.stringify(PACK_EXAMPLE));
   if (!translated) {
     for (const row of [...example.lines, ...example.words]) delete row.translation;
+    example.pairs = example.pairs.filter((set) => !set.translated);
   }
+  if (agent) delete example.batch;
+  const focus = klass.focus.trim();
   const blocks = [
-    `You are an experienced ESL/EFL teacher, materials writer and singing coach. Design a complete lesson pack for the song below.
+    `# Singing song pack instructions
 
-Your reply will be imported by Singing, a classroom app that teaches English through songs. It turns your JSON into games on a projector, so everything you write ends up in front of real students.
+Singing is a classroom app that teaches English through songs. Its games already exist: Karaoke, Echo, Fill the gaps, Choose the word, Wrong word, Finish the line, Hot mic, Freeze dance, Rhyme memory, Grammar hunt, Say it! and Song quiz. Give them depth for the song below: study its lyrics, language and vocabulary, and write content tailored to them that the games cannot produce on their own. Do not plan a lesson or a timetable: teachers choose when and how to use each game.
 
-Reply with one JSON object and nothing else: no introduction, no notes, no Markdown code fences.`,
+${agent
+    ? `You are working as an autonomous agent. Do the whole job in this one run: do not stop to ask anything, and take as long as it needs. Write the result to one file named "${file}-pack.json" (UTF-8), holding ONE JSON object with every section, and end by saying where the file is. If your tools force you to split it, name the files "${file}-part1.json", part2, part3...: the teacher can import them together.`
+    : `The pack is too big for one reply, so it comes in ${plan.length} batches of at most ${batchSizeOf(klass.batchSize)} items, one family of games at a time (see "Batches"). Send batch 1 now and stop. Reply with ONE JSON object per batch and nothing else, no commentary. If you can create files, give each batch as a downloadable file named "${file}-part1.json" (part2, part3... for the next batches); otherwise put it in one \`\`\`json code block.`}`,
+    focus ? `# The teacher's own words
+Typed by the teacher, word for word, in quotes. Where they contradict anything after this section, the teacher's words win. Only the JSON format and field names stay fixed.
+- What to work on: "${focus}"` : '',
     `# The class\n${classBlock(klass)}`,
+    `# Levels
+${klass.level
+    ? `Rate the song itself in profile.level, however hard it is for this class. Then write activities for ${levelsAround(klass.level).join(', ')}, the class level and the level on each side of it.`
+    : 'Rate the song in profile.level from two things: how abstract its meaning is (a literal story is easy; metaphor, irony and an unreliable narrator are hard) and how hard its vocabulary is. Simple grammar does not make a song easy. Then write activities for that level and the level on each side of it: a B1 song gets A2, B1 and B2.'}
+The same lyrics can carry very different work: at the low level, finding and understanding; at the high level, register, implication and why the writer chose those words. Put "level" on every set in "gapSets", "hunts" and "pairs", and on every item in "quiz" and "cards".`,
     `# The song\n${songBlock(song)}`,
     `# The lyrics
 Every sung line has a number. "= L5" means the line repeats L5 word for word, so refer to L5: the app applies your work to every repeat.${sung.some((l) => l.part) ? ' A name before a colon says who sings the line ("A:"). It is not part of the lyrics, so never quote it.' : ''}
@@ -270,63 +345,99 @@ ${lyricsBlock(timeline)}`,
     `# Think first (do not write this part down)
 1. What is the song really about? Is it a story, a plea, a list, a conversation? Which metaphors would a learner take literally?
 2. Profile the language line by line: tenses and aspect, modals, conditionals, clause types, phrasal verbs, collocations, idioms, fixed chunks, repeated frames.
-3. Decide what this song is truly good for: the one to three points that occur often enough, in clear enough contexts, for this class. Prefer language in the chorus, because repetition is free drilling. Do not build on a point that appears only once. If the teacher named a focus the song cannot support, say so in teacher.notes and offer the nearest thing it can.
+3. Decide what this song is truly good for at each level. Prefer language in the chorus, because repetition is free drilling. If the teacher asked for something the song cannot support, say so in teacher.notes and offer the nearest thing it can.
 4. Find the "song English": places where the lyrics bend the rules (ain't, double negatives, dropped subjects, "me and you was", "gonna"). Learners who copy these get marked wrong, so point them out without shaming the song.
 5. Check the content: anything about sex, drugs, alcohol, violence, self-harm or religion that a teacher should see before pressing play. Do not build activities on a line with a serious caution.`,
-    `# What to write
-Each section feeds a real game or screen. Aim for the amount shown. A shorter section is better than a forced item, and an empty list is fine.
-
+    `# What each section is for
 "song": the title and the number of sung lines (${sung.length}), so the app can catch a pack pasted on the wrong song.
 
 "profile": goes on the song's page. level is one of ${LEVELS.join(', ')}. grammar and themes are short labels. vocab is up to 16 key words or chunks. summary is one or two plain sentences that students can read.
 
-"teacher": only teachers see this. levelWhy says why you chose the level. notes are 3 to 5 sentences on what the song is good for and what to watch. cautions are the content warnings: severity is mild or serious, and words may be left out when the whole line is the problem. path is a lesson plan of 3 to 7 steps that fits the time: stage is before, while or after; activity is one of the ids below; minutes; do is what the teacher does. For hunt, gapfill, choose or rhyme, set names one of your sets; for quiz, when can be before or after.
-Activity ids: ${activityList(song, timeline)}.
+"teacher": only teachers see this. levelWhy says why you rated the song as you did. notes are 3 to 5 sentences on what the song is good for and what to watch. cautions are the content warnings: severity is mild or serious, and words may be left out when the whole line is the problem.
 
-"lines": one entry for each different line, in order.${pictures ? ' The song has pictures already, so leave out emoji.' : ' emoji is a picture for the line, shown huge while it is sung.'}${translated ? ` translation is natural ${klass.language}, not word for word.` : ''} plain says the line in simple English, and matters most for metaphors.
+"clean": words a school would not want sung in class: swear words, slurs, explicit words. Quote each word once, and leave the list empty when there are none. Singing takes the singer's voice off exactly those words and masks them on screen. Never use a clean word anywhere else in the pack: not in any other section, not in a translation, not in a question.
 
-"words" (about ${n.words}): the words and chunks worth learning, not only single words. meaning is simple English below the class level.${translated ? ' translation is the word in the class language.' : ''} example is a new sentence, not from the song. ipa is the pronunciation. Shown as cards on the song's page.
+"lines": one entry for each different line, in order. Skip lines that are only sounds or a word or two (oh, ooh, yeah).${pictures ? ' The song has pictures already, so leave out emoji.' : ' emoji is a picture for the line, shown huge while it is sung.'}${translated ? ` translation is natural ${klass.language}, not word for word.` : ''} plain says the line in simple English, and matters most for metaphors.
 
-"popups" (about ${n.popups}): notes that appear during Karaoke beside the highlighted words, while the line is sung. Students have seconds, so stay under 90 characters. kind is one of ${Object.keys(POPUP_KINDS).join(', ')}.
+"words": the words and chunks worth learning, not only single words. meaning is simple English.${translated ? ' translation is the word in the class language.' : ''} example is a new sentence, not from the song. ipa is the pronunciation. Shown as cards on the song's page.
 
-"hunts" (about ${n.hunts}): for Grammar hunt. All the lyrics are on screen and teams click every word that counts. You can judge each word in context, which the app's word lists cannot: "left" only when it is a verb, "would" only when it is about the past. rule is the instruction on screen. Quote only the words that really count, in every line where they occur. why is shown when a word is found.
+"popups": notes that appear during Karaoke beside the highlighted words, while the line is sung. Students have seconds, so stay under 90 characters. kind is one of ${Object.keys(POPUP_KINDS).join(', ')}.
 
-"gapSets" (about ${n.gapSets} sets of about ${n.gaps} gaps): for Fill the gaps, Choose the word and the worksheet. Each set trains one thing. words is one word per gap. options are 2 wrong answers that show a real mistake learners make, not random words. why explains the right answer in one sentence. tier is support, core or stretch: when you write several sets, make them different levels of challenge for mixed classes.
+"gapSets": for Fill the gaps, Choose the word and the worksheet. Each set trains one thing. words is one word per gap. options are 2 wrong answers that show a real mistake learners make, not random words. Each option must be wrong in that sentence: never offer a form that is correct or acceptable, even informally or in formal English. why explains the right answer in one sentence.
 
-"swaps" (about ${n.swaps}): for Wrong word. The lyrics appear with one word replaced, and students click it while they listen. Use at most one on a line. words is the real word and wrong replaces it. Use mishearings learners really make: minimal pairs, sounds their first language lacks, words that fit the sentence. why is the contrast.
+"swaps": for Wrong word. The lyrics appear with one word replaced, and students click it while they listen, so this is about sound only. Use at most one on a line. words is the real word and wrong replaces it. wrong must sound very close to the real word and be a mishearing these students really make: a minimal pair, a sound their first language lacks. A word that only looks similar or means something similar does not count. why names the two sounds being confused. If you cannot name them, leave the swap out.
 
-"stops" (about ${n.stops}): pause and predict, for Finish the line. Use at most one on a line. The music stops just before words, which is hidden with the rest of the line, and ask appears on screen. Then the song itself gives the answer. Ask about meaning or grammar, not memory, for example "Which tense comes after if?" or "What do you think she does next?".
+"stops": pause and predict, for Finish the line. Use at most one on a line. The music stops just before words, which is hidden with the rest of the line, and ask appears on screen. Then the song itself gives the answer. Ask about meaning or grammar, not memory, for example "Which tense comes after if?" or "What do you think she does next?".
 
-"quiz" (about ${n.quiz}): for Song quiz. when "before" questions come before the first listen and predict or activate knowledge, so they must not need the song. when "after" questions check understanding and inference. answer is the right answer and wrong holds 2 or 3 wrong ones of the same style and length. line is the line that holds the answer: a Listen button replays exactly that line. explain appears after answering.
+"hunts": for Grammar hunt. All the lyrics are on screen and teams click every word that counts. You can judge each word in context, which the app's word lists cannot: "left" only when it is a verb, "would" only when it is about the past. rule is the instruction on screen. Quote only the words that really count, in every line where they occur. why is shown when a word is found.
 
-"cards" (about ${n.cards}): for Hot mic. The class passes an object while the music plays; whoever holds it when the music stops gets a card on the projector. kind is one of ${CARD_KINDS.join(', ')}. Cards must make students produce language about their own lives, not recall the song. Use the song's frames ("If it rains, I will..."). answer is an optional model answer. Keep body under 140 characters.
+"quiz": for Song quiz. when "before" questions come before the first listen and predict or activate knowledge, so they must not need the song. when "after" questions check understanding and inference. answer is the right answer and wrong holds 2 or 3 wrong ones of the same style and length. line is the line that holds the answer: a Listen button replays exactly that line. explain appears after answering.
 
-"pairs" (about ${n.pairs}): memory card sets, at least 3 pairs each and up to 12. Ideas: word and meaning, phrasal verb and synonym, base and past form, English and the first language, two halves of a collocation, real rhymes that do not look alike. Keep each side under 40 characters.${translated ? ' When one side is in the first language, put the English in "a" and add "translated": true to the set: the cards are read aloud in an English voice, and this keeps the other side silent.' : ''}
+"cards": for Hot mic. The class passes an object while the music plays; whoever holds it when the music stops gets a card on the projector. kind is one of ${CARD_KINDS.join(', ')}. Cards must make students produce language about their own lives, not recall the song. Use the song's frames ("If it rains, I will..."). answer is an optional model answer. Keep body under 140 characters.
 
-"moves" (about ${n.moves}): gestures for Freeze dance, a form of total physical response. When word is sung, text and emoji fill the screen and the class does the move. word is one word from the lyrics. Find clever gestures for abstract words too. text is a short command.
+"pairs": memory card sets, at least 3 pairs each. Ideas: word and meaning, phrasal verb and synonym, base and past form, English and the first language, two halves of a collocation, real rhymes that do not look alike. Keep each side under 40 characters.${translated ? ' In a set with the first language, "a" is the English side and the set has "translated": true: the cards are read aloud in an English voice, and this keeps the other side silent.' : ''}
 
-"say" (about ${n.say}): for Say it!, where speech recognition checks each word. Choose the lines worth saying aloud. words is the part to focus on. skill names the point (vowel, linking, weak form, word stress, sentence stress, final consonant). tip tells the student exactly what to do with their mouth.
+"moves": gestures for Freeze dance, a form of total physical response. When word is sung, text and emoji fill the screen and the class does the move. word is one word from the lyrics. Find clever gestures for abstract words too. text is a short command.
 
-"echo" (about ${n.echo}): the order to teach the song in Echo, as steps of 1 to 4 lines side by side: from and to are line numbers. Start with what is easiest and most useful, usually the chorus hook, not line 1. why is one short reason.
+"say": for Say it!, where speech recognition checks each word. Choose the lines worth saying aloud. words is the part to focus on. skill names the point (vowel, linking, weak form, word stress, sentence stress, final consonant). tip tells the student exactly what to do with their mouth.
 
-"chant": a brand-new chant that drills the same language point, which Singing's Song maker will set to music. It gives the class a version they can slow down, change and share. It must be completely original: no lines or phrases from the song. title; mood is one of ${CHANT_MOODS.join(', ')}; text has 6 to 12 lines of 4 to 12 syllables each, with a blank line (\\n\\n) between verses; teaches names the language point.`,
+"echo": the order to teach the song in Echo, as steps of 1 to 4 lines side by side: from and to are line numbers. Start with what is easiest and most useful, usually the chorus hook, not line 1. why is one short reason.
+
+"chant": a brand-new chant that drills the same language point, which Singing's Song maker will set to music. It gives the class a version they can slow down, change and share. It must be completely original: no lines or phrases from the song. title; mood is one of ${CHANT_MOODS.join(', ')}; text has 8 to 12 lines of 4 to 12 syllables each, with a blank line (\\n\\n) between verses; teaches names the language point.`,
+`${agent
+    ? `# The work
+Work through this list in order, one section at a time:
+${plan[0].parts.map((part) => `- ${part}`).join('\n')}
+
+These are minimums for a song with enough in it. Go further wherever the lyrics reward it, and stop short only where they truly cannot support more: a weak item is worse than a missing one. Give every set its own "id". Keep the file under 300 KB.
+
+Check every fact, name and pronunciation in a reliable source before you write it, and drop what you cannot check.
+
+Before you finish, check the file. If you can run code, write a small script for this:
+1. The file parses as JSON.
+2. Every "words" is found in its numbered line, in the same order, ignoring case and punctuation.
+3. "swaps" and "stops" have at most one item on a line.
+4. No wrong answer equals the right one, and none is correct in that sentence.
+5. No word from "clean" appears anywhere else in the file.
+6. Each section reaches the count above.
+Then read the whole pack as the teacher would, cut anything you would not use in class, fix what the checks found, and only then finish.`
+    : `# Batches
+${plan.map(batchLine).join('\n')}
+
+Every batch is one JSON object with "format", "version", "batch" (its number) and only the sections of that batch. Singing adds each batch to the pack, so never repeat an item from an earlier batch, and give every new set its own "id".
+
+Before you send a batch, count its items against this plan. If you are short, write more. Stop short only when the lyrics truly cannot support more: a weak item is worse than a missing one.`}`,
     `# The JSON format
-Copy this shape exactly. The example is for a different song (${EXAMPLE_LYRICS.map((l, i) => `L${i + 1} "${l}"`).join(', ')}): use its keys, never its content.
+Copy this shape exactly. The example shows every section together, for a different song (${EXAMPLE_LYRICS.map((l, i) => `L${i + 1} "${l}"`).join(', ')}): use its keys, never its content${agent ? '.' : ', and send only the sections of the batch you are writing.'}
 
 ${JSON.stringify(example, null, 1)}`,
     `# Rules the app enforces
 1. Lyric references: "line" is a number from the lyrics above, and "words" is copied exactly from that line, in the same order, inside one line. Do not correct, shorten or translate it. Anything that does not match is thrown out.
-2. Text for students is simple English at or below the class level, unless a field asks for the first language.
+2. Text for students is simple English at or below the level of the activity, unless a field asks for the first language.
 3. Do not state facts you are unsure of. Leave out a cultural note rather than guess.
 4. Quote the lyrics only in "words" and in short fragments that a question needs.
-5. Output valid JSON: double quotes, no comments, no trailing commas, and finish the whole object even if it is long.`,
+5. Output valid JSON: double quotes, no comments, no trailing commas, and finish the whole object.`,
+    // Said last as well: bots weigh the end of a prompt heavily.
+    `Before you write: ${focus ? `re-read "The teacher's own words" at the top. Where they contradict these instructions, follow the teacher. ` : ''}${agent ? 'Start now, and finish the whole pack in this run.' : 'Send batch 1 now and stop.'}`,
   ];
   return blocks.filter(Boolean).join('\n\n');
 }
 
+// The message that asks for a batch of the plan.
+export function nextBatchPrompt(plan, number) {
+  const batch = plan[number - 1];
+  if (!batch) return 'Thank you, that was the last batch.';
+  return `Send batch ${number} of ${plan.length} now: ${batch.parts.join(', ')}. One JSON object with "batch": ${number} and only these sections. Follow the same rules, count the items before you send them, and do not repeat anything from an earlier batch.`;
+}
+
+// The message that asks for more of one section, whenever the teacher wants it.
+export function morePrompt(section, level = '') {
+  return `Write more for "${section}"${level ? ` at level ${level}` : ''}: at least 10 new items that do not repeat anything you have written. Send one JSON object with "format", "version" and only that section, under the same rules. New sets get their own "id". If the lyrics truly cannot support more, say so instead of padding.`;
+}
+
 // The message to send back to the AI when its reply needs fixing.
 export function repairPrompt({ problems = [], fatal = '', cut = false } = {}) {
-  if (cut) return 'Your reply was cut off before the end of the JSON. Send the complete JSON object again, from the first brace to the last, with shorter text in the fields, and nothing around it.';
+  if (cut) return 'Your reply was cut off before the end of the JSON. Send that batch again, from the first brace to the last, with shorter text in the fields, and nothing around it.';
   const list = [...(fatal ? [fatal] : []), ...problems].map((p) => `- ${p}`).join('\n');
-  return `The Singing app could not use parts of your JSON:\n${list}\n\nRemember that "line" must be a number from the lyrics and "words" must be copied exactly from that line. Fix these items, keep everything else as it was, and send the complete JSON object again with nothing around it.`;
+  return `The Singing app could not use parts of your JSON:\n${list}\n\nRemember that "line" must be a number from the lyrics and "words" must be copied exactly from that line. Fix these items and send only them again in one JSON object, with nothing around it.`;
 }

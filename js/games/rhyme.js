@@ -10,7 +10,7 @@ import { rhymeFamily } from '../lyrics/wordlists.js';
 import { getTeams, addPoints, setTeams } from '../store.js';
 import { sfx, confetti } from '../sfx.js';
 import { speak } from '../tts.js';
-import { lessonOf, readAloud } from '../lesson/pack.js';
+import { lessonOf, orderSets, pickSet, readAloud, setLabel } from '../lesson/pack.js';
 
 export function rhymeSet(timeline, count, rnd) {
   const pairs = rhymePairs(timeline).map((p) => [p.a, p.b]);
@@ -33,16 +33,15 @@ export function rhymeSet(timeline, count, rnd) {
 
 export async function start(ctx) {
   const { timeline, main, track } = ctx;
-  const sets = lessonOf(ctx.song)?.pairs || [];
-  const asked = sets.find((s) => `pack:${s.id}` === ctx.params.focus) || sets[0];
-  const conf = { pairs: 6, say: true, set: asked?.id || '' };
+  const sets = orderSets(lessonOf(ctx.song)?.pairs);
+  const conf = { pairs: 6, say: true, set: pickSet(sets, ctx.settings.packLevel)?.id || '' };
   const card = setupCard({
     emoji: '🃏',
     title: 'Rhyme memory',
     intro: sets.length ? 'Turn over two cards. If they match, keep them and play again. If not, it is the next team\'s turn!' : 'Turn over two cards. If the words rhyme (star - car), keep them and play again. If not, it is the next team\'s turn!',
     body: h('div', null,
       sets.length ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Cards'),
-        choiceRow([...sets.map((s) => [s.id, `${s.emoji || '🃏'} ${s.name}`]), ['', '🎶 Rhymes']], conf.set, (v) => { conf.set = v; })) : null,
+        choiceRow([...sets.map((s) => [s.id, setLabel(s, '🃏')]), ['', '🎶 Rhymes']], conf.set, (v) => { conf.set = v; })) : null,
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Pairs'),
         choiceRow([[4, '4'], [6, '6'], [8, '8'], [10, '10']], conf.pairs, (v) => { conf.pairs = v; })),
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Say words'),

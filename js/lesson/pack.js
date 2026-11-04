@@ -12,8 +12,12 @@
  * timing, and only the items whose words were edited away drop out. A line
  * that repeats (a chorus) shares its anchors with every repeat.
  *
+ * A pack arrives in batches, one reply each, as PinPlay's quizzes do: each reply
+ * is read here and joined to the pack with mergePacks().
+ *
  * Teacher-only material lives under pack.teacher: the Worker removes it from
  * the copies students and the public player receive (cloudflare/songs.js).
+ * pack.clean is not teacher-only, because students must get the clean version.
  *
  * This module runs in the browser and in the Worker: no DOM here.
  */
@@ -22,15 +26,13 @@ import { sungLines } from '../music/timeline.js';
 
 export const PACK_FORMAT = 'singing-lesson-pack';
 export const PACK_VERSION = 1;
-export const LEVELS = ['Pre-A1', 'A1', 'A2', 'B1', 'B2', 'C1'];
+export const LEVELS = ['Pre-A1', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 // The moods of music/composer.js and the ids of games/index.js. They are listed
 // here because those modules do not belong in the Worker; tests keep them equal.
 export const CHANT_MOODS = ['pop', 'folk', 'calm', 'rock', 'sad', 'reggae', 'march', 'disco', 'chant'];
 export const ACTIVITY_IDS = ['karaoke', 'echo', 'round', 'pitch', 'gapfill', 'choose', 'wrongword', 'order', 'bingo', 'finish', 'builder', 'hotmic', 'freeze', 'rhyme', 'hunt', 'speak', 'quiz'];
 export const POPUP_KINDS = { grammar: '🧩', word: '📖', sound: '👄', culture: '🌍', 'song-english': '🎸' };
 export const CARD_KINDS = ['discuss', 'personal', 'roleplay', 'language', 'sing'];
-export const STAGES = ['before', 'while', 'after'];
-export const TIERS = ['support', 'core', 'stretch'];
 export const MAX_REPLY = 400 * 1024;
 
 const isObject = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -197,10 +199,10 @@ function uniqueId(raw, taken) {
   return id;
 }
 
-const SECTIONS = ['format', 'version', 'song', 'profile', 'teacher', 'lines', 'words', 'popups', 'hunts', 'gapSets', 'swaps', 'stops', 'quiz', 'cards', 'pairs', 'moves', 'say', 'echo', 'chant'];
+const SECTIONS = ['format', 'version', 'batch', 'progress', 'song', 'profile', 'teacher', 'clean', 'cleanOff', 'lines', 'words', 'popups', 'hunts', 'gapSets', 'swaps', 'stops', 'quiz', 'cards', 'pairs', 'moves', 'say', 'echo', 'chant'];
 
 /*
- * text: the AI's reply. -> { pack, problems, moved, fatal, cut }
+ * text: the AI's reply. -> { pack, batch, problems, moved, fatal, cut }
  * pack is null with a fatal message when nothing can be used. problems name
  * every item that was left out; moved counts anchors corrected to another line.
  */
@@ -227,20 +229,27 @@ export function readPack(text, timeline, { title = '' } = {}) {
     summary: str(raw.profile.summary, 400),
   }) : {};
 
+  const clean = c.list(raw.clean, 'clean', 30, (item, where) => {
+    const words = str(item.words, 60);
+    if (!words) { c.problem(where, 'it needs "words"'); return null; }
+    if (!c.sung.some((line) => matches(line, words).length)) { c.problem(where, `"${words}" is not in the lyrics`); return null; }
+    return compact({ words, why: str(item.why, 160) });
+  });
+
   const lines = c.list(raw.lines, 'lines', 300, (item, where) => {
     if (!Number.isInteger(item.line) || !c.sung[item.line - 1]) { c.problem(where, `L${item.line} does not exist`); return null; }
     const row = compact({ line: item.line, emoji: emoji(item.emoji), translation: str(item.translation), plain: str(item.plain) });
     return Object.keys(row).length > 1 ? row : null;
   });
 
-  const words = c.list(raw.words, 'words', 40, (item, where) => {
+  const words = c.list(raw.words, 'words', 80, (item, where) => {
     const word = str(item.word, 60);
     const meaning = str(item.meaning, 200);
     if (!word || !meaning) { c.problem(where, 'it needs "word" and "meaning"'); return null; }
     return compact({ word, meaning, translation: str(item.translation, 80), emoji: emoji(item.emoji), example: str(item.example, 160), ipa: str(item.ipa, 40) });
   });
 
-  const popups = c.list(raw.popups, 'popups', 80, (item, where) => {
+  const popups = c.list(raw.popups, 'popups', 200, (item, where) => {
     const spot = c.anchor(item, where);
     const note = str(item.text, 160);
     if (!spot) return null;
@@ -255,18 +264,18 @@ export function readPack(text, timeline, { title = '' } = {}) {
     return name;
   };
 
-  const hunts = c.list(raw.hunts, 'hunts', 8, (item, where) => {
+  const hunts = c.list(raw.hunts, 'hunts', 16, (item, where) => {
     const name = setName(item, where);
     if (!name) return null;
-    const targets = c.list(item.targets, `${where} target`, 120, (t, w) => {
+    const targets = c.list(item.targets, `${where} target`, 200, (t, w) => {
       const spot = c.anchor(t, w);
       return spot && compact({ ...spot, why: str(t.why, 200) });
     });
     if (!targets.length) { c.problem(where, 'none of its targets are in the lyrics'); return null; }
-    return compact({ id: uniqueId(item, taken), name, emoji: emoji(item.emoji), rule: str(item.rule, 200), targets });
+    return compact({ id: uniqueId(item, taken), name, emoji: emoji(item.emoji), level: oneOf(item.level, LEVELS), rule: str(item.rule, 200), targets });
   });
 
-  const gapSets = c.list(raw.gapSets, 'gapSets', 8, (item, where) => {
+  const gapSets = c.list(raw.gapSets, 'gapSets', 16, (item, where) => {
     const name = setName(item, where);
     if (!name) return null;
     const gaps = c.list(item.gaps, `${where} gap`, 120, (g, w) => {
@@ -276,11 +285,11 @@ export function readPack(text, timeline, { title = '' } = {}) {
       return compact({ ...spot, options, why: str(g.why, 200) });
     });
     if (!gaps.length) { c.problem(where, 'none of its gaps are in the lyrics'); return null; }
-    return compact({ id: uniqueId(item, taken), name, emoji: emoji(item.emoji), tier: oneOf(item.tier, TIERS, 'core'), rule: str(item.rule, 200), gaps });
+    return compact({ id: uniqueId(item, taken), name, emoji: emoji(item.emoji), level: oneOf(item.level, LEVELS), rule: str(item.rule, 200), gaps });
   });
 
   const swapped = new Set();
-  const swaps = c.list(raw.swaps, 'swaps', 60, (item, where) => {
+  const swaps = c.list(raw.swaps, 'swaps', 120, (item, where) => {
     const spot = c.anchor(item, where, { oneWord: true });
     const wrong = str(item.wrong, 40);
     if (!spot) return null;
@@ -290,7 +299,7 @@ export function readPack(text, timeline, { title = '' } = {}) {
   });
 
   const stopped = new Set();
-  const stops = c.list(raw.stops, 'stops', 30, (item, where) => {
+  const stops = c.list(raw.stops, 'stops', 60, (item, where) => {
     const spot = c.anchor(item, where);
     const ask = str(item.ask, 160);
     if (!spot) return null;
@@ -299,36 +308,39 @@ export function readPack(text, timeline, { title = '' } = {}) {
     return { ...spot, ask };
   });
 
-  const quiz = c.list(raw.quiz, 'quiz', 40, (item, where) => {
+  const quiz = c.list(raw.quiz, 'quiz', 120, (item, where) => {
     const q = str(item.q, 240);
     const answer = str(item.answer, 120);
     const wrong = strings(item.wrong, 3, 120).filter((w) => w.toLowerCase() !== answer.toLowerCase());
     if (!q || !answer) { c.problem(where, 'it needs "q" and "answer"'); return null; }
     if (!wrong.length) { c.problem(where, 'it needs wrong answers'); return null; }
     const line = Number.isInteger(item.line) && c.sung[item.line - 1] ? item.line : '';
-    return compact({ when: oneOf(item.when, ['before', 'after'], 'after'), q, answer, wrong, line, explain: str(item.explain, 240) });
+    return compact({ when: oneOf(item.when, ['before', 'after'], 'after'), level: oneOf(item.level, LEVELS), q, answer, wrong, line, explain: str(item.explain, 240) });
   });
 
-  const cards = c.list(raw.cards, 'cards', 60, (item, where) => {
+  const cards = c.list(raw.cards, 'cards', 150, (item, where) => {
     const body = str(item.body, 240);
     if (!body) { c.problem(where, 'it needs "body"'); return null; }
-    return compact({ kind: oneOf(item.kind, CARD_KINDS, 'discuss'), emoji: emoji(item.emoji), title: str(item.title, 60), body, answer: str(item.answer, 200) });
+    return compact({ kind: oneOf(item.kind, CARD_KINDS, 'discuss'), level: oneOf(item.level, LEVELS), emoji: emoji(item.emoji), title: str(item.title, 60), body, answer: str(item.answer, 200) });
   });
 
-  const pairs = c.list(raw.pairs, 'pairs', 6, (item, where) => {
+  const pairs = c.list(raw.pairs, 'pairs', 16, (item, where) => {
     const name = setName(item, where);
     if (!name) return null;
-    const rows = c.list(item.pairs, `${where} pair`, 16, (p, w) => {
+    // AIs put "translated" on the set or on each pair: either counts.
+    let translated = item.translated === true;
+    const rows = c.list(item.pairs, `${where} pair`, 24, (p, w) => {
       const a = str(p.a, 60);
       const b = str(p.b, 60);
       if (!a || !b || a === b) { c.problem(w, 'it needs two different sides, "a" and "b"'); return null; }
+      if (p.translated === true) translated = true;
       return { a, b };
     });
     if (rows.length < 3) { c.problem(where, 'a memory game needs at least 3 pairs'); return null; }
-    return compact({ id: uniqueId(item, taken), name, emoji: emoji(item.emoji), translated: item.translated === true ? true : '', pairs: rows });
+    return compact({ id: uniqueId(item, taken), name, emoji: emoji(item.emoji), level: oneOf(item.level, LEVELS), translated: translated ? true : '', pairs: rows });
   });
 
-  const moves = c.list(raw.moves, 'moves', 24, (item, where) => {
+  const moves = c.list(raw.moves, 'moves', 40, (item, where) => {
     const word = normWord(str(item.word, 40));
     const moveText = str(item.text, 60);
     if (!word || /\s/.test(word) || !moveText) { c.problem(where, 'it needs one "word" and "text"'); return null; }
@@ -336,7 +348,7 @@ export function readPack(text, timeline, { title = '' } = {}) {
     return compact({ word, text: moveText, emoji: emoji(item.emoji) });
   });
 
-  const say = c.list(raw.say, 'say', 30, (item, where) => {
+  const say = c.list(raw.say, 'say', 60, (item, where) => {
     const spot = c.anchor(item, where);
     const tip = str(item.tip, 200);
     if (!spot) return null;
@@ -363,25 +375,123 @@ export function readPack(text, timeline, { title = '' } = {}) {
     const spot = item.words ? c.anchor(item, where) : Number.isInteger(item.line) && c.sung[item.line - 1] ? { line: item.line } : null;
     return compact({ ...spot, severity: oneOf(item.severity, ['mild', 'serious'], 'mild'), note });
   });
-  const path = c.list(rawTeacher.path, 'path', 16, (item, where) => {
-    const activity = oneOf(item.activity, [...ACTIVITY_IDS, 'worksheet', 'chant']);
-    if (!activity) { c.problem(where, `"${str(item.activity, 30)}" is not an activity`); return null; }
-    let set = str(item.set, 40);
-    if (set && !(setsFor[activity] || []).some((s) => s.id === set)) {
-      if (setsFor[activity]) c.problem(where, `there is no set "${set}"`);
-      set = '';
-    }
-    return compact({ stage: oneOf(item.stage, STAGES, 'while'), activity, set, when: activity === 'quiz' ? oneOf(item.when, ['before', 'after']) : '', minutes: Number.isFinite(item.minutes) ? Math.min(120, Math.max(1, Math.round(item.minutes))) : '', do: str(item.do, 300) });
-  });
-  const teacher = compact({ levelWhy: str(rawTeacher.levelWhy, 400), notes: str(rawTeacher.notes, 1600), cautions, path });
+  const teacher = compact({ levelWhy: str(rawTeacher.levelWhy, 400), notes: str(rawTeacher.notes, 1600), cautions });
 
-  const pack = compact({ format: PACK_FORMAT, version: PACK_VERSION, profile, teacher, lines, words, popups, hunts, gapSets, swaps, stops, quiz, cards, pairs, moves, say, echo, chant });
+  const pack = compact({ format: PACK_FORMAT, version: PACK_VERSION, profile, teacher, clean, cleanOff: raw.cleanOff === true ? true : '', lines, words, popups, hunts, gapSets, swaps, stops, quiz, cards, pairs, moves, say, echo, chant });
   for (const empty of ['profile', 'teacher']) if (pack[empty] && !Object.keys(pack[empty]).length) delete pack[empty];
   if (!Object.keys(pack).some((k) => k !== 'format' && k !== 'version')) {
     return { pack: null, problems: c.problems, moved: c.moved, fatal: 'Nothing in this reply can be used. See the list below.' };
   }
   if (c.tried >= 5 && c.missed / c.tried > 0.5) c.problems.unshift(`Most items quote words that are not in these lyrics (${c.missed} of ${c.tried}). Is this the reply for another song?`);
-  return { pack, problems: c.problems, moved: c.moved };
+  return { pack, batch: Number.isInteger(raw.batch) ? raw.batch : 0, problems: c.problems, moved: c.moved };
+}
+
+// ---------------------------------------------------------- joining batches
+
+function joined(a = [], b = [], key) {
+  const seen = new Set(a.map(key));
+  return [...a, ...b.filter((item) => !seen.has(key(item)) && seen.add(key(item)))];
+}
+
+// Sets with the same id are one set: its items are joined.
+function joinedSets(a = [], b = [], kids, key) {
+  const out = a.map((set) => ({ ...set }));
+  for (const set of b) {
+    const same = out.find((s) => s.id === set.id);
+    if (same) same[kids] = joined(same[kids], set[kids], key);
+    else out.push(set);
+  }
+  return out;
+}
+
+const spot = (item) => `${item.line}|${normWord(item.words)}|${quoted(item.words).join(' ')}`;
+
+/*
+ * A pack and the next batch, as one pack. Reading the same batch twice adds
+ * nothing. Run the result through readPack, which keeps its limits per line.
+ */
+export function mergePacks(a, b) {
+  const lines = new Map((a.lines || []).map((row) => [row.line, row]));
+  for (const row of b.lines || []) lines.set(row.line, { ...lines.get(row.line), ...row });
+  return compact({
+    format: PACK_FORMAT,
+    version: PACK_VERSION,
+    profile: { ...a.profile, ...b.profile },
+    teacher: compact({ ...a.teacher, ...b.teacher, cautions: joined(a.teacher?.cautions, b.teacher?.cautions, (c) => c.note) }),
+    clean: joined(a.clean, b.clean, (c) => quoted(c.words).join(' ')),
+    cleanOff: a.cleanOff || b.cleanOff || '',
+    lines: [...lines.values()].sort((x, y) => x.line - y.line),
+    words: joined(a.words, b.words, (w) => normWord(w.word)),
+    popups: joined(a.popups, b.popups, (p) => `${spot(p)}|${p.text}`),
+    hunts: joinedSets(a.hunts, b.hunts, 'targets', spot),
+    gapSets: joinedSets(a.gapSets, b.gapSets, 'gaps', spot),
+    swaps: joined(a.swaps, b.swaps, spot),
+    stops: joined(a.stops, b.stops, spot),
+    quiz: joined(a.quiz, b.quiz, (q) => q.q),
+    cards: joined(a.cards, b.cards, (card) => card.body),
+    pairs: joinedSets(a.pairs, b.pairs, 'pairs', (p) => p.a),
+    moves: joined(a.moves, b.moves, (m) => m.word),
+    say: joined(a.say, b.say, (s) => `${spot(s)}|${s.tip}`),
+    echo: joined(a.echo, b.echo, (s) => `${s.from}-${s.to}`),
+    chant: b.chant || a.chant,
+  });
+}
+
+// ---------------------------------------------------------- the clean version
+
+// Keep the first letter, hide the others: "f*****'". Punctuation stays.
+function maskWord(word) {
+  let first = true;
+  const hide = (text) => text.replace(/\p{L}/gu, (letter) => {
+    if (!first) return '*';
+    first = false;
+    return letter;
+  });
+  for (const syllable of word.syllables) syllable.text = hide(syllable.text);
+  first = true;
+  word.text = hide(word.text);
+}
+
+/*
+ * The clean version of a recording: masks pack.clean's words in the timeline,
+ * wherever they are sung, and returns when to take the singer away:
+ * [[start, end]] in seconds. The browser's track and the Worker's marking both
+ * call this, so they pick the same gaps from the same words. It changes the
+ * timeline it gets: read the raw lyrics from a timeline that has not been here.
+ */
+export function cleanTimeline(timeline, lesson) {
+  if (!lesson?.clean?.length || lesson.cleanOff) return [];
+  const spans = [];
+  for (const line of sungLines(timeline)) {
+    const hide = new Set();
+    for (const item of lesson.clean) {
+      for (const { from, to } of matches(line, item.words)) for (let wi = from; wi <= to; wi += 1) hide.add(wi);
+    }
+    if (!hide.size) continue;
+    for (const wi of [...hide].sort((a, b) => a - b)) {
+      const word = line.words[wi];
+      spans.push([word.start - 0.05, word.end + 0.12]);
+      for (const note of line.notes || []) if (note.start >= word.start - 0.01 && note.end <= word.end + 0.01) note.text = '';
+      maskWord(word);
+    }
+    line.text = line.words.map((w) => w.text).join(' ');
+  }
+  spans.sort((a, b) => a[0] - b[0]);
+  const out = [];
+  for (const span of spans) {
+    const last = out[out.length - 1];
+    if (last && span[0] <= last[1]) last[1] = Math.max(last[1], span[1]);
+    else out.push([...span]);
+  }
+  return out;
+}
+
+// A word the teacher adds by hand. -> how many times it is sung (0: not added).
+export function addCleanWord(pack, timeline, words) {
+  const found = sungLines(timeline).reduce((n, line) => n + matches(line, words).length, 0);
+  if (!found) return 0;
+  pack.clean = joined(pack.clean, [{ words: String(words).trim() }], (c) => quoted(c.words).join(' '));
+  return found;
 }
 
 // ------------------------------------------------------------- saving a pack
@@ -548,19 +658,28 @@ export function plainLines(timeline, lesson) {
   return out;
 }
 
+// Levels and the sets of a game, easiest first.
+export const packLevels = (items = []) => LEVELS.filter((level) => items.some((item) => item.level === level));
+export const orderSets = (sets = []) => [...sets].sort((a, b) => LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level));
+export const pickSet = (sets, level) => sets.find((set) => set.level === level) || sets[0];
+export const setLabel = (set, emojiFallback = '🧠') => `${set.emoji || emojiFallback} ${set.level ? `${set.level}: ` : ''}${set.name}`;
+
+// How much a pack adds to each game, for the activity tiles.
+export function packCounts(lesson) {
+  if (!lesson) return {};
+  const inside = (sets, kids) => (sets || []).reduce((sum, set) => sum + set[kids].length, 0);
+  const size = (list) => list?.length || 0;
+  const gaps = inside(lesson.gapSets, 'gaps');
+  return {
+    karaoke: size(lesson.popups), echo: size(lesson.echo), gapfill: gaps, choose: gaps, wrongword: size(lesson.swaps), finish: size(lesson.stops),
+    hotmic: size(lesson.cards), freeze: size(lesson.moves), rhyme: inside(lesson.pairs, 'pairs'), hunt: inside(lesson.hunts, 'targets'), speak: size(lesson.say), quiz: size(lesson.quiz),
+  };
+}
+
 // How many items of a section still match the lyrics, for the review list.
 export function staleCount(timeline, lesson) {
   const lost = (items) => (items || []).filter((item) => item.words && !spots(timeline, item).length).length;
   return lost(lesson?.popups) + lost(lesson?.swaps) + lost(lesson?.stops) + lost(lesson?.say)
     + (lesson?.hunts || []).reduce((n, s) => n + lost(s.targets), 0)
     + (lesson?.gapSets || []).reduce((n, s) => n + lost(s.gaps), 0);
-}
-
-// The address of one step of the lesson plan.
-export function stepHash(songId, step) {
-  const id = encodeURIComponent(songId);
-  if (step.activity === 'chant') return `#/chant?lesson=${id}`;
-  if (step.activity === 'worksheet') return `#/print/${id}/lesson`;
-  const query = step.set ? `?focus=${encodeURIComponent(`pack:${step.set}`)}` : step.when ? `?when=${step.when}` : '';
-  return `#/play/${id}/${step.activity}${query}`;
 }

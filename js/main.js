@@ -9,7 +9,7 @@
  *   #/chant                  chant maker
  *   #/party                  class games that need no song
  *   #/remix/<id>             write new verses
- *   #/lesson/<id>            AI lesson pack: prompt, import, review
+ *   #/lesson/<id>            AI song pack: prompt, batches, review
  *   #/print/<id>/<kind>      worksheets
  *   #/card/<id>/<seed>       a student's bingo card (phone)
  *   #/s/<data>               a shared song
