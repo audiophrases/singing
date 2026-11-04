@@ -64,7 +64,7 @@ export async function render(el, { id }) {
   const field = (label, input) => h('div', { class: 'studio-field' }, h('label', null, label), input);
   const titleIn = h('input', { type: 'text', value: song.title, placeholder: 'Song title', maxlength: 80 });
   const artistIn = h('input', { type: 'text', value: song.artist, placeholder: 'Singer / band', maxlength: 80 });
-  const levelSel = h('select', null, ['Pre-A1', 'A1', 'A2', 'B1', 'B2'].map((l) => h('option', { value: l, selected: l === song.level }, l)));
+  const levelSel = h('select', null, ['Pre-A1', 'A1', 'A2', 'B1', 'B2', 'C1'].map((l) => h('option', { value: l, selected: l === song.level }, l)));
   const grammarIn = h('input', { type: 'text', value: (song.grammar || []).join(', '), placeholder: 'e.g. Past simple, Can/can\'t' });
   const vocabIn = h('input', { type: 'text', value: (song.vocab || []).join(', '), placeholder: 'Key words, separated by commas' });
   const aboutIn = h('textarea', { rows: 2, placeholder: 'Notes for the teacher (ideas, warnings...)' }, song.about || '');

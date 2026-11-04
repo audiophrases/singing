@@ -10,6 +10,7 @@ import { rhymeFamily } from '../lyrics/wordlists.js';
 import { getTeams, addPoints, setTeams } from '../store.js';
 import { sfx, confetti } from '../sfx.js';
 import { speak } from '../tts.js';
+import { lessonOf, readAloud } from '../lesson/pack.js';
 
 export function rhymeSet(timeline, count, rnd) {
   const pairs = rhymePairs(timeline).map((p) => [p.a, p.b]);
@@ -32,12 +33,16 @@ export function rhymeSet(timeline, count, rnd) {
 
 export async function start(ctx) {
   const { timeline, main, track } = ctx;
-  const conf = { pairs: 6, say: true };
+  const sets = lessonOf(ctx.song)?.pairs || [];
+  const asked = sets.find((s) => `pack:${s.id}` === ctx.params.focus) || sets[0];
+  const conf = { pairs: 6, say: true, set: asked?.id || '' };
   const card = setupCard({
     emoji: '🃏',
     title: 'Rhyme memory',
-    intro: 'Turn over two cards. If the words rhyme (star - car), keep them and play again. If not, it is the next team\'s turn!',
+    intro: sets.length ? 'Turn over two cards. If they match, keep them and play again. If not, it is the next team\'s turn!' : 'Turn over two cards. If the words rhyme (star - car), keep them and play again. If not, it is the next team\'s turn!',
     body: h('div', null,
+      sets.length ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Cards'),
+        choiceRow([...sets.map((s) => [s.id, `${s.emoji || '🃏'} ${s.name}`]), ['', '🎶 Rhymes']], conf.set, (v) => { conf.set = v; })) : null,
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Pairs'),
         choiceRow([[4, '4'], [6, '6'], [8, '8'], [10, '10']], conf.pairs, (v) => { conf.pairs = v; })),
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Say words'),
@@ -52,14 +57,15 @@ export async function start(ctx) {
   function begin() {
     track.pause();
     const rnd = seeded(Date.now() % 1e6);
-    const pairs = rhymeSet(timeline, conf.pairs, rnd);
+    const set = sets.find((s) => s.id === conf.set);
+    const pairs = set ? shuffle(set.pairs, rnd).slice(0, conf.pairs).map((p) => [p.a, p.b]) : rhymeSet(timeline, conf.pairs, rnd);
     if (pairs.length < 3) {
       clear(main).append(h('div', { class: 'setup-card' }, h('h2', null, 'Not enough rhymes in this song'), h('a', { class: 'btn', href: `#/song/${encodeURIComponent(ctx.song.id)}` }, 'Back')));
       return;
     }
     const teams = getTeams();
     if (teams.on) { teams.showTurn = true; setTeams(teams); }
-    const cards = shuffle(pairs.flatMap(([a, b], i) => [{ word: a, pair: i }, { word: b, pair: i }]), rnd);
+    const cards = shuffle(pairs.flatMap(([a, b], i) => [{ word: a, pair: i, side: 'a' }, { word: b, pair: i, side: 'b' }]), rnd);
     const grid = h('div', { class: 'rm-grid', style: { '--cols': cards.length > 12 ? 5 : 4 } });
     const status = h('div', { class: 'rm-status' });
     let open = [];
@@ -71,7 +77,7 @@ export async function start(ctx) {
       status.textContent = t.on ? `${t.list[(t.turn || 0) % t.list.length].emoji} ${t.list[(t.turn || 0) % t.list.length].name}'s turn` : `Pairs: ${found} / ${pairs.length} · Moves: ${moves}`;
     };
     cards.forEach((c) => {
-      const el = h('button', { class: 'rm-card', type: 'button' }, h('span', { class: 'rm-back' }, '🎵'), h('span', { class: 'rm-front' }, c.word));
+      const el = h('button', { class: `rm-card${c.word.length > 14 ? ' wordy' : ''}`, type: 'button' }, h('span', { class: 'rm-back' }, '🎵'), h('span', { class: 'rm-front' }, c.word));
       el.addEventListener('click', () => flip(c, el));
       grid.append(el);
     });
@@ -81,13 +87,13 @@ export async function start(ctx) {
     function flip(c, el) {
       if (busy || el.classList.contains('up') || el.classList.contains('done')) return;
       el.classList.add('up');
-      if (conf.say) speak(c.word);
+      if (conf.say && readAloud(set, c.side)) speak(c.word);
       open.push({ c, el });
       if (open.length < 2) return;
       moves += 1;
       const [a, b] = open;
       open = [];
-      if (a.c.pair === b.c.pair || rhymes(a.c.word, b.c.word)) {
+      if (a.c.pair === b.c.pair || (!set && rhymes(a.c.word, b.c.word))) {
         found += a.c.pair === b.c.pair ? 1 : 0;
         a.el.classList.add('done');
         b.el.classList.add('done');

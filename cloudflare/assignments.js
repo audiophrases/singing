@@ -1,7 +1,7 @@
 import { bodyJson, json, requireThat, safeId } from './http.js';
 import { teacher, identity } from './auth.js';
 import { ownedSong, manifest, visibleSong } from './songs.js';
-import { pickGaps } from '../js/lyrics/gaps.js';
+import { pickGaps, gapMode } from '../js/lyrics/gaps.js';
 import { checkAnswer } from '../js/lyrics/text.js';
 import { timelineFromSynced, timelineFromCompiled } from '../js/music/timeline.js';
 import { compileSong } from '../js/music/score.js';
@@ -40,7 +40,7 @@ async function attemptContext(env, id, principal) {
 function taskWords(song, activity, settings, seed) {
   const timeline = song.source === 'band' || !song.source
     ? timelineFromCompiled(compileSong(song), song.bpm) : timelineFromSynced(song.synced, song.duration || 0);
-  const gaps = pickGaps(timeline, { mode: settings.focus ? `cat:${settings.focus}` : settings.level || 'easy', seed });
+  const gaps = pickGaps(timeline, { mode: gapMode(settings.focus, settings.level || 'easy'), seed, lesson: song.lesson });
   const words = [];
   for (const line of timeline.lines) for (const index of [...(gaps.get(line.index) || [])].sort((a, b) => a - b)) words.push(line.words[index].text.replace(/^[^A-Za-z0-9'’]+|[^A-Za-z0-9'’]+$/g, ''));
   return words;
@@ -91,7 +91,9 @@ export async function assignmentRoutes(request, env, path, principal) {
         const timeline = doc.source === 'band' || !doc.source ? timelineFromCompiled(compileSong(doc), doc.bpm) : timelineFromSynced(doc.synced, doc.duration || 0);
         requireThat(timeline.lines.filter((l) => !l.instrumental).length >= 4, 400, 'Line order requires at least four sung lines.');
       }
-      const settings = { level: ['easy', 'medium', 'hard', 'all'].includes(input.settings?.level) ? input.settings.level : 'easy', input: input.settings?.input === 'bank' ? 'bank' : 'type', focus: '' };
+      // A gap set from the song's lesson pack, or the difficulty level.
+      const focus = ['gapfill', 'choose'].includes(input.activity) && doc.lesson?.gapSets?.some((set) => `pack:${set.id}` === input.settings?.focus) ? input.settings.focus : '';
+      const settings = { level: ['easy', 'medium', 'hard', 'all'].includes(input.settings?.level) ? input.settings.level : 'easy', input: input.settings?.input === 'bank' ? 'bank' : 'type', focus };
       units.push({ id: crypto.randomUUID(), songId: song.id, revision: song.revision, activity: input.activity, settings });
     }
     await env.DB.batch([

@@ -14,7 +14,7 @@ before(async () => {
   mf = new Miniflare(convertV4MiniflareOptions({ workers: [{ name: 'singing',
     modules: [
       ...['worker.js', 'http.js', 'auth.js', 'songs.js', 'student-songs.js', 'assignments.js'].map((name) => `cloudflare/${name}`),
-      ...['lyrics/gaps.js', 'lyrics/text.js', 'lyrics/wordlists.js', 'lyrics/grammar.js', 'lyrics/rhymes.js', 'music/timeline.js', 'music/score.js', 'music/notes.js', 'ui.js'].map((name) => `js/${name}`),
+      ...['lesson/pack.js', 'lyrics/gaps.js', 'lyrics/text.js', 'lyrics/wordlists.js', 'lyrics/grammar.js', 'lyrics/rhymes.js', 'music/timeline.js', 'music/score.js', 'music/notes.js', 'ui.js'].map((name) => `js/${name}`),
     ].map((name) => ({ type: 'ESModule', path: fileURLToPath(new URL(`../../${name}`, import.meta.url)) })),
     compatibilityDate: '2026-10-21', d1Databases: ['DB'], r2Buckets: ['SONGS'],
     bindings: { OWNER_STORAGE_BYTES: '1048576', MAX_FILE_BYTES: '524288' },
@@ -377,4 +377,74 @@ test('students save Song maker songs; the owner gets a credited private copy, an
   assert.equal((await call(`/api/my-songs/${first.data.song.id}`, { session: student, method: 'DELETE', body: {} })).status, 200);
   assert.deepEqual(await mine(student), []);
   assert.equal((await library()).filter((s) => s.title.startsWith('My Morning')).length, 2, "deleting the student's copy keeps the owner's");
+});
+
+test('a lesson pack saves with the song, and its teacher section stays with the teacher', async () => {
+  const owner = await login('owner'); const alice = await login('alice'); const student = await login('student');
+  await call('/api/songs', { session: owner }); // the owner opens the library
+  const lesson = { format: 'singing-lesson-pack', version: 1, teacher: { notes: 'Private plan', cautions: [{ line: 1, note: 'Check this line' }] }, quiz: [{ when: 'after', q: 'Who?', answer: 'Us', wrong: ['Them'] }] };
+  const { id } = await song(owner);
+  const saved = await saveBand(owner, id, { ...band, lesson }, 0);
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  assert.deepEqual(saved.data.song.lesson, lesson);
+  assert.deepEqual((await call(`/api/songs/${id}`, { session: owner })).data.song.lesson, lesson, 'the teacher gets the whole pack back');
+  const again = await saveBand(owner, id, { ...band, title: 'Renamed', lesson: saved.data.song.lesson }, 1);
+  assert.deepEqual(again.data.song.lesson, lesson, 'saving the song again keeps the pack');
+
+  await call(`/api/songs/${id}/visibility`, { session: owner, method: 'POST', body: { public: true } });
+  const listed = (await call('/api/public/songs')).data.songs.find((s) => s.id === id);
+  assert.deepEqual(listed.lesson.quiz, lesson.quiz, 'the public player can play the pack');
+  assert.equal('teacher' in listed.lesson, false, 'but never receives the teacher section');
+  assert.equal(JSON.stringify(listed).includes('Private plan'), false);
+
+  // Too big, or not a pack: refused, not stored.
+  assert.equal((await saveBand(owner, id, { ...band, lesson: 'not a pack' }, 2)).status, 400);
+  assert.equal((await saveBand(owner, id, { ...band, lesson: { notes: 'x'.repeat(401 * 1024) } }, 2)).status, 400);
+
+  // A student's Song maker song cannot carry one: packs are the teacher's.
+  const made = await call('/api/my-songs', { session: student, method: 'POST', body: { clientId: 'student-pack-test', song: { ...band, lesson } } });
+  assert.equal(made.status, 200, JSON.stringify(made.data));
+  assert.equal('lesson' in made.data.song, false);
+  const sentCopies = await Promise.all((await call('/api/songs', { session: owner })).data.songs.map(async (s) => (await call(`/api/songs/${s.id}`, { session: owner })).data.song));
+  assert.equal(sentCopies.find((s) => s.title === made.data.song.title && s.id !== id)?.lesson, undefined);
+  assert.ok(alice);
+});
+
+test('an assigned gap set is what students play, and the server marks it', async () => {
+  const alice = await login('alice'); const student = await login('student'); const { id: songId } = await song(alice);
+  const assets = { audio: await upload(alice, songId), karaoke: await upload(alice, songId, 'karaoke') };
+  const lesson = {
+    format: 'singing-lesson-pack', version: 1, teacher: { notes: 'Private plan' },
+    gapSets: [{ id: 'verbs', name: 'Verbs', tier: 'core', gaps: [{ line: 1, words: 'sing', options: ['sang', 'sung'] }, { line: 2, words: 'dance', options: ['danced'] }] }],
+  };
+  const lyrics = { title: 'Lesson song', source: 'audio', lesson, synced: [{ text: 'We sing all night', start: 0, end: 3 }, { text: 'We dance all day', start: 3, end: 6 }, { text: 'We sing all night', start: 6, end: 9 }] };
+  assert.equal((await call(`/api/songs/${songId}/commit`, { session: alice, method: 'POST', body: { baseRevision: 0, assets, song: lyrics, rightsConfirmed: true } })).status, 200);
+  const created = await call('/api/assignments', { session: alice, method: 'POST', body: { title: 'Gap set homework', classIds: ['class_a'], attemptsLimit: 2, units: [
+    { songId, activity: 'gapfill', settings: { level: 'hard', input: 'bank', focus: 'pack:verbs' } },
+    { songId, activity: 'choose', settings: { focus: 'pack:no-such-set' } },
+    { songId, activity: 'hunt', settings: { focus: 'pack:verbs' } },
+  ] } });
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  const { units } = (await call(`/api/assignments/${created.data.id}`, { session: student })).data;
+  const settings = Object.fromEntries(units.map((u) => [u.activity, JSON.parse(u.settings_json)]));
+  assert.equal(settings.gapfill.focus, 'pack:verbs');
+  assert.equal(settings.choose.focus, '', 'a set that does not exist is ignored');
+  assert.equal(settings.hunt.focus, '', 'only gap activities take a gap set');
+
+  const unit = units.find((u) => u.activity === 'gapfill');
+  const started = await call(`/api/units/${unit.id}/start`, { session: student, method: 'POST', body: {} });
+  const attempt = await call(`/api/attempts/${started.data.attemptId}`, { session: student });
+  assert.equal(attempt.data.settings.focus, 'pack:verbs');
+  assert.deepEqual(attempt.data.song.lesson.gapSets, lesson.gapSets, 'the student can play the set');
+  assert.equal('teacher' in attempt.data.song.lesson, false);
+  assert.equal(JSON.stringify(attempt.data).includes('Private plan'), false);
+
+  // Three gaps: "sing" twice (the line repeats) and "dance". One word is wrong.
+  const answer = (itemId, text) => call(`/api/attempts/${started.data.attemptId}/answers`, { session: student, method: 'POST', body: { itemId, answer: text } });
+  assert.equal((await answer(0, 'sing')).status, 200);
+  assert.equal((await answer(1, 'danced')).status, 200);
+  assert.equal((await answer(2, 'sing')).status, 200);
+  assert.equal((await answer(3, 'sing')).status, 400, 'no gap beyond the set');
+  const done = await call(`/api/attempts/${started.data.attemptId}/submit`, { session: student, method: 'POST', body: { score: 999, max: 999 } });
+  assert.deepEqual([done.data.score, done.data.max, done.data.kind], [2, 3, 'checked-answers'], 'the server marks it, whatever the browser says');
 });

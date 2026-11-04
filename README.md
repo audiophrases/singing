@@ -109,6 +109,52 @@ Singing composes a song for it:
 
 🎲 *Another tune* re-rolls it. Made songs work in every game.
 
+### 🧠 AI lesson packs
+An external AI can read a song's lyrics and decide what that song is good for,
+for one particular class. On any of your songs, choose **AI lesson pack**:
+
+1. Describe the class: level (or let the AI decide), age, first language, what
+   you want to work on, time and pack size.
+2. Copy the prompt into ChatGPT, Claude, Gemini or any other AI. It holds the
+   lyrics, the melody, the instructions and the JSON format. The app sends nothing
+   itself, and no API key is needed.
+3. Paste the reply back. Singing finds the JSON in whatever the AI wrote around
+   it and checks every item against the lyrics. Items quote words rather than count
+   them, so a wrong line number is corrected from the quote, and anything else that
+   does not match is listed and left out. If something is wrong, it writes the
+   message to send back to the AI.
+4. Read through the pack, remove what you do not want, and save it with the song.
+
+| In the pack | Where it goes |
+|---|---|
+| Profile | The song's level, grammar, themes, key words and summary |
+| Teacher notes, content warnings, lesson plan | The song page, teachers only; each step opens its game on the right set |
+| Lines | Pictures, translations and a "in simple English" view of the lyrics |
+| Words | Key word cards: meaning, translation, example, IPA; click to hear |
+| Pop-ups | Language notes in Karaoke, beside the highlighted words |
+| Hunts | Grammar hunt, judged word by word in context, explaining each find |
+| Gap sets | Fill the gaps, Choose the word and worksheets; real mistakes as wrong answers. Can be assigned as homework, marked by the server |
+| Swaps | Wrong word: what learners with this first language really mishear |
+| Stops | Finish the line: the music stops before a word and asks a question |
+| Quiz | Song quiz, before and after listening; Listen replays the line that answers it |
+| Cards | Hot mic: questions about students' own lives, role plays, fix-the-sentence |
+| Pairs | Rhyme memory with any pairs: base and past, word and meaning, English and first language |
+| Moves | Freeze dance: a gesture for a word, shown as the word is sung |
+| Say | Say it!: the lines worth practising, the words to watch, and a tip |
+| Echo | The order to teach the song in, easiest and most useful first |
+| Chant | An original chant on the same language point, opened in the Song maker |
+
+Every set is also on the printed **Lesson worksheet**. The melody goes to the AI as
+measured facts rather than as the raw UltraStar file, whose beat numbers need
+#BPM and #GAP arithmetic: seconds per syllable, long notes, rests, jumps, the fastest
+and slowest lines. So it can plan vowel work on held notes, warn about fast lines
+and about stress the melody bends, and choose where to pause. Band songs send
+the same facts from their score; songs timed by line get line timing only.
+
+Students and the public player receive the pack without its teacher section, and
+share links leave the pack out. A pack belongs to one saved version of a song: if
+the lyrics change, the items whose words are gone drop out and the rest keep working.
+
 ### Bring your own songs
 - **Studio**: paste lyrics (with `[Chorus]` sections, emoji pictures, `A:`/`B:`
   parts and `| translations`), link a **YouTube** video or add an **audio file**
@@ -200,8 +246,9 @@ js/main.js            router (#/, #/song/<id>, #/play/<id>/<game>, #/studio, #/c
 js/music/             notes, score (song format), synth, band (styles), player, composer, timeline
 js/media/             YouTube, audio file and lyrics-only players (same interface as the band), timing files, auto-align
 js/lyrics/            word lists, grammar spotter, rhymes, syllables, phonemes (robot singer), gaps & distractors, bingo, Studio lyrics format
+js/lesson/            AI lesson packs: pack.js reads and checks a reply and feeds the games, prompt.js writes the prompt
 js/games/             one module per activity
-js/views/             library, song, stage, studio, song maker, remix, print, party, help, card
+js/views/             library, song, stage, studio, lesson, song maker, remix, print, party, help, card
 js/data/songs/        the songbook
 lab/karaoke.html      prototype: make a karaoke version in the browser (Demucs v4 on WebGPU, js/media/separate*.js);
                       can watch a folder and make every new song (js/media/folder-watch.js);

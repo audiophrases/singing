@@ -9,6 +9,7 @@
  *   #/chant                  chant maker
  *   #/party                  class games that need no song
  *   #/remix/<id>             write new verses
+ *   #/lesson/<id>            AI lesson pack: prompt, import, review
  *   #/print/<id>/<kind>      worksheets
  *   #/card/<id>/<seed>       a student's bingo card (phone)
  *   #/s/<data>               a shared song
@@ -68,6 +69,7 @@ const routes = [
   { re: /^\/assignments$/, view: () => import('./views/assignments.js'), nav: 'assignments' },
   { re: /^\/assignment\/([^/]+)$/, view: () => import('./views/assignments.js'), nav: 'assignments', keys: ['id'] },
   { re: /^\/remix\/([^/]+)$/, view: () => import('./views/remix.js'), nav: 'library', keys: ['id'] },
+  { re: /^\/lesson\/([^/]+)$/, view: () => import('./views/lesson.js'), nav: 'library', keys: ['id'], teacher: true },
   { re: /^\/print\/([^/]+)\/([^/]+)$/, view: () => import('./views/print.js'), nav: 'library', keys: ['id', 'kind'] },
   { re: /^\/card\/([^/]+)\/([^/]+)$/, view: () => import('./views/card.js'), nav: '', keys: ['id', 'seed'] },
   { re: /^\/s\/(.+)$/, view: () => import('./views/shared.js'), nav: 'library', keys: ['data'] },

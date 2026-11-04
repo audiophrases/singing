@@ -39,6 +39,7 @@ export async function studentSongRoutes(request, env, path, principal) {
   const clean = cleanSong(body.song);
   requireThat((clean.source || 'band') === 'band', 400, 'Only songs from the Song maker can be saved here.');
   delete clean.folderImport;
+  delete clean.lesson; // lesson packs are the teacher's: the Song maker has none
   const owner = await env.DB.prepare('SELECT principal_id FROM site_owner WHERE id = 1').first();
   requireThat(owner, 503, 'Your teacher has not set up Singing yet. Try again later.');
   let song;

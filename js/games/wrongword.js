@@ -4,7 +4,8 @@
  * you listen - before the line ends for full points.
  */
 import { h, clear } from '../ui.js';
-import { distractors, wordPool } from '../lyrics/gaps.js';
+import { distractors, wordPool, matchCase } from '../lyrics/gaps.js';
+import { lessonOf, lessonSwaps } from '../lesson/pack.js';
 import { normWord } from '../lyrics/text.js';
 import { STOPWORDS } from '../lyrics/wordlists.js';
 import { lineStops, setupCard, choiceRow, scoreBox, lyricView, centerOf, stars } from './common.js';
@@ -13,13 +14,17 @@ import { seeded } from '../ui.js';
 
 export async function start(ctx) {
   const { track, timeline, main } = ctx;
-  const conf = { every: 1 };
+  const swaps = lessonSwaps(timeline, lessonOf(ctx.song));
+  const conf = { every: 1, source: swaps.size ? 'pack' : 'auto' };
   const card = setupCard({
     emoji: '🕵️',
     title: 'Wrong word',
     intro: 'Read the lyrics while you listen. In each line one word is WRONG. Click it as fast as you can!',
-    body: h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Lines'),
-      choiceRow([[1, 'Every line'], [2, 'Every other line']], conf.every, (v) => { conf.every = v; })),
+    body: h('div', null,
+      swaps.size ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Wrong words'),
+        choiceRow([['pack', `🧠 Lesson pack (${swaps.size} lines)`], ['auto', '🤖 Made by Singing']], conf.source, (v) => { conf.source = v; })) : null,
+      h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Lines'),
+        choiceRow([[1, 'Every line'], [2, 'Every other line']], conf.every, (v) => { conf.every = v; }))),
     onStart: () => { card.destroy(); begin(); },
   });
   clear(main).append(card);
@@ -32,7 +37,12 @@ export async function start(ctx) {
     const rnd = seeded(seed);
     const pool = wordPool(timeline);
     const fakes = new Map(); // line -> { wi, wrong, found }
-    timeline.lines.filter((l) => !l.instrumental).forEach((l, k) => {
+    if (conf.source === 'pack') {
+      for (const [index, swap] of swaps) {
+        const word = timeline.lines[index].words[swap.wi].text.replace(/^[^A-Za-z']+/, '');
+        fakes.set(index, { ...swap, wrong: matchCase(word, swap.wrong), found: false, missed: false });
+      }
+    } else timeline.lines.filter((l) => !l.instrumental).forEach((l, k) => {
       if (k % conf.every !== 0) return;
       const cands = l.words.map((w, i) => i).filter((i) => {
         const n = normWord(l.words[i].text);
@@ -67,7 +77,8 @@ export async function start(ctx) {
     };
     const view = lyricView(ctx, { render });
     const msg = h('div', { class: 'gf-msg' });
-    clear(main).append(h('div', { class: 'gf-wrap' }, h('div', { class: 'gf-top' }, progress, score.el), view.el, msg));
+    const why = h('div', { class: 'gf-why' });
+    clear(main).append(h('div', { class: 'gf-wrap' }, h('div', { class: 'gf-top' }, progress, score.el), view.el, msg, why));
     ctx.setBottom(null);
 
     function pick(line, wi, el) {
@@ -75,6 +86,7 @@ export async function start(ctx) {
       const c = centerOf(el);
       if (f && f.wi === wi && !f.found && !f.missed) {
         f.found = true;
+        why.textContent = f.why ? `💡 ${f.why}` : '';
         const pts = waiting === line.index ? 5 : 10;
         score.add(pts);
         floatEmoji(`+${pts}`, c.x, c.y - 30, { size: 30 });
@@ -114,6 +126,7 @@ export async function start(ctx) {
       if (k === 's' && waiting !== null) {
         const f = fakes.get(waiting);
         f.missed = true;
+        why.textContent = f.why ? `💡 ${f.why}` : '';
         score.breakStreak();
         view.refresh();
         updateProgress();

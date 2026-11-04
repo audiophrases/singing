@@ -37,6 +37,7 @@ export function packableSong(song) {
   delete s.createdAt;
   delete s.updatedAt;
   delete s.folderImport;
+  delete s.lesson; // too long for a link, and it holds teacher notes
   if (s.audio) delete s.audio.mediaId;
   if (s.karaoke) delete s.karaoke.mediaId;
   if (s.vocals) delete s.vocals.mediaId;

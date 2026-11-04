@@ -10,6 +10,7 @@ import { distractors, wordPool } from '../lyrics/gaps.js';
 import { categoryById, baseForm } from '../lyrics/grammar.js';
 import { normWord } from '../lyrics/text.js';
 import { STOPWORDS, IRREGULAR_PAST } from '../lyrics/wordlists.js';
+import { lessonOf, lessonQuiz } from '../lesson/pack.js';
 import { getTeams, addPoints, setTeams } from '../store.js';
 import { sfx, confetti } from '../sfx.js';
 
@@ -77,17 +78,30 @@ export function makeQuestions(timeline, rnd, count = 10) {
   return shuffle(qs, rnd).slice(0, count);
 }
 
+// The lesson pack's questions, in their own order: "before" ones come first.
+export function packQuestions(timeline, lesson, when, rnd) {
+  return lessonQuiz(timeline, lesson, when).map((q) => {
+    const options = shuffle([q.answer, ...q.wrong], rnd);
+    return { kind: 'lesson', emoji: q.when === 'before' ? '🔮' : '🧠', q: q.q, answer: q.answer, options, explain: q.explain || '', line: q.line, long: options.some((o) => o.length > 24) };
+  });
+}
+
 const COLORS = ['#e21b3c', '#1368ce', '#d89e00', '#26890c'];
 const SHAPES = ['▲', '◆', '●', '■'];
 
 export async function start(ctx) {
   const { timeline, main, track } = ctx;
-  const conf = { count: 10, timer: 20 };
+  const lesson = lessonOf(ctx.song);
+  const when = ['before', 'after'].includes(ctx.params.when) ? ctx.params.when : '';
+  const packed = lessonQuiz(timeline, lesson, when).length;
+  const conf = { count: 10, timer: packed ? 30 : 20, source: packed ? 'pack' : 'auto' };
   const card = setupCard({
     emoji: '❓',
     title: 'Song quiz',
     intro: 'Questions about the words of the song. Answer with the mouse or the keys 1, 2, 3 and 4. In teams, each team gets a question in turn.',
     body: h('div', null,
+      packed ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Questions from'),
+        choiceRow([['pack', `🧠 Lesson pack (${packed})`], ['auto', '🤖 Made by Singing']], conf.source, (v) => { conf.source = v; })) : null,
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Questions'),
         choiceRow([[5, '5'], [10, '10'], [15, '15']], conf.count, (v) => { conf.count = v; })),
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Timer'),
@@ -102,7 +116,7 @@ export async function start(ctx) {
   function begin() {
     track.pause();
     const rnd = seeded(Date.now() % 1e6);
-    const qs = makeQuestions(timeline, rnd, conf.count);
+    const qs = conf.source === 'pack' ? packQuestions(timeline, lesson, when, rnd).slice(0, conf.count) : makeQuestions(timeline, rnd, conf.count);
     if (!qs.length) {
       clear(main).append(h('div', { class: 'setup-card' }, h('h2', null, 'No questions for this song yet')));
       return;
@@ -172,6 +186,7 @@ export async function start(ctx) {
         sfx('wrong', { volume: 0.4 });
       }
       const next = area.querySelector('.quiz-next');
+      if (q.explain) next.append(h('p', { class: 'quiz-explain' }, `💡 ${q.explain}`));
       next.append(h('button', { class: 'btn primary btn-lg', type: 'button', onclick: goNext }, qi + 1 < qs.length ? 'Next ▶' : '🏁 Results'));
     };
 

@@ -9,6 +9,7 @@ import { openMic } from '../mic.js';
 import { setSettings } from '../store.js';
 import { partHue } from '../views/song.js';
 import { confetti, sfx } from '../sfx.js';
+import { lessonOf, lessonPopups, POPUP_KINDS } from '../lesson/pack.js';
 
 // Builds the DOM for one line: words made of syllable spans.
 export function lineEl(line, { next = false, gaps = null, render = null } = {}) {
@@ -93,7 +94,9 @@ export async function start(ctx) {
     meter: false,
     scale: settings.lyricScale || 1,
     lead: Number.isFinite(settings.ballLead) ? settings.ballLead : BALL_LEAD,
+    popups: settings.popups !== false,
   };
+  const popups = lessonPopups(timeline, lessonOf(ctx.song));
 
   const section = h('div', { class: 'k-section' });
   const pic = h('div', { class: 'k-pic' });
@@ -101,7 +104,8 @@ export async function start(ctx) {
   const lines = h('div', { class: 'k-lines' });
   const tr = h('div', { class: 'k-tr' });
   const banner = h('div', { class: 'k-banner' });
-  const wrap = h('div', { class: 'karaoke', style: { '--k-scale': opts.scale } }, section, pic, lines, tr, banner);
+  const popupBox = h('div', { class: popups.size ? 'k-popups' : 'hidden' });
+  const wrap = h('div', { class: 'karaoke', style: { '--k-scale': opts.scale } }, section, pic, lines, tr, popupBox, banner);
   clear(main).append(wrap);
 
   let meter = null;
@@ -138,6 +142,7 @@ export async function start(ctx) {
     ballTiming(opts, (v) => { opts.lead = v; setSettings({ ballLead: v }); }),
     toggle('🖼️ Pictures', opts.pics, (v) => { opts.pics = v; setSettings({ showPics: v }); lastIdx = -99; }),
     toggle('🌍 Translations (when the song has them)', opts.tr, (v) => { opts.tr = v; setSettings({ translations: v }); lastIdx = -99; }),
+    popups.size ? toggle('💡 Language pop-ups (from the lesson pack)', opts.popups, (v) => { opts.popups = v; setSettings({ popups: v }); lastIdx = -99; }) : null,
     toggle('📣 Loudness meter (microphone)', opts.meter, (v) => setMeter(v)),
     h('label', null, 'Lyrics size'),
     h('input', { type: 'range', min: 0.6, max: 1.6, step: 0.1, value: opts.scale, oninput: (e) => { opts.scale = Number(e.target.value); wrap.style.setProperty('--k-scale', opts.scale); setSettings({ lyricScale: opts.scale }); } }),
@@ -174,6 +179,12 @@ export async function start(ctx) {
       if (p) pic.classList.add('pop');
     }
     tr.textContent = opts.tr && line && line.translation ? line.translation : '';
+    clear(popupBox);
+    for (const note of (opts.popups && line && popups.get(line.index)) || []) {
+      const words = cur.querySelectorAll('.w');
+      for (let wi = note.from; wi <= note.to; wi += 1) words[wi]?.classList.add('noted');
+      popupBox.append(h('div', { class: 'k-popup' }, h('span', { class: 'k-popup-icon' }, POPUP_KINDS[note.kind] || '💡'), note.text));
+    }
     syllableElements = cur ? [...cur.querySelectorAll('.syl')] : [];
     syllables = syllableElements.map((el) => el._syl);
   };

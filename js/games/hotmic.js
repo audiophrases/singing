@@ -9,6 +9,7 @@ import { rhymePairs, rhymesFrom } from '../lyrics/rhymes.js';
 import { categoryById, baseForm } from '../lyrics/grammar.js';
 import { normWord } from '../lyrics/text.js';
 import { STOPWORDS, IRREGULAR_VERBS, rhymeFamily } from '../lyrics/wordlists.js';
+import { lessonOf } from '../lesson/pack.js';
 import { getTeams, addPoints } from '../store.js';
 import { sfx } from '../sfx.js';
 import { speak } from '../tts.js';
@@ -28,6 +29,9 @@ export function makeCards(timeline, song, rnd = Math.random) {
   const pairs = rhymePairs(timeline);
   const rhymable = [...new Set([...pairs.flatMap((p) => [p.a, p.b]), ...words.filter((w) => rhymeFamily(w))])];
   const cards = [];
+  for (const c of lessonOf(song)?.cards || []) {
+    cards.push({ type: 'lesson', emoji: c.emoji || '🧠', title: c.title || 'Your turn!', body: c.body, answer: c.answer || '' });
+  }
   for (let i = 0; i < lines.length - 1; i += 1) {
     cards.push({ type: 'next', emoji: '🎤', title: 'Sing the next line!', body: `"${lines[i].text}"`, answer: lines[i + 1].text });
   }
@@ -63,9 +67,12 @@ const TYPES = [
 
 export async function start(ctx) {
   const { track, timeline, main, song } = ctx;
-  const conf = { min: 6, max: 18, types: new Set(TYPES.map((t) => t[0])) };
-  const typeBoxes = h('div', { class: 'type-boxes' }, TYPES.map(([id, label]) => {
-    const input = h('input', { type: 'checkbox', checked: true });
+  // A lesson pack's cards play on their own: among the automatic ones they get lost.
+  const packed = lessonOf(song)?.cards?.length || 0;
+  const types = packed ? [['lesson', `🧠 Lesson pack (${packed})`], ...TYPES] : TYPES;
+  const conf = { min: 6, max: 18, types: new Set(packed ? ['lesson'] : TYPES.map((t) => t[0])) };
+  const typeBoxes = h('div', { class: 'type-boxes' }, types.map(([id, label]) => {
+    const input = h('input', { type: 'checkbox', checked: conf.types.has(id) });
     input.addEventListener('change', () => { if (input.checked) conf.types.add(id); else conf.types.delete(id); });
     return h('label', { class: 'inline' }, input, label);
   }));

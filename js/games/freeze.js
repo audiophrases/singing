@@ -7,6 +7,7 @@ import { h, clear, shuffle, seeded } from '../ui.js';
 import { setupCard, choiceRow } from './common.js';
 import { normWord } from '../lyrics/text.js';
 import { sfx } from '../sfx.js';
+import { lessonOf, lessonMoves } from '../lesson/pack.js';
 
 export const ACTIONS = [
   ['Jump!', '🦘'], ['Clap your hands!', '👏'], ['Turn around!', '🔄'], ['Wave!', '👋'], ['Stomp your feet!', '🦶'],
@@ -20,6 +21,7 @@ const ACTION_WORDS = { clap: '👏', jump: '🦘', stomp: '🦶', wave: '👋', 
 
 export async function start(ctx) {
   const { track, timeline, main } = ctx;
+  const moves = lessonMoves(lessonOf(ctx.song));
   const conf = { every: 2, freeze: 'medium' };
   const card = setupCard({
     emoji: '🧊',
@@ -84,11 +86,12 @@ export async function start(ctx) {
       if (track.playing && !frozen) {
         // Words in the lyrics that are actions win over the deck.
         const l = timeline.lines.find((x) => t >= x.start && t < x.end);
-        const w = l && l.words.find((x) => t >= x.start - 0.1 && t < x.end + 0.3 && ACTION_WORDS[normWord(x.text)]);
+        const w = l && l.words.find((x) => t >= x.start - 0.1 && t < x.end + 0.3 && (moves.has(normWord(x.text)) || ACTION_WORDS[normWord(x.text)]));
         const slot = Math.floor(t / span);
         if (w) {
           const n = normWord(w.text);
-          if (action.dataset.word !== n) { action.dataset.word = n; show(`${n.toUpperCase()}!`, ACTION_WORDS[n]); }
+          const move = moves.get(n);
+          if (action.dataset.word !== n) { action.dataset.word = n; show(move?.text || `${n.toUpperCase()}!`, move?.emoji || ACTION_WORDS[n]); }
         } else if (slot !== lastSlot) {
           lastSlot = slot;
           const [text, emoji] = deck[di++ % deck.length];

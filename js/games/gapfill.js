@@ -6,7 +6,8 @@
  * Also used by "Choose the word" (mode 'choose': three options per gap).
  */
 import { h, clear, shuffle, seeded } from '../ui.js';
-import { pickGaps, distractors, wordPool, GAP_LEVELS } from '../lyrics/gaps.js';
+import { pickGaps, distractors, wordPool, gapMode, matchCase, GAP_LEVELS } from '../lyrics/gaps.js';
+import { lessonOf, gapNotes } from '../lesson/pack.js';
 import { categoriesInTimeline } from '../lyrics/grammar.js';
 import { checkAnswer, normWord, hintFor } from '../lyrics/text.js';
 import { lineStops, setupCard, choiceRow, scoreBox, lyricView, stars, centerOf } from './common.js';
@@ -15,15 +16,19 @@ import { sfx, floatEmoji } from '../sfx.js';
 export async function start(ctx, forced = {}) {
   const { track, timeline, main, params } = ctx;
   const cats = categoriesInTimeline(timeline, 2).filter((c) => !['colour', 'animal', 'body', 'family', 'food', 'weather', 'time', 'clothes', 'feeling', 'action'].includes(c.id) || c.count >= 3);
+  const lesson = lessonOf(ctx.song);
+  const sets = lesson?.gapSets || [];
   const conf = {
     level: params.level || forced.level || 'easy',
-    focus: params.focus || '',
+    // An assignment plays exactly what the server checks.
+    focus: params.focus || (!ctx.assignment && sets[0] ? `pack:${sets[0].id}` : ''),
     input: forced.input || params.input || 'type',
     seed: Number(params.seed) || Math.floor(Math.random() * 1e6),
   };
   const difficultyNote = h('p', { class: 'small' });
   const describeDifficulty = () => {
-    difficultyNote.textContent = conf.focus
+    const set = sets.find((s) => `pack:${s.id}` === conf.focus);
+    difficultyNote.textContent = set ? set.rule || `${set.name}: chosen for this song.` : conf.focus
       ? 'Every matching word in the selected focus is hidden.'
       : GAP_LEVELS.find((level) => level.id === conf.level)?.desc || '';
   };
@@ -33,9 +38,11 @@ export async function start(ctx, forced = {}) {
   const setupBody = h('div', null,
     h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Difficulty'),
       choiceRow(GAP_LEVELS.map((l) => [l.id, `${l.emoji} ${l.name}`, l.desc]), conf.level, (v) => { conf.level = v; describeDifficulty(); })),
-    cats.length ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Focus'),
+    cats.length || sets.length ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Focus'),
       (() => {
-        const sel = h('select', { class: 'setup-select', 'aria-label': 'Word focus' }, h('option', { value: '' }, 'Any words (by difficulty)'), cats.map((c) => h('option', { value: c.id, selected: conf.focus === c.id }, `${c.emoji} Only ${c.name.toLowerCase()} (${c.count})`)));
+        const sel = h('select', { class: 'setup-select', 'aria-label': 'Word focus' }, h('option', { value: '' }, 'Any words (by difficulty)'),
+          sets.length ? h('optgroup', { label: '🧠 Lesson pack' }, sets.map((s) => h('option', { value: `pack:${s.id}`, selected: conf.focus === `pack:${s.id}` }, `${s.emoji || '🧠'} ${s.name}`))) : null,
+          cats.map((c) => h('option', { value: c.id, selected: conf.focus === c.id }, `${c.emoji} Only ${c.name.toLowerCase()} (${c.count})`)));
         sel.addEventListener('change', () => { conf.focus = sel.value; describeDifficulty(); });
         return sel;
       })()) : null,
@@ -62,8 +69,9 @@ export async function start(ctx, forced = {}) {
 
   function begin() {
     const rnd = seeded(conf.seed);
-    const mode = conf.focus ? `cat:${conf.focus}` : conf.level;
-    const gaps = pickGaps(timeline, { mode, seed: conf.seed });
+    const mode = gapMode(conf.focus, conf.level);
+    const gaps = pickGaps(timeline, { mode, seed: conf.seed, lesson });
+    const notes = conf.focus.startsWith('pack:') ? gapNotes(timeline, lesson, conf.focus.slice(5)) : new Map();
     const pool = wordPool(timeline);
     const items = [];
     const byLine = new Map();
@@ -73,7 +81,8 @@ export async function start(ctx, forced = {}) {
       const list = [];
       for (const wi of [...set].sort((a, b) => a - b)) {
         const word = l.words[wi].text.replace(/^[^A-Za-z0-9'’]+|[^A-Za-z0-9'’]+$/g, '');
-        const item = { id: items.length, line: l.index, wi, word, status: 'open', hints: 0, options: null };
+        const note = notes.get(`${l.index}:${wi}`);
+        const item = { id: items.length, line: l.index, wi, word, status: 'open', hints: 0, options: null, wrong: (note?.options || []).map((o) => matchCase(word, o)), why: note?.why || '' };
         items.push(item);
         list.push(item.id);
       }
@@ -85,7 +94,7 @@ export async function start(ctx, forced = {}) {
     }
     for (const it of items) {
       if (conf.input === 'choose') {
-        it.options = shuffle([it.word, ...distractors(it.word, { pool, count: 2, seed: conf.seed + it.id })], rnd);
+        it.options = shuffle([it.word, ...(it.wrong.length ? it.wrong : distractors(it.word, { pool, count: 2, seed: conf.seed + it.id }))], rnd);
       }
     }
     for (const saved of ctx.savedAnswers || []) {
@@ -117,12 +126,13 @@ export async function start(ctx, forced = {}) {
     const input = h('input', { class: 'gf-input', type: 'text', autocomplete: 'off', autocapitalize: 'off', spellcheck: false, placeholder: 'Type the missing word…', 'aria-label': 'Missing word' });
     const bank = h('div', { class: 'gf-bank' });
     const msg = h('div', { class: 'gf-msg' });
+    const why = h('div', { class: 'gf-why' });
     const tools = h('div', { class: 'gf-tools' },
       h('button', { class: 'btn', type: 'button', title: 'Listen to the line again (R)', onclick: () => replay() }, '🔁 Again'),
       h('button', { class: 'btn', type: 'button', title: 'Show a letter (Tab)', onclick: () => hint() }, '💡 Hint'),
       h('button', { class: 'btn', type: 'button', title: 'Show the word (S)', onclick: () => reveal() }, '⏭️ Skip'),
     );
-    const answerArea = h('div', { class: 'gf-answer' }, conf.input === 'type' ? input : bank, msg, tools);
+    const answerArea = h('div', { class: 'gf-answer' }, conf.input === 'type' ? input : bank, msg, why, tools);
     clear(main).append(h('div', { class: 'gf-wrap' }, h('div', { class: 'gf-top' }, progress, score.el), view.el, answerArea));
     ctx.setBottom(null);
 
@@ -163,7 +173,7 @@ export async function start(ctx, forced = {}) {
       } else {
         const lineItems = (byLine.get(active.line) || []).map((id) => items[id]).filter((it) => it.status === 'open');
         const words = lineItems.map((it) => it.word);
-        const extra = distractors(active.word, { pool, count: 2, seed: conf.seed + active.id * 7 });
+        const extra = active.wrong.length ? active.wrong : distractors(active.word, { pool, count: 2, seed: conf.seed + active.id * 7 });
         opts = shuffle([...new Set([...words, ...extra])], seeded(conf.seed + active.id));
       }
       opts.forEach((w, i) => bank.append(h('button', { class: 'btn bank-word', type: 'button', onclick: (e) => tryAnswer(w, e.currentTarget) }, h('kbd', null, String(i + 1)), ` ${w}`)));
@@ -171,6 +181,7 @@ export async function start(ctx, forced = {}) {
 
     function settle(it, status, points, answer = it.word) {
       it.status = status;
+      why.textContent = it.why ? `💡 ${it.why}` : '';
       ctx.reportAnswer?.({ itemId: it.id, answer, skipped: status === 'revealed' });
       if (points) score.add(points, status === 'right');
       else score.breakStreak();

@@ -6,6 +6,7 @@ import { songPermissionCheckbox } from './song-permission.js';
 import { allSongs } from '../store.js';
 import { saveCloudSong } from '../cloud/library.js';
 import { GAMES, gameFits } from '../games/index.js';
+import { lessonOf } from '../lesson/pack.js';
 
 const field = (label, input) => h('label', { class: 'studio-field' }, h('span', null, label), input);
 const run = async (fn) => { try { await fn(); } catch (e) { toast(e.message, 'bad', 5000); } };
@@ -38,6 +39,13 @@ async function createAssignment() {
   const due = h('input', { type: 'datetime-local', 'aria-label': 'Deadline' });
   const limit = h('select', { 'aria-label': 'Attempt limit' }, [1, 2, 3, 5, 10].map((n) => h('option', { value: n }, String(n))));
   const difficulty = h('select', { 'aria-label': 'Assignment difficulty' }, [['easy', 'Beginner'], ['medium', 'Intermediate'], ['hard', 'Advanced'], ['all', 'Expert']].map(([v, label]) => h('option', { value: v }, label)));
+  const gapSet = h('select', { 'aria-label': 'Gap set' });
+  const gapSetField = field('Gaps for Fill the gaps and Choose the word', gapSet);
+  const drawGapSets = () => {
+    const sets = lessonOf(songs.find((s) => s.id === songSelect.value))?.gapSets || [];
+    clear(gapSet).append(h('option', { value: '' }, 'By listening difficulty'), ...sets.map((set) => h('option', { value: `pack:${set.id}` }, `🧠 ${set.name}`)));
+    gapSetField.hidden = !sets.length;
+  };
   const classInputs = classes.map((c) => ({ ...c, input: h('input', { type: 'checkbox', 'aria-label': c.name }) }));
   const activityInputs = GAMES.map((g) => ({ ...g, input: h('input', { type: 'checkbox', 'aria-label': g.name }) }));
   const activities = h('div', { class: 'assignment-options' });
@@ -50,7 +58,7 @@ async function createAssignment() {
       activities.append(h('label', { class: 'inline' }, g.input, ` ${g.emoji} ${g.name}`));
     }
   };
-  songSelect.addEventListener('change', drawActivities); drawActivities();
+  songSelect.addEventListener('change', () => { drawActivities(); drawGapSets(); }); drawActivities(); drawGapSets();
   const rights = songPermissionCheckbox();
   const status = h('p', { class: 'small', role: 'status' });
   const save = h('button', { class: 'btn primary', type: 'button', onclick: async () => {
@@ -68,7 +76,7 @@ async function createAssignment() {
       }
       const result = await api('/api/assignments', { method: 'POST', body: {
         title: title.value.trim(), classIds: targets, dueAt: due.value ? new Date(due.value).getTime() : null,
-        attemptsLimit: Number(limit.value), units: selected.map((g) => ({ songId: song.id, activity: g.id, settings: { level: difficulty.value } })),
+        attemptsLimit: Number(limit.value), units: selected.map((g) => ({ songId: song.id, activity: g.id, settings: { level: difficulty.value, focus: gapSet.value } })),
       } });
       modal.close(); location.hash = `#/assignment/${result.id}`;
     } catch (e) { status.textContent = e.message; }
@@ -76,7 +84,7 @@ async function createAssignment() {
   } }, 'Create assignment');
   const modal = openModal([h('h2', null, 'Create a Singing assignment'), field('Title', title), field('Song', songSelect),
     h('p', { class: 'small' }, 'Recordings need an original MP3, karaoke MP3 and synchronized lyrics before assigning.'),
-    h('h3', null, 'Activities'), activities, field('Listening difficulty', difficulty),
+    h('h3', null, 'Activities'), activities, field('Listening difficulty', difficulty), gapSetField,
     h('h3', null, 'Classes'), classInputs.length ? classInputs.map((c) => h('label', { class: 'inline' }, c.input, ` ${c.name}`)) : h('p', null, 'No permitted classes yet. Add students and their class in PinPlay, or ask your administrator to grant class access.'),
     field('Deadline (your local time)', due), field('Attempts per activity', limit),
     h('label', { class: 'inline small' }, rights, ' I have permission to store and use this song.'), status,

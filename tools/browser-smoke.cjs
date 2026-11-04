@@ -240,6 +240,7 @@ const { stubGoogle, noTeacherTools, guestChecks } = require('./browser-access.cj
   await teacher.keyboard.press('Escape');
   console.log('Audio-inclusive backup migrates between app origins and preserves the old browser files');
   await require('./browser-timing.cjs')(teacher, createBase);
+  await require('./browser-lesson.cjs')(browser, base);
   assert.deepEqual(errors, []);
   await teacher.setViewportSize({ width: 390, height: 844 });
   await teacher.goto(assignmentUrl);

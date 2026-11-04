@@ -6,6 +6,7 @@ import { normWord, levenshtein } from './text.js';
 import { STOPWORDS, COMMON, frequencyRank, IRREGULAR_PAST, IRREGULAR_BASE, PRONOUNS, PREPOSITIONS, MODALS, ANIMALS, COLOURS, BODY, FOOD, FAMILY, NUMBERS, FEELINGS, ACTION_VERBS, rhymeFamily } from './wordlists.js';
 import { categoryById, baseForm, pastOf } from './grammar.js';
 import { rhymesFrom } from './rhymes.js';
+import { lessonGaps } from '../lesson/pack.js';
 import { seeded, shuffle } from '../ui.js';
 
 export const GAP_LEVELS = [
@@ -41,11 +42,20 @@ function gapScore(norm, { last, count, mode }) {
   return s;
 }
 
+// The mode for pickGaps from a game's settings: a focus is a category id or a
+// lesson pack's gap set ("pack:<id>"); without one, the level decides.
+export function gapMode(focus, level = 'easy') {
+  if (!focus) return level;
+  return focus.startsWith('pack:') ? focus : `cat:${focus}`;
+}
+
 /*
  * -> Map(lineIndex -> Set(wordIndex))
- * mode: easy | medium | hard | all | cat:<categoryId>
+ * mode: easy | medium | hard | all | cat:<categoryId> | pack:<gap set id>
+ * lesson: the song's lesson pack, for pack: modes
  */
-export function pickGaps(timeline, { mode = 'easy', seed = 1 } = {}) {
+export function pickGaps(timeline, { mode = 'easy', seed = 1, lesson = null } = {}) {
+  if (mode.startsWith('pack:')) return lessonGaps(timeline, lesson, mode.slice(5));
   const rnd = seeded(seed);
   const counts = wordCounts(timeline);
   const out = new Map();
@@ -90,7 +100,7 @@ const ARTICLES = ['a', 'an', 'the'];
 const MODAL_LIST = ['can', 'could', 'will', 'would', 'should', 'must', 'may', 'might'];
 const SETS = [ANIMALS, COLOURS, BODY, FOOD, FAMILY, NUMBERS, FEELINGS, ACTION_VERBS];
 
-function matchCase(src, w) {
+export function matchCase(src, w) {
   if (!w) return w;
   if (src === src.toUpperCase() && src.length > 1) return w.toUpperCase();
   if (src[0] === src[0].toUpperCase() && /[A-Za-z]/.test(src[0])) return w[0].toUpperCase() + w.slice(1);

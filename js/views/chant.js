@@ -29,11 +29,13 @@ function readDraft() {
   try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch { return null; }
 }
 
-export async function render(el, { edit } = {}) {
+export async function render(el, { edit, lesson } = {}) {
   // #/chant?edit=<id>: change a saved Song maker song, the teacher's own or a student's.
   const found = edit ? getSong(edit) : null;
   const editing = found?.composed && ((teacherAccess() && found.mine) || found.studentSong) ? found : null;
-  const draft = editing ? { title: editing.title, ...editing.composed } : readDraft() || { ...EXAMPLES[0], mood: 'pop', key: 'C' };
+  // #/chant?lesson=<id>: the original chant from a song's lesson pack.
+  const chant = !editing && lesson ? getSong(lesson)?.lesson?.chant : null;
+  const draft = editing ? { title: editing.title, ...editing.composed } : chant ? { title: chant.title || '', text: chant.text, mood: chant.mood, key: 'C' } : readDraft() || { ...EXAMPLES[0], mood: 'pop', key: 'C' };
   const state = { title: draft.title, text: draft.text, mood: draft.mood || 'pop', key: draft.key || 'C', seed: draft.seed || 1 };
   let track = null;
   let transport = null;

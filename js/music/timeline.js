@@ -70,10 +70,12 @@ export function wordsFromNotes(notes) {
       if (last) {
         last.end = Math.max(last.end, n[1]);
         last.text += t.replace(/~/g, '');
+        last.run = (last.run || 1) + 1; // one syllable gliding over several notes
       }
     } else {
       if (!word) word = [];
       last = { text: t.replace(/~/g, ''), start: n[0], end: n[1], midi: Number.isFinite(n[2]) ? n[2] : null };
+      if (n[4]) last.golden = true;
       word.push(last);
     }
     if (/\s$/.test(raw)) close();

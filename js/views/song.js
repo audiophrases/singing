@@ -13,6 +13,7 @@ import { shareLink } from '../share.js';
 import { exportPinPlayQuiz } from '../pinplay-export.js';
 import { deleteCloudSong, setSongPublic, saveCloudSong, deleteStudentSong } from '../cloud/library.js';
 import { teacherAccess, isOwner } from '../cloud/access.js';
+import { lessonOf, plainLines, stepHash, STAGES } from '../lesson/pack.js';
 
 export async function render(el, { id }) {
   const song = getSong(id);
@@ -33,6 +34,7 @@ export async function render(el, { id }) {
   applyKnobs(track, song);
   const timeline = track.timeline;
   const sung = timeline.lines.filter((l) => !l.instrumental);
+  const lesson = lessonOf(song);
 
   // ----- header
   const transport = transportBar(track);
@@ -70,6 +72,7 @@ export async function render(el, { id }) {
   }
   acts.append(h('h3', { class: 'section-title' }, '✏️ Make and share'));
   acts.append(h('div', { class: 'activity-grid' },
+    teacherAccess() ? h('a', { class: 'activity', href: `#/lesson/${encodeURIComponent(song.id)}` }, h('span', { class: 'act-emoji' }, '🧠'), h('span', { class: 'act-name' }, 'AI lesson pack'), h('span', { class: 'act-desc' }, lesson ? 'See or replace this song\'s lesson pack.' : 'A prompt for any AI: it studies the lyrics and writes tailored games for your class.')) : null,
     h('a', { class: 'activity', href: `#/remix/${encodeURIComponent(song.id)}` }, h('span', { class: 'act-emoji' }, '🪄'), h('span', { class: 'act-name' }, 'Remix'), h('span', { class: 'act-desc' }, 'Students write their own verses; the band sings them.')),
     h('a', { class: 'activity', href: `#/print/${encodeURIComponent(song.id)}/gapfill` }, h('span', { class: 'act-emoji' }, '🖨️'), h('span', { class: 'act-name' }, 'Worksheets'), h('span', { class: 'act-desc' }, 'Gap fill, cut-up lines, bingo cards, lyrics sheet - ready to print.')),
     teacherAccess() ? h('button', { class: 'activity', type: 'button', onclick: () => editCopy(song) }, h('span', { class: 'act-emoji' }, song.mine ? '✏️' : '📋'), h('span', { class: 'act-name' }, song.mine ? 'Edit song' : 'Copy and edit'), h('span', { class: 'act-desc' }, song.mine ? 'Change lyrics, timing, pictures and translations.' : 'Make your own version of this song in the Studio.')) : null,
@@ -99,6 +102,10 @@ export async function render(el, { id }) {
   // ----- lyrics
   const lyricEls = [];
   const lyrics = h('div', { class: 'lyrics-panel' });
+  const plain = plainLines(timeline, lesson);
+  const plainToggle = plain.size ? h('button', { class: 'chip', type: 'button', 'aria-pressed': 'false', onclick: (e) => {
+    e.currentTarget.setAttribute('aria-pressed', String(lyrics.classList.toggle('show-plain')));
+  } }, '💬 In simple English') : null;
   let section = null;
   for (const l of timeline.lines) {
     if (!section || l.sectionStart) {
@@ -109,7 +116,8 @@ export async function render(el, { id }) {
       l.part ? h('span', { class: 'lp-part', style: { '--part-hue': partHue(l.part) } }, l.part) : null,
       l.pic ? `${l.pic} ` : '',
       l.instrumental ? '♪ ♪ ♪' : l.text,
-      l.translation ? h('span', { class: 'lp-tr' }, l.translation) : null);
+      l.translation ? h('span', { class: 'lp-tr' }, l.translation) : null,
+      plain.get(l.index) ? h('span', { class: 'lp-plain' }, plain.get(l.index)) : null);
     lineEl.addEventListener('click', () => {
       track.seek(Math.max(0, l.start - 0.05));
       if (!track.playing) track.play();
@@ -117,16 +125,23 @@ export async function render(el, { id }) {
     lyricEls[l.index] = lineEl;
     section.append(lineEl);
   }
-  const vocab = h('div', { class: 'vocab-list' }, (song.vocab || []).map((w) => h('button', { class: 'chip', type: 'button', title: 'Listen', onclick: () => speak(w) }, `🔊 ${w}`)));
+  const vocab = lesson?.words?.length
+    ? h('div', { class: 'word-cards' }, lesson.words.map((w) => h('button', { class: 'word-card', type: 'button', title: 'Listen', onclick: () => speak(w.word) },
+      h('span', { class: 'wc-word' }, `${w.emoji ? `${w.emoji} ` : ''}${w.word}`), w.ipa ? h('span', { class: 'wc-ipa' }, w.ipa) : null,
+      h('span', { class: 'wc-meaning' }, w.meaning), w.translation ? h('span', { class: 'wc-tr' }, w.translation) : null,
+      w.example ? h('span', { class: 'wc-example' }, w.example) : null)))
+    : h('div', { class: 'vocab-list' }, (song.vocab || []).map((w) => h('button', { class: 'chip', type: 'button', title: 'Listen', onclick: () => speak(w) }, `🔊 ${w}`)));
+  const hasVocab = lesson?.words?.length || song.vocab?.length;
 
   add(el,
     h('div', { class: 'row', style: { marginBottom: '.6rem' } }, h('a', { class: 'btn btn-sm ghost', href: '#/' }, '← All songs')),
     head,
+    teacherAccess() ? lessonPlan(song, lesson, sung.length) : null,
     acts,
     h('h3', { class: 'section-title' }, '📜 Lyrics'),
-    h('section', { class: 'card' }, lyrics),
-    song.vocab && song.vocab.length ? h('h3', { class: 'section-title' }, '🔤 Key words') : null,
-    song.vocab && song.vocab.length ? h('section', { class: 'card' }, vocab, h('p', { class: 'small top-space' }, 'Click a word to hear it.')) : null,
+    h('section', { class: 'card' }, plainToggle ? h('div', { class: 'row', style: { marginBottom: '.5rem' } }, plainToggle) : null, lyrics),
+    hasVocab ? h('h3', { class: 'section-title' }, '🔤 Key words') : null,
+    hasVocab ? h('section', { class: 'card' }, vocab, h('p', { class: 'small top-space' }, 'Click a word to hear it.')) : null,
   );
 
   // Highlight the line being played.
@@ -158,6 +173,31 @@ export async function render(el, { id }) {
     transport.destroy();
     track.destroy();
   };
+}
+
+// The lesson plan from the song's pack, for the teacher: each step opens its game.
+function lessonPlan(song, lesson, sungCount) {
+  const path = (lesson?.teacher?.path || []).filter((step) => {
+    const game = GAMES.find((g) => g.id === step.activity);
+    return !game || gameFits(game, song, sungCount);
+  });
+  const cautions = lesson?.teacher?.cautions || [];
+  if (!path.length && !cautions.length) return null;
+  const minutes = path.reduce((sum, step) => sum + (step.minutes || 0), 0);
+  const named = (step) => {
+    const game = GAMES.find((g) => g.id === step.activity);
+    return game ? `${game.emoji} ${game.name}` : step.activity === 'chant' ? '✨ Song maker' : '🖨️ Worksheet';
+  };
+  const stages = { before: 'Before', while: 'While', after: 'After' };
+  return h('div', null,
+    h('h3', { class: 'section-title' }, `🧭 Lesson plan${minutes ? ` · ${minutes} min` : ''}`),
+    h('section', { class: 'card lesson-plan' },
+      cautions.map((c) => h('p', { class: `lesson-caution ${c.severity}` }, `${c.severity === 'serious' ? '🛑' : '⚠️'} ${c.line ? `Line ${c.line}${c.words ? ` (“${c.words}”)` : ''}: ` : ''}${c.note}`)),
+      STAGES.map((stage) => path.filter((step) => step.stage === stage).map((step) => h('a', { class: 'lesson-step', href: stepHash(song.id, step) },
+        h('span', { class: 'badge' }, stages[stage]),
+        h('span', { class: 'ls-name' }, named(step)),
+        step.minutes ? h('span', { class: 'small' }, `${step.minutes} min`) : null,
+        step.do ? h('span', { class: 'ls-do' }, step.do) : null)))));
 }
 
 export function partHue(part) {

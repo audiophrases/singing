@@ -8,10 +8,12 @@ import { getTeams, addPoints } from '../store.js';
 import { lineStops, setupCard, choiceRow, lyricView } from './common.js';
 import { sfx, confetti } from '../sfx.js';
 import { normWord } from '../lyrics/text.js';
+import { lessonOf, lessonStops } from '../lesson/pack.js';
 
 export async function start(ctx) {
   const { track, timeline, main } = ctx;
-  const conf = { hide: 2, which: 'some', timer: 10 };
+  const packStops = lessonStops(timeline, lessonOf(ctx.song));
+  const conf = { hide: 2, which: packStops.size ? 'pack' : 'some', timer: 10 };
   const card = setupCard({
     emoji: '🛑',
     title: 'Finish the line',
@@ -20,7 +22,7 @@ export async function start(ctx) {
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Hide'),
         choiceRow([[1, 'Last word'], [2, 'Last 2 words'], [3, 'Last 3 words'], [0, 'Half the line']], conf.hide, (v) => { conf.hide = v; })),
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Stop at'),
-        choiceRow([['all', 'Every line'], ['some', 'Every other line'], ['few', '6 surprise lines']], conf.which, (v) => { conf.which = v; })),
+        choiceRow([...(packStops.size ? [['pack', `🧠 Lesson pack (${packStops.size})`]] : []), ['all', 'Every line'], ['some', 'Every other line'], ['few', '6 surprise lines']], conf.which, (v) => { conf.which = v; })),
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Timer'),
         choiceRow([[0, 'None'], [5, '5 s'], [10, '10 s'], [15, '15 s']], conf.timer, (v) => { conf.timer = v; })),
     ),
@@ -38,12 +40,14 @@ export async function start(ctx) {
     if (conf.which === 'some') cands = cands.filter((_, i) => i % 2 === 1);
     if (conf.which === 'few') cands = shuffle(cands, rnd).slice(0, 6).sort((a, b) => a.start - b.start);
     const targets = new Map();
-    for (const l of cands) {
+    if (conf.which === 'pack') {
+      for (const [index, stop] of packStops) targets.set(index, { line: timeline.lines[index], from: stop.from, ask: stop.ask, revealed: false });
+    } else for (const l of cands) {
       const n = conf.hide === 0 ? Math.max(1, Math.floor(l.words.length / 2)) : Math.min(conf.hide, l.words.length - 1);
       const from = l.words.length - n;
       targets.set(l.index, { line: l, from, revealed: false });
     }
-    const stops = [...targets.values()].map((tg) => ({ line: tg.line.index, at: Math.max(tg.line.start, tg.line.words[tg.from].start - 0.06) }));
+    const stops = [...targets.values()].sort((a, b) => a.line.start - b.line.start).map((tg) => ({ line: tg.line.index, at: Math.max(tg.line.start, tg.line.words[tg.from].start - 0.06) }));
 
     const render = (w, wi, line, where) => {
       const tg = targets.get(line.index);
@@ -102,7 +106,7 @@ export async function start(ctx) {
     const showPanel = () => {
       clear(panel);
       const teams = getTeams();
-      panel.append(h('div', { class: 'fin-q' }, '🤔 How does it end?'));
+      panel.append(h('div', { class: 'fin-q' }, targets.get(waitingFor)?.ask || '🤔 How does it end?'));
       const row = h('div', { class: 'row', style: { justifyContent: 'center' } });
       if (teams.on) {
         row.append(h('span', { class: 'small', style: { marginRight: '.4rem' } }, 'Who got it?'));

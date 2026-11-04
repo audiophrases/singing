@@ -8,6 +8,7 @@ import { normWord } from '../lyrics/text.js';
 import { speak, stopSpeaking } from '../tts.js';
 import { getSettings, getTeams, addPoints } from '../store.js';
 import { sfx, confetti } from '../sfx.js';
+import { lessonOf, lessonSay } from '../lesson/pack.js';
 
 // Align what was heard with what was expected (word level LCS).
 export function compareWords(expected, heard) {
@@ -35,20 +36,22 @@ export async function start(ctx) {
   const { timeline, main, track } = ctx;
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const seen = new Set();
-  const lines = timeline.lines.filter((l) => {
+  const everyLine = timeline.lines.filter((l) => {
     if (l.instrumental || l.words.length < 2) return false;
     const k = l.text.toLowerCase();
     if (seen.has(k)) return false;
     seen.add(k);
     return true;
   });
-  const conf = { mode: 'say' };
+  const tips = lessonSay(timeline, lessonOf(ctx.song));
+  const packLines = everyLine.filter((l) => tips.has(l.index));
+  const conf = { mode: packLines.length ? 'pack' : 'say' };
   const card = setupCard({
     emoji: '🗣️',
     title: 'Say it!',
     intro: SR ? 'Read the line aloud (or sing it!) into the microphone. Every word you say clearly turns green.' : 'This browser cannot recognise speech. Open Singing in Chrome or Edge to play Say it!',
     body: SR ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Practice'),
-      choiceRow([['say', '🗣️ Say the lines'], ['memory', '🧠 From memory (line hidden)']], conf.mode, (v) => { conf.mode = v; })) : null,
+      choiceRow([...(packLines.length ? [['pack', `🧠 Lesson pack (${packLines.length} lines)`]] : []), ['say', '🗣️ Say the lines'], ['memory', '🙈 From memory (line hidden)']], conf.mode, (v) => { conf.mode = v; })) : null,
     onStart: () => { if (SR) { card.destroy(); begin(); } },
   });
   clear(main).append(card);
@@ -58,10 +61,12 @@ export async function start(ctx) {
 
   function begin() {
     track.pause();
+    const lines = conf.mode === 'pack' ? packLines : everyLine;
     let idx = 0;
     let rec = null;
     const results = new Map();
     const lineBox = h('div', { class: 'say-line' });
+    const tipBox = h('div', { class: 'say-tips' });
     const heardBox = h('div', { class: 'say-heard' });
     const scoreEl = h('div', { class: 'say-score' });
     const micBtn = h('button', { class: 'btn primary btn-lg say-mic', type: 'button' }, '🎙️ Speak');
@@ -70,10 +75,14 @@ export async function start(ctx) {
       const l = lines[idx];
       counter.textContent = `Line ${idx + 1} of ${lines.length}`;
       clear(lineBox);
+      const notes = conf.mode === 'pack' ? tips.get(l.index) || [] : [];
       l.words.forEach((w, i) => {
         const hidden = conf.mode === 'memory' && !marks;
-        lineBox.append(h('span', { class: `say-word${marks ? (marks[i] ? ' ok' : ' miss') : ''}${hidden ? ' hidden-word' : ''}` }, hidden ? '•'.repeat(Math.max(2, normWord(w.text).length)) : w.text), ' ');
+        const target = notes.some((n) => i >= n.from && i <= n.to);
+        lineBox.append(h('span', { class: `say-word${target ? ' target' : ''}${marks ? (marks[i] ? ' ok' : ' miss') : ''}${hidden ? ' hidden-word' : ''}` }, hidden ? '•'.repeat(Math.max(2, normWord(w.text).length)) : w.text), ' ');
       });
+      clear(tipBox);
+      for (const n of notes) tipBox.append(h('div', { class: 'gf-why' }, n.skill ? h('b', null, `${n.skill}: `) : null, n.tip));
       if (!marks) { clear(heardBox); clear(scoreEl); }
     };
     const listen = () => {
@@ -129,6 +138,7 @@ export async function start(ctx) {
     clear(main).append(h('div', { class: 'say-wrap' },
       h('div', { class: 'gf-top' }, counter, h('div', null)),
       lineBox,
+      tipBox,
       heardBox,
       scoreEl,
       h('div', { class: 'row', style: { justifyContent: 'center' } },

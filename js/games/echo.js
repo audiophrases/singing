@@ -8,13 +8,16 @@ import { h, clear } from '../ui.js';
 import { lineEl, paintLine } from './karaoke.js';
 import { setupCard, choiceRow } from './common.js';
 import { sfx } from '../sfx.js';
+import { lessonOf, lessonEcho } from '../lesson/pack.js';
 
 export async function start(ctx) {
   const { track, timeline, main } = ctx;
   const synth = track.kind === 'synth';
   const kar = !synth && !!track.hasKaraoke;
   if (kar) track.setSinger(true);
-  const conf = { chunk: 1, music: true };
+  // chunk 0: the teaching order from the song's lesson pack.
+  const steps = lessonEcho(timeline, lessonOf(ctx.song));
+  const conf = { chunk: steps.length ? 0 : 1, music: true };
   const lines = timeline.lines.filter((l) => !l.instrumental);
 
   const card = setupCard({
@@ -23,7 +26,7 @@ export async function start(ctx) {
     intro: 'Listen to a line, then sing it back! Great for learning a new song. The class sings over the music with the melody turned off.',
     body: h('div', null,
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Echo'),
-        choiceRow([[1, 'Line by line'], [2, 'Two lines at a time']], conf.chunk, (v) => { conf.chunk = v; })),
+        choiceRow([...(steps.length ? [[0, `🧠 Lesson pack order (${steps.length} steps)`]] : []), [1, 'Line by line'], [2, 'Two lines at a time']], conf.chunk, (v) => { conf.chunk = v; })),
       synth ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Your turn'),
         choiceRow([[true, '🎹 With the band'], [false, '🗣️ Voices only']], conf.music, (v) => { conf.music = v; })) : null,
       kar ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Your turn'),
@@ -52,6 +55,10 @@ export async function start(ctx) {
     let chunkEls = [];
     let virtualT = null;
     let curIdx = 0;
+    const groups = [];
+    if (conf.chunk) {
+      for (let i = 0; i < lines.length; i += conf.chunk) groups.push({ lines: lines.slice(i, i + conf.chunk), label: `Line ${i + 1} of ${lines.length}` });
+    } else steps.forEach((s, i) => groups.push({ lines: s.lines, label: `Step ${i + 1} of ${steps.length}${s.why ? `: ${s.why}` : ''}` }));
 
     const show = (group) => {
       clear(box);
@@ -84,12 +91,12 @@ export async function start(ctx) {
 
     async function go(startIdx) {
       const my = ++gen;
-      for (let i = startIdx; i < lines.length; i += conf.chunk) {
+      for (let i = startIdx; i < groups.length; i += 1) {
         curIdx = i;
-        const group = lines.slice(i, i + conf.chunk);
+        const group = groups[i].lines;
         const from = group[0].start;
         const to = group[group.length - 1].singEnd + 0.15;
-        count.textContent = `Line ${i + 1} of ${lines.length}`;
+        count.textContent = groups[i].label;
         show(group);
         // 1. Listen.
         phase.className = 'echo-phase listen';
@@ -122,9 +129,9 @@ export async function start(ctx) {
     // ←/→ jump between lines.
     ctx.onKey((e) => {
       if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return false;
-      const step = e.key === 'ArrowRight' ? conf.chunk : -conf.chunk;
+      const step = e.key === 'ArrowRight' ? 1 : -1;
       track.pause();
-      go(Math.max(0, Math.min(lines.length - 1, curIdx + step)));
+      go(Math.max(0, Math.min(groups.length - 1, curIdx + step)));
       return true;
     });
     go(0);

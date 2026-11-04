@@ -3,6 +3,7 @@ import { teacher } from './auth.js';
 
 const ROLES = ['audio', 'karaoke', 'vocals', 'sourceFile'];
 const MAX_FILE = 64 * 1024 * 1024;
+const MAX_LESSON = 400 * 1024;
 export async function ownedSong(env, id, principal) {
   teacher(principal);
   const song = await env.DB.prepare('SELECT * FROM songs WHERE id = ? AND owner_id = ? AND deleted_at IS NULL').bind(id, principal.id).first();
@@ -16,10 +17,17 @@ export async function manifest(env, id, revision) {
   requireThat(object, 503, 'Song data is temporarily unavailable.');
   return object.json();
 }
+// A lesson pack without its teacher section (js/lesson/pack.js): the plan and
+// the content warnings are not for students or the public player.
+const forStudents = (song) => {
+  if (!song.lesson) return song;
+  const { teacher, ...lesson } = song.lesson;
+  return { ...song, lesson };
+};
 export function visibleSong(document, principal) {
   if (principal.role !== 'student') return document;
   const { folderImport, sourceFile, about, clientId, ...song } = document;
-  return { ...song, mine: false };
+  return { ...forStudents(song), mine: false };
 }
 // The public player: band songs the owner switched to public. Only the owner
 // can switch a song to public, and only while it is played by the band. Until
@@ -29,7 +37,7 @@ export async function publicSongs(env) {
   if (!started) return json({ songs: [], started });
   const { results } = await env.DB.prepare('SELECT id, revision FROM songs WHERE is_public = 1 AND deleted_at IS NULL AND revision > 0 ORDER BY updated_at DESC LIMIT 500').all();
   const documents = await Promise.all(results.map((row) => manifest(env, row.id, row.revision)));
-  const songs = documents.filter((doc) => (doc.source || 'band') === 'band').map(({ folderImport, sourceFile, audio, karaoke, vocals, cloud, revision, status, createdAt, ...song }) => ({ ...song, public: true }));
+  const songs = documents.filter((doc) => (doc.source || 'band') === 'band').map(({ folderImport, sourceFile, audio, karaoke, vocals, cloud, revision, status, createdAt, ...song }) => ({ ...forStudents(song), public: true }));
   return json({ songs, started });
 }
 // Who made a song a student saved (cloudflare/student-songs.js): for the owner only.
@@ -40,9 +48,10 @@ export function cleanSong(input) {
   requireThat(['audio', 'youtube', 'none', 'band'].includes(input.source || 'band'), 400, 'Invalid song source.');
   requireThat(Array.isArray(input.synced) || Array.isArray(input.lines), 400, 'Lyrics required.');
   const clean = {};
-  for (const key of ['title', 'artist', 'credit', 'level', 'ages', 'emoji', 'hue', 'grammar', 'themes', 'vocab', 'about', 'source', 'youtube', 'synced', 'lines', 'bpm', 'meter', 'key', 'style', 'intro', 'pickup', 'outro', 'phrases', 'round', 'duration', 'composed', 'knobs', 'folderImport']) {
+  for (const key of ['title', 'artist', 'credit', 'level', 'ages', 'emoji', 'hue', 'grammar', 'themes', 'vocab', 'about', 'source', 'youtube', 'synced', 'lines', 'bpm', 'meter', 'key', 'style', 'intro', 'pickup', 'outro', 'phrases', 'round', 'duration', 'composed', 'knobs', 'folderImport', 'lesson']) {
     if (input[key] !== undefined) clean[key] = input[key];
   }
+  if (clean.lesson !== undefined) requireThat(clean.lesson && typeof clean.lesson === 'object' && !Array.isArray(clean.lesson) && JSON.stringify(clean.lesson).length <= MAX_LESSON, 400, 'This lesson pack is too large.');
   return clean;
 }
 
