@@ -181,7 +181,9 @@ module.exports = async (browser, base) => {
   assert.match(await stage.locator('.hunt-count').innerText(), /After did: the base form: 0 \/ 5/, 'only the words in context, not every "do" or "go"');
   await stage.locator('.hunt-line').filter({ hasText: 'Did you go?' }).getByRole('button', { name: 'go?' }).click();
   await stage.getByText('Did you go? Not: Did you went?').waitFor();
-  ok('Grammar hunt: judged in context, explains each find');
+  assert.equal(await stage.locator('.hunt-line').filter({ hasText: /a crazy day/i }).count(), 0, 'a line the set leaves out is not on the board');
+  assert.equal(await stage.locator('.hunt-line').filter({ hasText: /crazy, crazy day/i }).count(), 1, 'a line that is only similar stays');
+  ok('Grammar hunt: judged in context, explains each find, and can hide a line');
 
   await open('gapfill');
   assert.equal(await stage.getByLabel('Word focus').inputValue(), 'pack:chorus-verbs');
@@ -215,8 +217,9 @@ module.exports = async (browser, base) => {
   await stage.locator('.setup-card').getByRole('button', { name: 'Before listening' }).click();
   await start();
   await stage.locator('.quiz-opt').first().waitFor();
-  assert.match(await stage.locator('.quiz-text').innerText(), /What is it about/);
-  await stage.locator('.quiz-opt', { hasText: 'The things someone did' }).click();
+  // The song's level (A2) has no questions for before listening: A1's are played instead.
+  assert.match(await stage.locator('.quiz-text').innerText(), new RegExp(whole.quiz.filter((q) => q.when === 'before').map((q) => q.q.replace(/[.*+?^${}()|[]\]/g, '\$&')).join('|')));
+  await stage.locator('.quiz-opt').first().click();
   await stage.locator('.quiz-explain').waitFor();
   ok('Song quiz: levels, before-listening questions, and an explanation');
 

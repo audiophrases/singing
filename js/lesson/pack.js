@@ -273,7 +273,8 @@ export function readPack(text, timeline, { title = '' } = {}) {
       return spot && compact({ ...spot, why: str(t.why, 200) });
     });
     if (!targets.length) { c.problem(where, 'none of its targets are in the lyrics'); return null; }
-    return compact({ id: uniqueId(item, taken), name, emoji: emoji(item.emoji), level: oneOf(item.level, LEVELS), rule: str(item.rule, 200), targets });
+    const skip = (Array.isArray(item.skip) ? [...new Set(item.skip)] : []).filter((line) => Number.isInteger(line) && c.sung[line - 1]);
+    return compact({ id: uniqueId(item, taken), name, emoji: emoji(item.emoji), level: oneOf(item.level, LEVELS), rule: str(item.rule, 200), skip: skip.length ? skip : '', targets });
   });
 
   const gapSets = c.list(raw.gapSets, 'gapSets', 16, (item, where) => {
@@ -569,6 +570,7 @@ export function gapNotes(timeline, lesson, id) {
 
 // Grammar hunt: the words that count in each set, with why they count.
 export function huntSets(timeline, lesson) {
+  const sung = sungLines(timeline);
   return (lesson?.hunts || []).map((set) => {
     const marks = new Map();
     for (const target of set.targets) {
@@ -576,7 +578,9 @@ export function huntSets(timeline, lesson) {
         for (let wi = from; wi <= to; wi += 1) marks.set(pos(line, wi), target.why || '');
       }
     }
-    return { ...set, marks };
+    // By its words, so the repeats of a hidden line go with it.
+    const hidden = new Set((set.skip || []).map((line) => sung[line - 1]?.text.toLowerCase()));
+    return { ...set, marks, hidden };
   }).filter((set) => set.marks.size);
 }
 
@@ -664,6 +668,27 @@ export function plainLines(timeline, lesson) {
 export const packLevels = (items = []) => LEVELS.filter((level) => items.some((item) => item.level === level));
 export const orderSets = (sets = []) => [...sets].sort((a, b) => LEVELS.indexOf(a.level) - LEVELS.indexOf(b.level));
 export const pickSet = (sets, level) => sets.find((set) => set.level === level) || sets[0];
+
+/*
+ * The level a game opens on. The teacher's last choice wins, "All" (saved as '')
+ * included. Before any choice it is the level of the song, so a class does not
+ * meet the hardest questions by default.
+ */
+export function startLevel(levels, saved, lesson) {
+  if (levels.includes(saved) || saved === '') return saved;
+  return levels.includes(lesson?.profile?.level) ? lesson.profile.level : '';
+}
+
+// One round: any question can come up, with those for before the song still first.
+export function quizRound(questions, count = Infinity, rnd = Math.random) {
+  const pool = [...questions];
+  for (let i = pool.length - 1; i > 0; i -= 1) {
+    const k = Math.floor(rnd() * (i + 1));
+    [pool[i], pool[k]] = [pool[k], pool[i]];
+  }
+  const round = pool.slice(0, count);
+  return [...round.filter((q) => q.when === 'before'), ...round.filter((q) => q.when !== 'before')];
+}
 export const setLabel = (set, emojiFallback = '🧠') => `${set.emoji || emojiFallback} ${set.level ? `${set.level}: ` : ''}${set.name}`;
 
 // How much a pack adds to each game, for the activity tiles.

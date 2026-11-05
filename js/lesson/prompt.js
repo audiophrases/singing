@@ -64,7 +64,7 @@ export const PACK_EXAMPLE = {
   gapSets: [{ id: 'if-clauses', name: 'If-clauses', emoji: '🌧️', level: 'B1', rule: 'After "if" we use the present, even for the future.', gaps: [{ line: 3, words: 'comes', options: ['will come', 'came'], why: 'After if, use the present: if the rain comes.' }] }],
   swaps: [{ line: 1, words: 'river', wrong: 'liver', why: '/r/ and /l/: the tongue touches the mouth only for /l/.' }],
   stops: [{ line: 4, words: 'dancing', ask: 'If it rains, what do you think they will do?' }],
-  hunts: [{ id: 'future-after-if', name: 'Talking about tomorrow', emoji: '🔮', level: 'B1', rule: 'Find the words that point to the future.', targets: [{ line: 4, words: 'will be', why: 'will + be: the result of the if-clause' }] }],
+  hunts: [{ id: 'future-after-if', name: 'Talking about tomorrow', emoji: '🔮', level: 'B1', rule: 'Find the words that point to the future.', skip: [], targets: [{ line: 4, words: 'will be', why: 'will + be: the result of the if-clause' }] }],
   quiz: [
     { when: 'before', level: 'A2', q: 'A song is called "River Road". What do you expect?', answer: 'A journey', wrong: ['A wedding', 'A football match'], explain: 'Roads and rivers suggest travel.' },
     { when: 'after', level: 'B1', q: 'What will they do if it rains?', answer: 'Keep dancing', wrong: ['Go home', 'Find a roof'], line: 4, explain: '"Anyway" tells us the rain changes nothing.' },
@@ -294,10 +294,10 @@ function workPlan(levels, agent) {
   const sets = (name, kids, size) => each((level) => (agent ? [1, 2] : [1]).map(() => ({ what: `one "${name}" set of ${size} ${kids} for ${level}`, n: size, whole: true })));
   return [
     [{ what: '"words"', n: agent ? 24 : 16 }, { what: '"popups"', n: agent ? 40 : 20 }],
-    [...sets('gapSets', 'gaps', agent ? 12 : 10), { what: '"swaps"', n: agent ? 20 : 12 }, { what: '"stops"', n: agent ? 12 : 8 }],
+    [...sets('gapSets', 'gaps', agent ? 12 : 10), { what: '"swaps"', n: agent ? 14 : 12 }, { what: '"stops"', n: agent ? 12 : 8 }],
     [...sets('hunts', 'targets', agent ? 12 : 10), { what: '"quiz" questions with when "before"', n: agent ? 6 : 4 },
       ...each((level) => ({ what: `"quiz" questions with when "after" for ${level}`, n: agent ? 15 : 8 }))],
-    [...each((level) => ({ what: `"cards" for ${level}`, n: agent ? 20 : 10 })), { what: '"say"', n: agent ? 16 : 10 }, { what: '"echo" steps', n: agent ? 8 : 6 }, { what: '"moves"', n: agent ? 16 : 10 }],
+    [...each((level) => ({ what: `"cards" for ${level}`, n: agent ? 12 : 10 })), { what: '"say"', n: agent ? 16 : 10 }, { what: '"echo" steps', n: agent ? 8 : 6 }, { what: '"moves"', n: agent ? 16 : 10 }],
     [...sets('pairs', 'pairs', agent ? 10 : 8), { what: 'the "chant"', n: 1, whole: true }],
   ];
 }
@@ -372,7 +372,7 @@ Typed by the teacher, word for word, in quotes. Where they contradict anything a
 ${klass.level
     ? `Rate the song itself in profile.level, however hard it is for this class. Then write activities for ${levelsAround(klass.level).join(', ')}, the class level and the level on each side of it.`
     : 'Rate the song in profile.level from two things: how abstract its meaning is (a literal story is easy; metaphor, irony and an unreliable narrator are hard) and how hard its vocabulary is. Simple grammar does not make a song easy. Then write activities for that level and the level on each side of it: a B1 song gets A2, B1 and B2.'}
-The same lyrics can carry very different work: at the low level, finding and understanding; at the high level, register, implication and why the writer chose those words. Put "level" on every set in "gapSets", "hunts" and "pairs", and on every item in "quiz" and "cards".`,
+The same lyrics can carry very different work: at the low level, finding and understanding; at the high level, register, implication and why the writer chose those words. This is a language class, not a literature class: at every level the language comes from these lyrics. At the high level go deeper into these words (nuance, register, collocation, word choice), not into literary theory or academic writing. Put "level" on every set in "gapSets", "hunts" and "pairs", and on every item in "quiz" and "cards".`,
     `# The song\n${songBlock(song)}`,
     `# The lyrics
 Every sung line has a number. "= L5" means the line repeats L5 word for word, so refer to L5: the app applies your work to every repeat.${sung.some((l) => l.part) ? ' A name before a colon says who sings the line ("A:"). It is not part of the lyrics, so never quote it.' : ''}
@@ -403,17 +403,17 @@ ${lyricsBlock(timeline)}`,
 
 "gapSets": for Fill the gaps, Choose the word and the worksheet. Each set trains one thing. words is one word per gap. options are 2 wrong answers that show a real mistake learners make, not random words. Each option must be wrong in that sentence: never offer a form that is correct or acceptable, even informally or in formal English. why explains the right answer in one sentence.
 
-"swaps": for Wrong word. The lyrics appear with one word replaced, and students click it while they listen, so this is about sound only. Use at most one on a line. words is the real word and wrong replaces it. wrong must sound very close to the real word and be a mishearing these students really make: a minimal pair, a sound their first language lacks. A word that only looks similar or means something similar does not count. why names the two sounds being confused. If you cannot name them, leave the swap out.
+"swaps": for Wrong word. The lyrics appear with one word replaced, and students click it while they listen, so this is about sound only. Use at most one on a line. words is the real word and wrong replaces it. wrong must sound very close to the real word and be a mishearing these students really make: a minimal pair, where the two words differ in exactly one sound, and it is a sound these students really confuse. A word that only looks similar or means something similar does not count. why names the two sounds being confused. If you cannot name them, leave the swap out.
 
 "stops": pause and predict, for Finish the line. Use at most one on a line. The music stops just before words, which is hidden with the rest of the line, and ask appears on screen. Then the song itself gives the answer. Ask about meaning or grammar, not memory, for example "Which tense comes after if?" or "What do you think she does next?".
 
-"hunts": for Grammar hunt. All the lyrics are on screen and teams click every word that counts. You can judge each word in context, which the app's word lists cannot: "left" only when it is a verb, "would" only when it is about the past. rule is the instruction on screen. Quote only the words that really count, in every line where they occur. why is shown when a word is found.
+"hunts": for Grammar hunt. All the lyrics are on screen, each different line once and without line numbers. Teams click one word at a time, and a wrong click loses a point. You can judge each word in context, which the app's word lists cannot: "left" only when it is a verb, "would" only when it is about the past. Choose points that need that judgement: finding every "a" and "the" does not. rule is what students read on screen: one short sentence, under 100 characters, in simple words for that level. It never mentions line numbers, repeats or how to click. Quote only the words that really count, in every line where they occur. Quote a word once per line: the app finds every time it is sung. why is shown when a word is found. skip lists the numbers of lines to leave out of the game, such as a line with a serious caution: they vanish from the screen, so the rule never needs to mention them.
 
 "quiz": for Song quiz. when "before" questions come before the first listen and predict or activate knowledge, so they must not need the song. when "after" questions check understanding and inference. answer is the right answer and wrong holds 2 or 3 wrong ones of the same style and length. line is the line that holds the answer: a Listen button replays exactly that line. explain appears after answering.
 
-"cards": for Hot mic. The class passes an object while the music plays; whoever holds it when the music stops gets a card on the projector. kind is one of ${CARD_KINDS.join(', ')}. Cards must make students produce language about their own lives, not recall the song. Use the song's frames ("If it rains, I will..."). answer is an optional model answer. Keep body under 140 characters.
+"cards": for Hot mic. The class passes an object while the music plays; whoever holds it when the music stops gets a card on the projector. kind is one of ${CARD_KINDS.join(', ')}. Cards must make students produce language about their own lives, not recall the song. Every card starts from this song: a frame copied from its lyrics ("If it rains, I will...") or one of its themes. When a theme is too heavy to share in class, take a lighter angle on the same theme (belonging can become being new in a group), not an unrelated topic such as hobbies. Never write "you may pass" or "real or invented" on a card: teachers handle that. answer is an optional model answer. Keep body under 140 characters.
 
-"pairs": memory card sets, at least 3 pairs each. Ideas: word and meaning, phrasal verb and synonym, base and past form, English and the first language, two halves of a collocation, real rhymes that do not look alike. Keep each side under 40 characters.${translated ? ' In a set with the first language, "a" is the English side and the set has "translated": true: the cards are read aloud in an English voice, and this keeps the other side silent.' : ''}
+"pairs": memory card sets, at least 3 pairs each. Ideas: word and meaning, phrasal verb and synonym, base and past form, English and the first language, two halves of a collocation, real rhymes that do not look alike. At every level, one side of each pair comes from the lyrics: a word, chunk or form the song uses. New sentences and terms about language (inference, ambiguity) do not belong here. Keep each side under 40 characters.${translated ? ' In a set with the first language, "a" is the English side and the set has "translated": true: the cards are read aloud in an English voice, and this keeps the other side silent.' : ''}
 
 "moves": gestures for Freeze dance, a form of total physical response. When word is sung, text and emoji fill the screen and the class does the move. word is one word from the lyrics. Find clever gestures for abstract words too. text is a short command.
 
@@ -427,7 +427,7 @@ ${lyricsBlock(timeline)}`,
 Work through this list in order, one section at a time:
 ${plan[0].parts.map((part) => `- ${part}`).join('\n')}
 
-These are minimums for a song with enough in it. Go further wherever the lyrics reward it, and stop short only where they truly cannot support more: a weak item is worse than a missing one. Give every set its own "id". Keep the file under 300 KB.
+These numbers are ceilings for a song with a lot in it, not quotas. Write what this song truly supports and stop there, even if a section ends well short: a weak item is worse than a missing one. Give every set its own "id". Keep the file under 300 KB.
 
 Check every fact, name and pronunciation in a reliable source before you write it, and drop what you cannot check.
 
@@ -437,7 +437,8 @@ Before you finish, check the file. If you can run code, write a small script for
 3. "swaps" and "stops" have at most one item on a line.
 4. No wrong answer equals the right one, and none is correct in that sentence.
 5. No word from "clean" appears anywhere else in the file.
-6. Each section reaches the count above.
+6. No section goes over the count above, and nothing is there only to reach a number.
+7. Every hunt rule is one short sentence with no line numbers, and every card uses a frame or theme from this song.
 Then read the whole pack as the teacher would, cut anything you would not use in class, fix what the checks found, and only then finish.`
     : `# Batches
 ${plan.map(batchLine).join('\n')}

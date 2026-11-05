@@ -46,7 +46,7 @@ export async function start(ctx) {
     const lines = timeline.lines.filter((l) => {
       if (l.instrumental) return false;
       const k = l.text.toLowerCase();
-      if (seen.has(k)) return false;
+      if (seen.has(k) || set?.hidden.has(k)) return false;
       seen.add(k);
       return true;
     });

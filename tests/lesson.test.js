@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ACTIVITY_IDS, CHANT_MOODS, LEVELS, POPUP_KINDS, addCleanWord, applyPack, cleanTimeline, readAloud, gapNotes, huntKey, huntSets, lessonEcho, lessonGaps, lessonMoves, lessonOf, lessonPopups, lessonQuiz, lessonSay, lessonStops, lessonSwaps, mergePacks, orderSets, packCounts, packLevels, pickSet, plainLines, readPack, removePack, setLabel, spots, staleCount } from '../js/lesson/pack.js';
+import { ACTIVITY_IDS, CHANT_MOODS, LEVELS, POPUP_KINDS, quizRound, startLevel, addCleanWord, applyPack, cleanTimeline, readAloud, gapNotes, huntKey, huntSets, lessonEcho, lessonGaps, lessonMoves, lessonOf, lessonPopups, lessonQuiz, lessonSay, lessonStops, lessonSwaps, mergePacks, orderSets, packCounts, packLevels, pickSet, plainLines, readPack, removePack, setLabel, spots, staleCount } from '../js/lesson/pack.js';
 import { AI_KINDS, BATCH_SIZE, EXAMPLE_LYRICS, PACK_EXAMPLE, buildPrompt, hasMelody, levelsAround, melodyFacts, morePrompt, nextBatchPrompt, planBatches, repairPrompt } from '../js/lesson/prompt.js';
 import { gapMode, pickGaps } from '../js/lyrics/gaps.js';
 import { packableSong } from '../js/share.js';
@@ -653,4 +653,75 @@ test('a masked word never becomes a gap, and anchors to it drop out', () => {
     }
   }
   assert.deepEqual(lessonPopups(t, pack).get(0).map((p) => p.text), ['Kept']);
+});
+
+test('a hunt can hide lines, with their repeats, and the choice lasts through batches', () => {
+  const t = timelineFromSynced(JSON.parse(JSON.stringify(CLEAN)), 15);
+  const hunt = { id: 'h', name: 'Adjectives', targets: [{ line: 1, words: 'special' }, { line: 2, words: 'blue' }], skip: [1, 1, 99, 'x'] };
+  const pack = readPack(reply({ hunts: [hunt] }), t).pack;
+  assert.deepEqual(pack.hunts[0].skip, [1], 'real line numbers, once each');
+  const [set] = huntSets(t, pack);
+  assert.ok(set.hidden.has(t.lines.find((l) => l.index === 0).text.toLowerCase()), 'its text, so line 3 repeats go too');
+  assert.equal(set.hidden.size, 1);
+  assert.deepEqual(readPack(reply({ hunts: [{ ...hunt, skip: [] }] }), t).pack.hunts[0].skip, undefined);
+  assert.deepEqual(readPack(JSON.stringify(mergePacks(pack, { hunts: [{ id: 'h', name: 'Adjectives', targets: [{ line: 2, words: 'sky' }] }] })), t).pack.hunts[0].skip, [1]);
+  assert.deepEqual(huntSets(t, readPack(reply({ hunts: [{ id: 'n', name: 'None', targets: [{ line: 2, words: 'blue' }] }] }), t).pack)[0].hidden.size, 0);
+});
+
+test('a quiz round can reach every question, and keeps the ones for before the song first', () => {
+  const pool = Array.from({ length: 50 }, (_, i) => ({ q: i, when: i < 6 ? 'before' : 'after' }));
+  const seen = new Set();
+  for (let run = 0; run < 400; run += 1) {
+    const round = quizRound(pool, 10);
+    assert.equal(round.length, 10);
+    assert.equal(new Set(round).size, 10, 'no question twice');
+    const firstAfter = round.findIndex((q) => q.when === 'after');
+    if (firstAfter >= 0) assert.ok(round.slice(firstAfter).every((q) => q.when === 'after'));
+    round.forEach((q) => seen.add(q.q));
+  }
+  assert.equal(seen.size, 50, 'even the last in the pack');
+  assert.equal(quizRound(pool).length, 50, 'no count: all of them');
+  assert.equal(quizRound(pool.slice(0, 3), 10).length, 3);
+  assert.equal(pool[0].q, 0, 'the pack itself stays in order');
+});
+
+test('a game opens on the teacher\'s level, and otherwise on the level of the song', () => {
+  const lesson = { profile: { level: 'B2' } };
+  assert.equal(startLevel(['B1', 'B2', 'C1'], undefined, lesson), 'B2');
+  assert.equal(startLevel(['B1', 'B2', 'C1'], 'B1', lesson), 'B1');
+  assert.equal(startLevel(['B1', 'B2', 'C1'], '', lesson), '', 'All stays All');
+  assert.equal(startLevel(['B1', 'B2', 'C1'], 'A2', lesson), 'B2', 'a level from another song');
+  assert.equal(startLevel(['B1', 'C1'], undefined, lesson), '', 'the song level has no questions');
+  assert.equal(startLevel([], undefined, null), '');
+});
+
+test('the prompt asks for depth over numbers, and for content that stays on the song', () => {
+  const { song, timeline } = band('twinkle');
+  const agent = buildPrompt(song, timeline, { ai: 'agent' });
+  assert.match(agent, /ceilings .*not quotas/);
+  assert.doesNotMatch(agent, /reaches the count|are minimums/, 'an agent that must reach every count fills it with weak items');
+  assert.match(agent, /nothing is there only to reach a number/);
+  const count = (name) => planBatches({ ai: 'agent' }).flatMap((b) => b.parts).filter((p) => p.includes(name)).reduce((n, p) => n + parseInt(p, 10), 0);
+  assert.equal(count('"swaps"'), 14);
+  assert.equal(count('"cards"'), 36);
+  for (const prompt of [agent, buildPrompt(song, timeline, {})]) {
+    assert.match(prompt, /Every card starts from this song/);
+    assert.match(prompt, /Never write "you may pass"/);
+    assert.match(prompt, /It never mentions line numbers/);
+    assert.match(prompt, /skip lists the numbers of lines to leave out/);
+    assert.match(prompt, /one side of each pair comes from the lyrics/);
+    assert.match(prompt, /differ in exactly one sound/);
+    assert.match(prompt, /not a literature class/);
+  }
+  assert.match(buildPrompt(song, timeline, {}), /If you are short, write more/, 'a chatbot still has to be pushed: unpushed, it sent 4 of 16 questions');
+});
+
+test('a quiz never opens on an empty round when a level has no questions of that kind', async () => {
+  const { packQuestions } = await import('../js/games/quiz.js');
+  const t = timelineFromSynced(JSON.parse(JSON.stringify(CLEAN)), 15);
+  const lesson = { quiz: [{ when: 'before', level: 'A1', q: 'Early', answer: 'a', wrong: ['b'] }, { when: 'after', level: 'A2', q: 'Late', answer: 'a', wrong: ['b'] }] };
+  assert.deepEqual(packQuestions(t, lesson, { when: 'before', level: 'A2' }).map((q) => q.q), ['Early'], 'the song level has none for before listening');
+  assert.deepEqual(packQuestions(t, lesson, { when: 'after', level: 'A2' }).map((q) => q.q), ['Late']);
+  assert.deepEqual(packQuestions(t, lesson, { level: 'A2' }).map((q) => q.q), ['Late'], 'a level that has questions keeps to them');
+  assert.equal(packQuestions(t, lesson, { count: 1 }).length, 1);
 });

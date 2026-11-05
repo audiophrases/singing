@@ -402,6 +402,7 @@
       "name": "After did: the base form",
       "emoji": "❓",
       "rule": "After did, the verb goes back to its base form. Find these verbs.",
+      "skip": [8],
       "targets": [
         {
           "line": 6,
