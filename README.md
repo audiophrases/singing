@@ -25,6 +25,8 @@ choose **1** in **`deploy.bat`**. It builds and publishes Singing using the exis
 cloud setup, without checking out or redeploying PinPlay, running the full test
 suites, or provisioning/migrating storage. For first setup or changes to database
 migrations/shared authentication, choose **2 — Full setup / deployment** instead.
+Either computer can deploy, but both options publish only what is on GitHub's
+`main`: push your work first, and pull if it says this computer is behind.
 The numbered launchers in `deployment/` also provide preparation, verification
 and Google login setup separately. See the
 [Windows deployment guide](docs/CLOUD_DEPLOYMENT.md#windows-quick-start) for the two

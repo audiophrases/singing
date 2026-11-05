@@ -165,6 +165,17 @@ export class Deployment {
     const result = await this.run('git', args, { cwd });
     ensure(allowFailure || result.code === 0, `Git ${args[0]} failed.${this.diagnostic(result)}`); return result;
   }
+  // Either computer can publish, and GitHub is all they share. Code behind it would
+  // undo the other computer's work; code not on it would vanish at their next release.
+  async requireGitHubCode() {
+    await this.git(['fetch', 'origin', 'main']);
+    const commits = (count) => `${count} commit${count === 1 ? '' : 's'}`;
+    const edited = plain((await this.git(['status', '--porcelain', '--untracked-files=no'])).stdout);
+    ensure(!edited, 'This computer has changes that are not committed. Commit and push them, or undo them, then deploy again. Nothing was published.');
+    const [behind, ahead] = plain((await this.git(['rev-list', '--left-right', '--count', 'origin/main...HEAD'])).stdout).split(/\s+/).map(Number);
+    ensure(!behind, `This computer is ${commits(behind)} behind GitHub, so publishing would undo newer work. Run git pull, then deploy again. Nothing was published.`);
+    ensure(!ahead, `This computer has ${commits(ahead)} not pushed to GitHub. Run git push, then deploy again. Nothing was published.`);
+  }
   async sourceHashes(directory) {
     const files = (await this.git(['ls-files', '-z', 'cloudflare'], directory)).stdout.split('\0').filter(Boolean);
     const hashes = {};
@@ -331,6 +342,7 @@ export class Deployment {
     await this.checkpoint(); return progress.deployedVersion;
   }
   async deploy({ yes = false } = {}) {
+    await this.requireGitHubCode();
     await this.prepare(); await this.authenticate();
     const pinplay = await this.inspect('pinplay-api'), singing = await this.inspect('singing');
     assertPinplayBindings(pinplay.version, this.pinplay);
@@ -377,6 +389,7 @@ export class Deployment {
   async update({ yes = false } = {}) {
     ensure(this.state.accountId && this.state.databaseId && this.state.singing?.deployedVersion && this.state.url,
       'Fast update needs an existing Singing deployment. Choose Full setup / deployment (menu 2) or run deployment/02-deploy.bat first.');
+    await this.requireGitHubCode();
     this.accountId = this.state.accountId;
     this.configFile = path.join(this.directory, 'singing.production.json');
     this.pinplayFile = undefined;
@@ -388,16 +401,15 @@ export class Deployment {
     ensure(identityPatchHash && identityPatchHash === digest(await readFile(path.join(this.root, 'integrations/pinplay-classroom.patch'))),
       'The shared identity integration changed. Use Full setup / deployment (menu 2).');
     const migrations = await this.migrationSnapshot();
-    ensure(!this.state.schemaFingerprint || this.state.schemaFingerprint === migrations.hash,
-      'Database migrations changed. Use Full setup / deployment (menu 2) before updating code.');
     this.log('Fast update: building Singing only; keeping existing PinPlay and storage.');
     await this.node(['tools/build-site.mjs'], { label: 'Singing build' });
     await this.authenticate();
     const singing = await this.inspect('singing');
     ensure(singing, 'Singing is no longer deployed. Use Full setup / deployment (menu 2).');
     assertSingingBindings(singing.version, this.state.databaseId);
-    if (!this.state.schemaFingerprint) {
-      // Upgrade older deployment records with one read-only migration check.
+    if (this.state.schemaFingerprint !== migrations.hash) {
+      // This record only knows what this computer did. Another computer may have
+      // migrated since, so the live database decides, with one read-only check.
       const result = parseJson((await this.wr(['d1', 'execute', 'DB', '--remote', '--command', 'SELECT name FROM d1_migrations ORDER BY name', '--json'])).stdout, 'Applied Singing migrations');
       ensure(Array.isArray(result) && result.every((r) => r.success && Array.isArray(r.results)), 'Could not check applied migrations. Use Full setup / deployment (menu 2).');
       const applied = result.flatMap((r) => r.results.map((row) => row.name)).sort();

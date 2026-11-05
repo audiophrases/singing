@@ -20,9 +20,19 @@ finishes the local record and health checks without publishing that version agai
 The dedicated **`deploy-fast.bat`** publishes without asking you to type `DEPLOY`.
 Fast updates validate the Cloudflare account and live Singing bindings, preserve
 variables/routes through version upload and promotion, and check for concurrent
-releases. Changed database migrations, Worker configuration or shared identity
-integration require the full deployment path. An older saved deployment gets a
-one-time read-only check of its applied migration names before fast updates.
+releases. Changed Worker configuration or shared identity integration require the
+full deployment path. When the migrations differ from the ones this computer last
+recorded, a fast update asks the live database, read-only, for the applied names: if
+they all match it carries on, and if not it stops so the full path can apply them.
+
+### Working from two computers
+
+Either computer can deploy without the other being on. `.deployment/` stays local to
+each computer, so a saved record only says what that computer last did, and the
+checks that matter ask Cloudflare or GitHub instead. Both kinds of deployment refuse
+to publish anything that is not GitHub's `main`: uncommitted changes, unpushed
+commits, or a computer that is behind GitHub. That keeps one computer from undoing
+the other's work on the live site. Pull when you sit down, push before you deploy.
 
 For first setup, install **Node.js 22 or later** (including npm) and **Git for
 Windows**, then choose **2: Full setup / deployment** in **`deploy.bat`**. There

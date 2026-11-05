@@ -87,7 +87,13 @@ async function fixture(t, setup = () => {}) {
     world.writes.push({ kind, worker });
   };
   const run = async (command, argv, options) => {
-    assert.equal(command, process.execPath, 'all subprocess calls in this harness must target the pinned Node CLI');
+    if (command === 'git') {
+      if (argv[0] === 'fetch') { assert.deepEqual(argv, ['fetch', 'origin', 'main']); return world.fetchError ? failure(world.fetchError) : success(); }
+      if (argv[0] === 'status') return success(world.edited || '');
+      assert.deepEqual(argv, ['rev-list', '--left-right', '--count', 'origin/main...HEAD']);
+      return success(world.commits || '0\t0\n');
+    }
+    assert.equal(command, process.execPath, 'all subprocess calls in this harness except git must target the pinned Node CLI');
     assert.equal(argv[0], path.join(root, 'node_modules/wrangler/bin/wrangler.js'));
     assert.equal(options.env.CLOUDFLARE_ACCOUNT_ID, accountId);
     assert.equal(options.env.NO_COLOR, '1');
@@ -360,13 +366,56 @@ test('fast update requires completed setup and skips uploading identical code', 
   assert(world.calls.every((call) => call.worker === 'singing'));
 });
 
-test('fast update refuses changed migrations, config and shared identity before any remote writes', async (t) => {
-  for (const change of ['migration', 'config', 'identity']) {
+test('a record the other computer left behind only needs the live database to agree', async (t) => {
+  const { world, load } = await fixture(t);
+  const setup = await load(); await setup.deploy({ yes: true });
+  setup.state.schemaFingerprint = 'from-before-the-other-computer-migrated'; await setup.checkpoint();
+  // The other computer has released since, so the live version is not the recorded one.
+  const number = world.sequence++, id = uuid(number);
+  world.workers.singing.versions.push(singingVersion(id, number)); world.workers.singing.active = id;
+  world.writes = []; world.calls = []; world.fingerprint = 'new-site';
+  await (await load()).update({ yes: true });
+  assert.deepEqual(world.calls.filter(({ args }) => args[0] === 'd1').map(({ args }) => args[1]), ['execute'], 'one read, no migration');
+  assert.deepEqual(world.writes.map((w) => [w.kind, w.worker]), [['upload', 'singing'], ['promotion', 'singing']]);
+  world.calls = [];
+  await (await load()).update({ yes: true });
+  assert(!world.calls.some(({ args }) => args[0] === 'd1'), 'the record is current again');
+});
+
+test('a migration the live database does not have stops a fast update before any remote writes', async (t) => {
+  const { root, world, load } = await fixture(t);
+  await (await load()).deploy({ yes: true }); world.writes = []; world.fingerprint = 'new-site';
+  await writeFile(path.join(root, 'cloudflare/migrations/0005_new.sql'), 'CREATE TABLE extra (id TEXT);');
+  await assert.rejects((await load()).update({ yes: true }), /Unapplied or missing.*Full setup/);
+  assert.deepEqual(world.writes, []);
+});
+
+test('neither computer can publish code that is not on GitHub', async (t) => {
+  for (const [name, change, message] of [
+    ['behind', { commits: '2\t0\n' }, /2 commits behind GitHub.*git pull/],
+    ['one behind', { commits: '1\t0\n' }, /1 commit behind GitHub/],
+    ['diverged', { commits: '1\t1\n' }, /behind GitHub.*git pull/],
+    ['not pushed', { commits: '0\t3\n' }, /3 commits not pushed.*git push/],
+    ['not committed', { edited: ' M js/main.js\n' }, /not committed/],
+    ['GitHub unreachable', { fetchError: 'fatal: unable to access' }, /Git fetch failed/],
+  ]) {
+    await t.test(name, async (subtest) => {
+      const { world, load } = await fixture(subtest);
+      await (await load()).deploy({ yes: true });
+      Object.assign(world, change, { writes: [], calls: [], builds: 0, fingerprint: 'new-site' });
+      await assert.rejects((await load()).update({ yes: true }), message);
+      await assert.rejects((await load()).deploy({ yes: true }), message);
+      assert.equal(world.builds, 0); assert.deepEqual(world.writes, []); assert.deepEqual(world.calls, []);
+    });
+  }
+});
+
+test('fast update refuses changed config and shared identity before any remote writes', async (t) => {
+  for (const change of ['config', 'identity']) {
     await t.test(change, async (subtest) => {
       const { root, world, load } = await fixture(subtest);
       await (await load()).deploy({ yes: true }); world.writes = []; world.calls = [];
       const update = await load();
-      if (change === 'migration') await writeFile(path.join(root, 'cloudflare/migrations/0003_new.sql'), 'CREATE TABLE extra (id TEXT);');
       if (change === 'config') update.base.compatibility_date = '2026-10-22';
       if (change === 'identity') await writeFile(path.join(root, 'integrations/pinplay-classroom.patch'), 'changed identity integration');
       await assert.rejects(update.update({ yes: true }), /Full setup/);
