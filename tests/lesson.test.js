@@ -706,6 +706,8 @@ test('the prompt asks for depth over numbers, and for content that stays on the 
   assert.match(agent, /Only the gaps and the cards have a minimum/);
   assert.match(agent, /every gap set has at least 8 gaps and every level has at least 8 cards/);
   assert.match(agent, /none opens with a label/);
+  assert.match(agent, /at least 3 kinds are used and no kind takes more than half/);
+  assert.match(agent, /No word is a gap in two sets, and the high level's gaps test word choice/);
   const count = (name) => planBatches({ ai: 'agent' }).flatMap((b) => b.parts).filter((p) => p.includes(name)).reduce((n, p) => n + parseInt(p, 10), 0);
   assert.equal(count('"swaps"'), 14);
   assert.equal(count('"cards"'), 36);
@@ -719,9 +721,14 @@ test('the prompt asks for depth over numbers, and for content that stays on the 
     assert.match(prompt, /not a literature class/);
     assert.match(prompt, /at least 8 gaps, spread from the first verse to the last/);
     assert.match(prompt, /widen it rather than send a short set/);
+    assert.match(prompt, /a word can be a gap in only one set, and each level trains something different/);
+    assert.match(prompt, /The high level tests word choice/);
+    assert.match(prompt, /in simple words for that level, with no grammar terms/);
     assert.match(prompt, /Write at least 8 for each level/);
     assert.match(prompt, /most use a frame copied from its lyrics/);
     assert.match(prompt, /no more than 2 cards may share one/);
+    assert.match(prompt, /Vary the themes too/);
+    assert.match(prompt, /each level uses at least 3 kinds, and no kind takes more than half its cards/);
     assert.match(prompt, /Never open a card with a label/);
     assert.doesNotMatch(prompt, /new in a group/, 'an example of one situation became the subject of all 18 cards');
     assert.match(prompt, /All pronunciation in the pack is General American/);
