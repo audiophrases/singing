@@ -592,7 +592,7 @@ const CLEAN = [
 
 test('the clean version masks the word and says when to drop the singer', () => {
   const t = timelineFromSynced(JSON.parse(JSON.stringify(CLEAN)), 15);
-  const spans = cleanTimeline(t, { clean: [{ words: 'damn' }] });
+  const spans = cleanTimeline(t, { clean: [{ words: 'damn' }], cleanOn: true });
   assert.equal(spans.length, 2, 'wherever it is sung');
   assert.deepEqual(spans.map(([a, b]) => [Math.round(a * 100) / 100, Math.round(b * 100) / 100]), [[1.45, 2.12], [10.45, 11.12]]);
   assert.equal(t.lines[0].text, 'You are so d*** special');
@@ -603,19 +603,30 @@ test('the clean version masks the word and says when to drop the singer', () => 
   assert.equal(t.lines[0].notes.find((n) => n.start === 1.5).text, '', 'Pitch Pal does not show it either');
 });
 
-test('the clean version: off, empty, a word over two notes, and spans that touch', () => {
+test('the clean version: off until ticked, empty, a word over two notes, and spans that touch', () => {
   const raw = () => timelineFromSynced(JSON.parse(JSON.stringify(CLEAN)), 15);
   assert.deepEqual(cleanTimeline(raw(), null), []);
-  assert.deepEqual(cleanTimeline(raw(), { clean: [] }), []);
+  assert.deepEqual(cleanTimeline(raw(), { clean: [], cleanOn: true }), []);
   const off = raw();
-  assert.deepEqual(cleanTimeline(off, { clean: [{ words: 'damn' }], cleanOff: true }), []);
-  assert.equal(off.lines[0].text, 'You are so damn special', 'switched off: nothing is masked');
+  assert.deepEqual(cleanTimeline(off, { clean: [{ words: 'damn' }] }), [], 'the list alone changes nothing');
+  assert.equal(off.lines[0].text, 'You are so damn special', 'not ticked: nothing is masked');
   const two = raw();
-  assert.equal(cleanTimeline(two, { clean: [{ words: 'special' }] }).length, 2);
+  assert.equal(cleanTimeline(two, { clean: [{ words: 'special' }], cleanOn: true }).length, 2);
   assert.equal(two.lines[0].text, 'You are so damn s******');
   assert.deepEqual(two.lines[0].words[4].syllables.map((s) => s.text), ['s**', '****']);
   const together = raw();
-  assert.equal(cleanTimeline(together, { clean: [{ words: 'damn' }, { words: 'special' }] }).length, 2, 'next to each other they are one span');
+  assert.equal(cleanTimeline(together, { clean: [{ words: 'damn' }, { words: 'special' }], cleanOn: true }).length, 2, 'next to each other they are one span');
+});
+
+test('an AI reply leaves the clean version off, and a tick lasts through saving, batches and a new import', () => {
+  const t = timelineFromSynced(JSON.parse(JSON.stringify(CLEAN)), 15);
+  const pack = readPack(reply({ clean: [{ words: 'damn' }] }), t).pack;
+  assert.equal(pack.cleanOn, undefined, 'the AI only suggests the words');
+  assert.deepEqual(cleanTimeline(t, pack), []);
+  const ticked = { ...pack, cleanOn: true };
+  assert.equal(applyPack({ id: 'x', source: 'audio', synced: CLEAN }, ticked, t).lesson.cleanOn, true, 'saved with the song');
+  assert.equal(mergePacks(ticked, { clean: [{ words: 'special' }] }).cleanOn, true, 'the next batch');
+  assert.equal(readPack(JSON.stringify(ticked), t).pack.cleanOn, true, 'downloaded and opened again');
 });
 
 test('words for the clean list are read from the reply and can be added by hand', () => {
@@ -629,13 +640,13 @@ test('words for the clean list are read from the reply and can be added by hand'
   assert.equal(pack.clean.length, 1, 'added once');
   assert.equal(addCleanWord(pack, t, 'zebra'), 0);
   assert.equal(pack.clean.length, 1);
-  assert.equal(mergePacks({ clean: [{ words: 'damn' }] }, { cleanOff: true, clean: [{ words: 'Damn' }] }).clean.length, 1);
+  assert.equal(mergePacks({ clean: [{ words: 'damn' }] }, { cleanOn: true, clean: [{ words: 'Damn' }] }).clean.length, 1);
 });
 
 test('a masked word never becomes a gap, and anchors to it drop out', () => {
   const t = timelineFromSynced(JSON.parse(JSON.stringify(CLEAN)), 15);
   const pack = readPack(reply({ clean: [{ words: 'damn' }], popups: [{ line: 1, words: 'damn', text: 'A note' }, { line: 1, words: 'special', text: 'Kept' }] }), t).pack;
-  cleanTimeline(t, pack);
+  cleanTimeline(t, { ...pack, cleanOn: true });
   for (const mode of ['easy', 'medium', 'hard', 'all']) {
     for (const seed of [1, 2, 3]) {
       for (const [index, set] of pickGaps(t, { mode, seed })) for (const wi of set) assert.ok(!t.lines[index].words[wi].text.includes('*'), mode);

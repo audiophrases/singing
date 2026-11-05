@@ -335,7 +335,10 @@ module.exports = async (browser, base) => {
   await teacher.getByText('“zebra” is not in the lyrics.').waitFor();
   await teacher.getByLabel('Add a word to clean').fill('world');
   await teacher.getByRole('button', { name: 'Add a word' }).click();
-  await teacher.getByRole('checkbox', { name: 'Play the clean version' }).waitFor();
+  const cleanBox = teacher.getByRole('checkbox', { name: 'Play the clean version' });
+  await cleanBox.waitFor();
+  assert.equal(await cleanBox.isChecked(), false, 'the clean version waits for the teacher to tick it');
+  await cleanBox.click();
   await teacher.getByRole('button', { name: 'Save with the song' }).click();
   await teacher.waitForURL(/#\/song\//);
   const heard = await teacher.evaluate(async (songId) => {
@@ -369,7 +372,7 @@ module.exports = async (browser, base) => {
   await go(`#/lesson/${recording}`);
   await teacher.getByRole('button', { name: 'Copy the prompt' }).click();
   assert.match(await clipboard(), /L1 Hello world/, 'the AI still reads the real lyrics');
-  ok('Clean version: masked on screen, and on real audio the karaoke track takes over for exactly that word');
+  ok('Clean version: off until ticked, then masked on screen, and on real audio the karaoke track takes over for exactly that word');
 
   // ---------------------------------------- an assignment on a gap set
   await go('#/assignments');

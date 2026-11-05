@@ -416,7 +416,7 @@ test('a lesson pack saves with the song, and its teacher section stays with the 
 test('a clean version reaches students, and the server marks the same gaps their browser shows', async () => {
   const alice = await login('alice'); const student = await login('student'); const { id: songId } = await song(alice);
   const assets = { audio: await upload(alice, songId), karaoke: await upload(alice, songId, 'karaoke') };
-  const lesson = { format: 'singing-lesson-pack', version: 1, teacher: { notes: 'Private plan' }, clean: [{ words: 'damn' }] };
+  const lesson = { format: 'singing-lesson-pack', version: 1, teacher: { notes: 'Private plan' }, clean: [{ words: 'damn' }], cleanOn: true };
   // Every line ends on the masked word: the word the easy level would hide first.
   const synced = ['So damn', 'You are damn', 'Sing it damn', 'Hold on damn'].map((text, i) => ({ text, start: i * 3, end: i * 3 + 2 }));
   assert.equal((await call(`/api/songs/${songId}/commit`, { session: alice, method: 'POST', body: { baseRevision: 0, assets, song: { title: 'Clean song', source: 'audio', lesson, synced }, rightsConfirmed: true } })).status, 200);
@@ -425,6 +425,7 @@ test('a clean version reaches students, and the server marks the same gaps their
   const started = await call(`/api/units/${units[0].id}/start`, { session: student, method: 'POST', body: {} });
   const attempt = await call(`/api/attempts/${started.data.attemptId}`, { session: student });
   assert.deepEqual(attempt.data.song.lesson.clean, lesson.clean, 'students get the clean version');
+  assert.equal(attempt.data.song.lesson.cleanOn, true, 'and the tick that turns it on');
   assert.equal('teacher' in attempt.data.song.lesson, false);
   // What the student's browser does: mask, then pick the gaps.
   const timeline = timelineFromSynced(attempt.data.song.synced, 0);

@@ -163,13 +163,14 @@ and slowest lines. So it can plan vowel work on held notes, warn about fast line
 and about stress the melody bends, and choose where to pause. Band songs send
 the same facts from their score; songs timed by line get line timing only.
 
-**Clean version:** on a recording, words on the pack's clean list are masked on
-screen and on paper, and the singer drops out on them while the music plays on,
-because the karaoke version takes over for that moment. Without a karaoke version
-all the sound dips for the word instead, and a video can only mask its lyrics. The
-AI suggests the words, and teachers can add their own. Word times are exact with
-an UltraStar file and estimated with line timing. Masked words never become gaps,
-and the server masks them too, so homework is marked on what students saw.
+**Clean version:** off until the teacher ticks it on the song's pack page, and it
+then applies to everyone who plays the song. On a recording, words on the pack's
+clean list are masked on screen and on paper, and the singer drops out on them while
+the music plays on, because the karaoke version takes over for that moment. Without
+a karaoke version all the sound dips for the word instead, and a video can only mask
+its lyrics. The AI suggests the words, and teachers can add their own. Word times
+are exact with an UltraStar file and estimated with line timing. Masked words never
+become gaps, and the server masks them too, so homework is marked on what students saw.
 
 Students and the public player receive the pack without its teacher section, and
 share links leave the pack out. A pack belongs to one saved version of a song: if

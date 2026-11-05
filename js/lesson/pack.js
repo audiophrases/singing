@@ -18,6 +18,7 @@
  * Teacher-only material lives under pack.teacher: the Worker removes it from
  * the copies students and the public player receive (cloudflare/songs.js).
  * pack.clean is not teacher-only, because students must get the clean version.
+ * It only runs once the teacher ticks it (pack.cleanOn): the AI's list is a suggestion.
  *
  * This module runs in the browser and in the Worker: no DOM here.
  */
@@ -199,7 +200,7 @@ function uniqueId(raw, taken) {
   return id;
 }
 
-const SECTIONS = ['format', 'version', 'batch', 'progress', 'song', 'profile', 'teacher', 'clean', 'cleanOff', 'lines', 'words', 'popups', 'hunts', 'gapSets', 'swaps', 'stops', 'quiz', 'cards', 'pairs', 'moves', 'say', 'echo', 'chant'];
+const SECTIONS = ['format', 'version', 'batch', 'progress', 'song', 'profile', 'teacher', 'clean', 'cleanOn', 'lines', 'words', 'popups', 'hunts', 'gapSets', 'swaps', 'stops', 'quiz', 'cards', 'pairs', 'moves', 'say', 'echo', 'chant'];
 
 /*
  * text: the AI's reply. -> { pack, batch, problems, moved, fatal, cut }
@@ -377,7 +378,7 @@ export function readPack(text, timeline, { title = '' } = {}) {
   });
   const teacher = compact({ levelWhy: str(rawTeacher.levelWhy, 400), notes: str(rawTeacher.notes, 1600), cautions });
 
-  const pack = compact({ format: PACK_FORMAT, version: PACK_VERSION, profile, teacher, clean, cleanOff: raw.cleanOff === true ? true : '', lines, words, popups, hunts, gapSets, swaps, stops, quiz, cards, pairs, moves, say, echo, chant });
+  const pack = compact({ format: PACK_FORMAT, version: PACK_VERSION, profile, teacher, clean, cleanOn: raw.cleanOn === true ? true : '', lines, words, popups, hunts, gapSets, swaps, stops, quiz, cards, pairs, moves, say, echo, chant });
   for (const empty of ['profile', 'teacher']) if (pack[empty] && !Object.keys(pack[empty]).length) delete pack[empty];
   if (!Object.keys(pack).some((k) => k !== 'format' && k !== 'version')) {
     return { pack: null, problems: c.problems, moved: c.moved, fatal: 'Nothing in this reply can be used. See the list below.' };
@@ -419,7 +420,7 @@ export function mergePacks(a, b) {
     profile: { ...a.profile, ...b.profile },
     teacher: compact({ ...a.teacher, ...b.teacher, cautions: joined(a.teacher?.cautions, b.teacher?.cautions, (c) => c.note) }),
     clean: joined(a.clean, b.clean, (c) => quoted(c.words).join(' ')),
-    cleanOff: a.cleanOff || b.cleanOff || '',
+    cleanOn: a.cleanOn || b.cleanOn || '',
     lines: [...lines.values()].sort((x, y) => x.line - y.line),
     words: joined(a.words, b.words, (w) => normWord(w.word)),
     popups: joined(a.popups, b.popups, (p) => `${spot(p)}|${p.text}`),
@@ -453,14 +454,15 @@ function maskWord(word) {
 }
 
 /*
- * The clean version of a recording: masks pack.clean's words in the timeline,
- * wherever they are sung, and returns when to take the singer away:
+ * The clean version of a recording, once the teacher has ticked it (pack.cleanOn):
+ * masks pack.clean's words in the timeline, wherever they are sung, and returns
+ * when to take the singer away:
  * [[start, end]] in seconds. The browser's track and the Worker's marking both
  * call this, so they pick the same gaps from the same words. It changes the
  * timeline it gets: read the raw lyrics from a timeline that has not been here.
  */
 export function cleanTimeline(timeline, lesson) {
-  if (!lesson?.clean?.length || lesson.cleanOff) return [];
+  if (!lesson?.clean?.length || !lesson.cleanOn) return [];
   const spans = [];
   for (const line of sungLines(timeline)) {
     const hide = new Set();

@@ -211,16 +211,16 @@ export async function render(el, { id }) {
 
   const changed = () => { edited = true; setLessonDraft(song.id, working); drawBatches(); drawClean(); drawReview(); };
 
-  // The words the singer drops out on.
+  // The words the singer drops out on, once the teacher ticks the clean version.
   const cleanArea = h('div');
   const saveBtn = h('button', { class: 'btn primary btn-lg', type: 'button', onclick: () => save() }, '💾 Save with the song');
   function drawClean() {
     clear(cleanArea);
     if (!recording) return;
     const words = working?.clean || [];
-    const on = h('input', { type: 'checkbox', checked: !working?.cleanOff });
+    const on = h('input', { type: 'checkbox', checked: !!working?.cleanOn });
     on.addEventListener('change', () => {
-      if (on.checked) delete working.cleanOff; else working.cleanOff = true;
+      if (on.checked) working.cleanOn = true; else delete working.cleanOn;
       changed();
     });
     const newWord = h('input', { type: 'text', maxlength: 60, placeholder: 'A word from the lyrics', 'aria-label': 'Add a word to clean' });
@@ -237,10 +237,10 @@ export async function render(el, { id }) {
     newWord.addEventListener('keydown', (e) => { if (e.key === 'Enter') addWord(); });
     const stems = !!song.karaoke || !!song.audio?.stems;
     const note = song.source !== 'audio'
-      ? 'Words are masked on screen. A video or a song without audio cannot drop the singer.'
-      : !stems ? 'This song has no karaoke version, so all the sound drops out for these words. Add a karaoke version and only the singer does.'
-        : melody ? 'The singer drops out on these words and the music keeps playing. They are masked on screen too, for everyone who plays the song.'
-          : 'The singer drops out on these words and the music keeps playing, but this song only has line timing, so word times are estimates. Listen to check them; an UltraStar file makes them exact.';
+      ? 'When it is on, words are masked on screen. A video or a song without audio cannot drop the singer.'
+      : !stems ? 'When it is on, all the sound drops out for these words, because this song has no karaoke version. Add a karaoke version and only the singer does.'
+        : melody ? 'When it is on, the singer drops out on these words and the music keeps playing. They are masked on screen too, for everyone who plays the song.'
+          : 'When it is on, the singer drops out on these words and the music keeps playing, but this song only has line timing, so word times are estimates. Listen to check them; an UltraStar file makes them exact.';
     add(cleanArea,
       h('h3', { class: 'section-title' }, '🧼 Clean version'),
       h('p', { class: 'small' }, note),

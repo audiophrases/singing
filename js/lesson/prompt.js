@@ -355,7 +355,7 @@ ${lyricsBlock(timeline)}`,
 
 "teacher": only teachers see this. levelWhy says why you rated the song as you did. notes are 3 to 5 sentences on what the song is good for and what to watch. cautions are the content warnings: severity is mild or serious, and words may be left out when the whole line is the problem.
 
-"clean": words a school would not want sung in class: swear words, slurs, explicit words. Quote each word once, and leave the list empty when there are none. Singing takes the singer's voice off exactly those words and masks them on screen. Never use a clean word anywhere else in the pack: not in any other section, not in a translation, not in a question.
+"clean": words a school would not want sung in class: swear words, slurs, explicit words. Quote each word once, and leave the list empty when there are none. If the teacher turns on the clean version, Singing takes the singer's voice off exactly those words and masks them on screen. Never use a clean word anywhere else in the pack: not in any other section, not in a translation, not in a question.
 
 "lines": one entry for each different line, in order. Skip lines that are only sounds or a word or two (oh, ooh, yeah).${pictures ? ' The song has pictures already, so leave out emoji.' : ' emoji is a picture for the line, shown huge while it is sung.'}${translated ? ` translation is natural ${klass.language}, not word for word.` : ''} plain says the line in simple English, and matters most for metaphors.
 
