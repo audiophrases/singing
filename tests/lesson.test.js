@@ -359,6 +359,7 @@ test('UltraStar: the AI gets measured facts, not the raw file', () => {
   assert.match(prompt, /world\(G4 1\.0 LONG GOLD\)/);
   assert.match(prompt, /It's\(C4 \.3\) ve\(C4 \.3\)-ry\(C4 \.3\) fast/);
   assert.doesNotMatch(prompt, /#BPM|#GAP/);
+  assert.match(prompt, /never write GOLD, syl\/s, semitones/, 'students read the tips: the rows are for the AI');
 });
 
 test('rests, jumps and held notes reach the facts', () => {
@@ -701,6 +702,10 @@ test('the prompt asks for depth over numbers, and for content that stays on the 
   assert.match(agent, /ceilings .*not quotas/);
   assert.doesNotMatch(agent, /reaches the count|are minimums/, 'an agent that must reach every count fills it with weak items');
   assert.match(agent, /nothing is there only to reach a number/);
+  assert.doesNotMatch(agent, /ends well short/, 'it left 2 gaps for a whole song');
+  assert.match(agent, /Only the gaps and the cards have a minimum/);
+  assert.match(agent, /every gap set has at least 8 gaps and every level has at least 8 cards/);
+  assert.match(agent, /none opens with a label/);
   const count = (name) => planBatches({ ai: 'agent' }).flatMap((b) => b.parts).filter((p) => p.includes(name)).reduce((n, p) => n + parseInt(p, 10), 0);
   assert.equal(count('"swaps"'), 14);
   assert.equal(count('"cards"'), 36);
@@ -712,6 +717,16 @@ test('the prompt asks for depth over numbers, and for content that stays on the 
     assert.match(prompt, /one side of each pair comes from the lyrics/);
     assert.match(prompt, /differ in exactly one sound/);
     assert.match(prompt, /not a literature class/);
+    assert.match(prompt, /at least 8 gaps, spread from the first verse to the last/);
+    assert.match(prompt, /widen it rather than send a short set/);
+    assert.match(prompt, /Write at least 8 for each level/);
+    assert.match(prompt, /most use a frame copied from its lyrics/);
+    assert.match(prompt, /no more than 2 cards may share one/);
+    assert.match(prompt, /Never open a card with a label/);
+    assert.doesNotMatch(prompt, /new in a group/, 'an example of one situation became the subject of all 18 cards');
+    assert.match(prompt, /All pronunciation in the pack is General American/);
+    assert.match(prompt, /Serious is for what a teacher may not want in class at all: strong swearing, explicit sex, drug use, heavy drinking/);
+    assert.match(prompt, /A figurative, historical or story image of death, war or religion is mild/);
   }
   assert.match(buildPrompt(song, timeline, {}), /If you are short, write more/, 'a chatbot still has to be pushed: unpushed, it sent 4 of 16 questions');
 });

@@ -183,7 +183,11 @@ module.exports = async (browser, base) => {
   await stage.getByText('Did you go? Not: Did you went?').waitFor();
   assert.equal(await stage.locator('.hunt-line').filter({ hasText: /a crazy day/i }).count(), 0, 'a line the set leaves out is not on the board');
   assert.equal(await stage.locator('.hunt-line').filter({ hasText: /crazy, crazy day/i }).count(), 1, 'a line that is only similar stays');
-  ok('Grammar hunt: judged in context, explains each find, and can hide a line');
+  await stage.locator('.hunt-line').filter({ hasText: 'What did you do' }).getByRole('button', { name: 'do', exact: true }).click();
+  for (const [line, word] of [['Did you see?', 'see?'], ['Did you eat?', 'eat?'], ['Did you have fun?', 'have']]) await stage.locator('.hunt-line').filter({ hasText: line }).getByRole('button', { name: word, exact: true }).click();
+  await teacher.locator('.result-card').waitFor();
+  assert.match(await teacher.locator('.result-card').innerText(), /5 words found\. 💡 Did you have fun\? Not: Did you had fun\?/, 'the end screen keeps the last explanation');
+  ok('Grammar hunt: judged in context, explains each find, can hide a line, and keeps the last explanation');
 
   await open('gapfill');
   assert.equal(await stage.getByLabel('Word focus').inputValue(), 'pack:chorus-verbs');
@@ -218,7 +222,8 @@ module.exports = async (browser, base) => {
   await start();
   await stage.locator('.quiz-opt').first().waitFor();
   // The song's level (A2) has no questions for before listening: A1's are played instead.
-  assert.match(await stage.locator('.quiz-text').innerText(), new RegExp(whole.quiz.filter((q) => q.when === 'before').map((q) => q.q.replace(/[.*+?^${}()|[]\]/g, '\$&')).join('|')));
+  const opening = await stage.locator('.quiz-text').innerText();
+  assert.ok(whole.quiz.some((q) => q.when === 'before' && q.q === opening), `a question for before listening, not "${opening}"`);
   await stage.locator('.quiz-opt').first().click();
   await stage.locator('.quiz-explain').waitFor();
   ok('Song quiz: levels, before-listening questions, and an explanation');

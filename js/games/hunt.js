@@ -83,7 +83,9 @@ export async function start(ctx) {
       counter.textContent = `${cat.emoji} ${cat.name}: ${got} / ${total}`;
       if (total && got === total) {
         confetti();
-        setTimeout(() => ctx.finish({ score: score.value, max: total * 10, emoji: '🔎', title: 'All found!', text: set ? `${total} words found.` : `${total} ${cat.name.toLowerCase()} found.`, stars: score.value >= total * 9 ? 3 : score.value >= total * 6 ? 2 : 1 }), 900);
+        // The end screen replaces the board, and the last find's explanation would go with it.
+        const last = why.textContent ? ` ${why.textContent}` : '';
+        setTimeout(() => ctx.finish({ score: score.value, max: total * 10, emoji: '🔎', title: 'All found!', text: set ? `${total} words found.${last}` : `${total} ${cat.name.toLowerCase()} found.`, stars: score.value >= total * 9 ? 3 : score.value >= total * 6 ? 2 : 1 }), 900);
       }
     };
     function clickWord(tk) {

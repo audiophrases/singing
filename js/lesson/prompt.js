@@ -217,7 +217,8 @@ Use the melody as evidence for the singing and pronunciation work:
 - Fast lines (above about 4 syl/s) force contractions, weak forms and linking. These lines need a "say" tip or a "popups" note, and they should come late in "echo".
 - Stress clash: when a long, high or GOLD note falls on a syllable that is weak in normal speech, warn in "say" that this stress belongs to the song, not to speech.
 - A "|" rest is a natural chunk and a breath. Stopping just after a rest makes the best "stops", and chunks between rests are what to teach in "echo".
-- Start "echo" with the slow, repeated lines with a narrow range. Leave the big jumps and fast lines for last.`;
+- Start "echo" with the slow, repeated lines with a narrow range. Leave the big jumps and fast lines for last.
+- These rows are for you alone. Students read what you write in "say", "echo" and "popups", so say "the long note" or "the high note", and never write GOLD, syl/s, semitones, note names or seconds.`;
 }
 
 // The words of Singing's own false friends list that these lyrics sing.
@@ -387,11 +388,13 @@ ${lyricsBlock(timeline)}`,
 4. Find the "song English": places where the lyrics bend the rules (ain't, double negatives, dropped subjects, "me and you was", "gonna"). Learners who copy these get marked wrong, so point them out without shaming the song.
 5. Check the content: anything about sex, drugs, alcohol, violence, self-harm or religion that a teacher should see before pressing play. Do not build activities on a line with a serious caution.`,
     `# What each section is for
+All pronunciation in the pack is General American, whatever accent the singer has: "ipa", "say", "swaps" and sound notes in "popups". Use the same symbols throughout.
+
 "song": the title and the number of sung lines (${sung.length}), so the app can catch a pack pasted on the wrong song.
 
 "profile": goes on the song's page. level is one of ${LEVELS.join(', ')}. grammar and themes are short labels. vocab is up to 16 key words or chunks. summary is one or two plain sentences that students can read.
 
-"teacher": only teachers see this. levelWhy says why you rated the song as you did. notes are 3 to 5 sentences on what the song is good for and what to watch. cautions are the content warnings: severity is mild or serious, and words may be left out when the whole line is the problem.
+"teacher": only teachers see this. levelWhy says why you rated the song as you did. notes are 3 to 5 sentences on what the song is good for and what to watch. cautions are the content warnings: severity is mild or serious, and words may be left out when the whole line is the problem. Serious is for what a teacher may not want in class at all: strong swearing, explicit sex, drug use, heavy drinking, self-harm, graphic violence. A figurative, historical or story image of death, war or religion is mild, even when it sounds dark, such as a fallen king's head on a plate.
 
 "clean": words a school would not want sung in class: swear words, slurs, explicit words. Quote each word once, and leave the list empty when there are none. If the teacher turns on the clean version, Singing takes the singer's voice off exactly those words and masks them on screen. Never use a clean word anywhere else in the pack: not in any other section, not in a translation, not in a question.
 
@@ -401,7 +404,7 @@ ${lyricsBlock(timeline)}`,
 
 "popups": notes that appear during Karaoke beside the highlighted words, while the line is sung. Students have seconds, so stay under 90 characters. kind is one of ${Object.keys(POPUP_KINDS).join(', ')}.
 
-"gapSets": for Fill the gaps, Choose the word and the worksheet. Each set trains one thing. words is one word per gap. options are 2 wrong answers that show a real mistake learners make, not random words. Each option must be wrong in that sentence: never offer a form that is correct or acceptable, even informally or in formal English. why explains the right answer in one sentence.
+"gapSets": for Fill the gaps, Choose the word and the worksheet. The game plays the whole song and ends with it, so a set needs at least 8 gaps, spread from the first verse to the last. Each set trains one thing, but that can be broad: past verbs, the song's key words, collocations. If a narrow point cannot reach 8 gaps, widen it rather than send a short set, and write fewer sets if you need to. words is one word per gap. options are 2 wrong answers that show a real mistake learners make, not random words. Each option must be wrong in that sentence: never offer a form that is correct or acceptable, even informally or in formal English. why explains the right answer in one sentence.
 
 "swaps": for Wrong word. The lyrics appear with one word replaced, and students click it while they listen, so this is about sound only. Use at most one on a line. words is the real word and wrong replaces it. wrong must sound very close to the real word and be a mishearing these students really make: a minimal pair, where the two words differ in exactly one sound, and it is a sound these students really confuse. A word that only looks similar or means something similar does not count. why names the two sounds being confused. If you cannot name them, leave the swap out.
 
@@ -411,7 +414,7 @@ ${lyricsBlock(timeline)}`,
 
 "quiz": for Song quiz. when "before" questions come before the first listen and predict or activate knowledge, so they must not need the song. when "after" questions check understanding and inference. answer is the right answer and wrong holds 2 or 3 wrong ones of the same style and length. line is the line that holds the answer: a Listen button replays exactly that line. explain appears after answering.
 
-"cards": for Hot mic. The class passes an object while the music plays; whoever holds it when the music stops gets a card on the projector. kind is one of ${CARD_KINDS.join(', ')}. Cards must make students produce language about their own lives, not recall the song. Every card starts from this song: a frame copied from its lyrics ("If it rains, I will...") or one of its themes. When a theme is too heavy to share in class, take a lighter angle on the same theme (belonging can become being new in a group), not an unrelated topic such as hobbies. Never write "you may pass" or "real or invented" on a card: teachers handle that. answer is an optional model answer. Keep body under 140 characters.
+"cards": for Hot mic. The class passes an object while the music plays; whoever holds it when the music stops gets a card on the projector. kind is one of ${CARD_KINDS.join(', ')}. Cards must make students produce language about their own lives, not recall the song. Write at least 8 for each level. Every card starts from this song, and most use a frame copied from its lyrics ("If it rains, I will..."): look through all the lyrics for sentence starts a student could finish about their own life. The rest take one of its themes. When a theme is too heavy to share in class, take a lighter angle on it, not an unrelated topic such as hobbies. Vary the situations, such as home, friends, school, memories and plans: at each level, no more than 2 cards may share one. Never open a card with a label such as "Trust:" or "Power:": write a natural question or task. Never write "you may pass" or "real or invented" on a card: teachers handle that. answer is an optional model answer. Keep body under 140 characters.
 
 "pairs": memory card sets, at least 3 pairs each. Ideas: word and meaning, phrasal verb and synonym, base and past form, English and the first language, two halves of a collocation, real rhymes that do not look alike. At every level, one side of each pair comes from the lyrics: a word, chunk or form the song uses. New sentences and terms about language (inference, ambiguity) do not belong here. Keep each side under 40 characters.${translated ? ' In a set with the first language, "a" is the English side and the set has "translated": true: the cards are read aloud in an English voice, and this keeps the other side silent.' : ''}
 
@@ -427,7 +430,7 @@ ${lyricsBlock(timeline)}`,
 Work through this list in order, one section at a time:
 ${plan[0].parts.map((part) => `- ${part}`).join('\n')}
 
-These numbers are ceilings for a song with a lot in it, not quotas. Write what this song truly supports and stop there, even if a section ends well short: a weak item is worse than a missing one. Give every set its own "id". Keep the file under 300 KB.
+These numbers are ceilings for a song with a lot in it, not quotas. Write what this song truly supports and stop there: a weak item is worse than a missing one. Only the gaps and the cards have a minimum, given in their sections, because a class cannot play them with less. Give every set its own "id". Keep the file under 300 KB.
 
 Check every fact, name and pronunciation in a reliable source before you write it, and drop what you cannot check.
 
@@ -437,8 +440,8 @@ Before you finish, check the file. If you can run code, write a small script for
 3. "swaps" and "stops" have at most one item on a line.
 4. No wrong answer equals the right one, and none is correct in that sentence.
 5. No word from "clean" appears anywhere else in the file.
-6. No section goes over the count above, and nothing is there only to reach a number.
-7. Every hunt rule is one short sentence with no line numbers, and every card uses a frame or theme from this song.
+6. No section goes over the count above, nothing is there only to reach a number, every gap set has at least 8 gaps and every level has at least 8 cards.
+7. Every hunt rule is one short sentence with no line numbers. Most cards use a frame copied from this song, none opens with a label, and at each level no more than 2 share a situation.
 Then read the whole pack as the teacher would, cut anything you would not use in class, fix what the checks found, and only then finish.`
     : `# Batches
 ${plan.map(batchLine).join('\n')}

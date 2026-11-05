@@ -145,7 +145,7 @@ songs, choose **AI song pack**:
 | Lines | Pictures, translations and a "in simple English" view of the lyrics |
 | Words | Key word cards: meaning, translation, example, IPA; click to hear |
 | Pop-ups | Language notes in Karaoke, beside the highlighted words |
-| Hunts | Grammar hunt, judged word by word in context, explaining each find. A set can hide lines, such as one with a serious caution |
+| Hunts | Grammar hunt, judged word by word in context, explaining each find, the last one on the end screen. A set can hide lines, such as one with a serious caution |
 | Gap sets | Fill the gaps, Choose the word and worksheets; real mistakes as wrong answers. Can be assigned as homework, marked by the server |
 | Swaps | Wrong word: what learners with this first language really mishear |
 | Stops | Finish the line: the music stops before a word and asks a question |
