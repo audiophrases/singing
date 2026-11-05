@@ -22,6 +22,7 @@ import { sungLines } from '../music/timeline.js';
 import { lineSyllables } from '../lyrics/syllables.js';
 import { normWord } from '../lyrics/text.js';
 import { CARD_KINDS, CHANT_MOODS, LEVELS, PACK_FORMAT, PACK_VERSION, POPUP_KINDS } from './pack.js';
+import { findFalseFriends } from './false-friends.js';
 
 export const AGES = {
   kids: 'young learners (6 to 11): concrete, playful, nothing romantic',
@@ -219,6 +220,42 @@ Use the melody as evidence for the singing and pronunciation work:
 - Start "echo" with the slow, repeated lines with a narrow range. Leave the big jumps and fast lines for last.`;
 }
 
+// The words of Singing's own false friends list that these lyrics sing.
+export function lyricFalseFriends(timeline, language) {
+  const lines = distinctLines(timeline).map((x) => ({ number: x.number, words: x.line.words.map((w) => bare(w.text)) }));
+  return findFalseFriends(lines, language);
+}
+
+/*
+ * Singing finds the false friends, so the AI cannot invent them. It only judges
+ * them in their line, which a word list cannot, and writes the activities.
+ */
+function falseFriendsBlock(timeline, klass) {
+  const found = lyricFalseFriends(timeline, klass.language);
+  if (!found.length) return '';
+  const language = klass.language;
+  const rows = found.map((f) => `- ${f.spots.map((s) => `L${s.line} "${s.word}"`).join(', ')}: looks like ${language} "${f.looksLike}" (${f.looksLikeMeans}), but means: ${f.means}.`);
+  const [first] = found;
+  return `# False friends in these lyrics
+Singing compared the lyrics with its own list of English words that look like a ${language} word with a different meaning, and found these:
+
+${rows.join('\n')}
+
+Do not look for other false friends, and do not add any: this is the whole list. Read each word in its line and keep it only if a student at these levels, thinking of the ${language} word, would really misunderstand that line. Leave it out if the line uses a meaning the two words share, if the word is too well known to fool anyone at these levels, if it is on the "clean" list, or if its line has a serious caution. Leaving them all out is fine.
+
+For each word you keep, write these in the batch of each section, as part of its count:
+- "words": a card for it. Its meaning warns about the look-alike.
+- "popups": one with kind "false-friend" on that word, such as "${first.spots[0].word.toLowerCase()} = ${first.means.split(/[,;]/)[0]}, not ${first.looksLike}".
+- "quiz": one question with when "after" and "line": what does the word mean in this line? The meaning of the look-alike is one of the wrong answers.
+- "quiz": one question with when "after": a ${language} sentence that uses the look-alike, and which English sentence says the same thing. One wrong answer uses the false friend in correct English that means something else. For example, "Actualment visc a Girona." is "I currently live in Girona.", not "I actually live in Girona.".
+
+If you keep any, also write one "hunts" set named "False friends". Its rule asks students to find the words that could fool a ${language} speaker, and each "why" gives the real meaning.
+
+If you keep two or more, also write one "pairs" set with "translated": true and two pairs for each word: the false friend with its real ${language} meaning, and the English for the look-alike with the look-alike.
+
+${language} is allowed in all of these, because they compare the two languages.`;
+}
+
 // The level, and the one on each side: what the activities are written for.
 export function levelsAround(level) {
   const i = LEVELS.indexOf(level);
@@ -342,6 +379,7 @@ Every sung line has a number. "= L5" means the line repeats L5 word for word, so
 
 ${lyricsBlock(timeline)}`,
     timingBlock(song, timeline, klass),
+    falseFriendsBlock(timeline, klass),
     `# Think first (do not write this part down)
 1. What is the song really about? Is it a story, a plea, a list, a conversation? Which metaphors would a learner take literally?
 2. Profile the language line by line: tenses and aspect, modals, conditionals, clause types, phrasal verbs, collocations, idioms, fixed chunks, repeated frames.

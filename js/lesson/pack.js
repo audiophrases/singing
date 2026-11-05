@@ -32,7 +32,7 @@ export const LEVELS = ['Pre-A1', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 // here because those modules do not belong in the Worker; tests keep them equal.
 export const CHANT_MOODS = ['pop', 'folk', 'calm', 'rock', 'sad', 'reggae', 'march', 'disco', 'chant'];
 export const ACTIVITY_IDS = ['karaoke', 'echo', 'round', 'pitch', 'gapfill', 'choose', 'wrongword', 'order', 'bingo', 'finish', 'builder', 'hotmic', 'freeze', 'rhyme', 'hunt', 'speak', 'quiz'];
-export const POPUP_KINDS = { grammar: '🧩', word: '📖', sound: '👄', culture: '🌍', 'song-english': '🎸' };
+export const POPUP_KINDS = { grammar: '🧩', word: '📖', sound: '👄', culture: '🌍', 'song-english': '🎸', 'false-friend': '🎭' };
 export const CARD_KINDS = ['discuss', 'personal', 'roleplay', 'language', 'sing'];
 export const MAX_REPLY = 400 * 1024;
 

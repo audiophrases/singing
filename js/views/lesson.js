@@ -8,7 +8,7 @@ import { h, clear, add, toast, confirmDialog, debounce, openModal } from '../ui.
 import { getSong, saveUserSong, getSettings, setSettings, getLessonDraft, setLessonDraft } from '../store.js';
 import { songTimeline } from '../pinplay-export.js';
 import { LEVELS, PACK_FORMAT, PACK_VERSION, addCleanWord, applyPack, mergePacks, readPack, removePack, staleCount, POPUP_KINDS } from '../lesson/pack.js';
-import { AGES, AI_KINDS, BATCH_SIZE, CLASS_DEFAULTS, buildPrompt, hasMelody, morePrompt, nextBatchPrompt, planBatches, repairPrompt } from '../lesson/prompt.js';
+import { AGES, AI_KINDS, BATCH_SIZE, CLASS_DEFAULTS, buildPrompt, hasMelody, lyricFalseFriends, morePrompt, nextBatchPrompt, planBatches, repairPrompt } from '../lesson/prompt.js';
 import { saveCloudSong } from '../cloud/library.js';
 import { teacherAccess } from '../cloud/access.js';
 
@@ -162,6 +162,7 @@ export async function render(el, { id }) {
   // ---- 1. the class
   const promptBox = h('textarea', { class: 'studio-json lesson-prompt', rows: 10, readonly: true, 'aria-label': 'The prompt', onclick: (e) => e.target.select() });
   const promptSize = h('span', { class: 'small' });
+  const friendsNote = h('p', { class: 'small' });
   const batchNote = h('p', { class: 'small' });
   const prompt = () => buildPrompt(song, timeline, { ...klass, melody: melody && klass.melody });
 
@@ -186,6 +187,9 @@ export async function render(el, { id }) {
     setSettings({ lessonClass: kept });
     promptBox.value = prompt();
     promptSize.textContent = `${promptBox.value.length.toLocaleString()} characters`;
+    const friends = lyricFalseFriends(timeline, klass.language);
+    friendsNote.hidden = !friends.length;
+    friendsNote.textContent = `🎭 False friends found in the lyrics: ${friends.map((f) => `${f.spots[0].word} (${f.looksLike})`).join(', ')}. They go in the prompt, and the AI keeps the ones that really mislead in their line.`;
     const agent = klass.ai === 'agent';
     batchField.hidden = agent;
     batchNote.textContent = agent
@@ -375,6 +379,7 @@ export async function render(el, { id }) {
         h('button', { class: 'btn primary', type: 'button', onclick: () => copyText(promptBox.value, 'Prompt copied: paste it into your AI') }, '📋 Copy the prompt'),
         h('button', { class: 'btn', type: 'button', onclick: () => saveFile(`${song.id}-prompt.txt`, promptBox.value, 'text/plain') }, '⬇️ Download'),
         promptSize),
+      friendsNote,
       h('p', { class: 'small' }, 'The prompt contains the lyrics, and they leave Singing when you paste them, so use an AI your school allows.'),
       h('details', null, h('summary', { class: 'small' }, 'Read the prompt'), promptBox),
       h('h3', { class: 'section-title' }, '📥 Step 3: bring back each reply'),

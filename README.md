@@ -165,6 +165,12 @@ and slowest lines. So it can plan vowel work on held notes, warn about fast line
 and about stress the melody bends, and choose where to pause. Band songs send
 the same facts from their score; songs timed by line get line timing only.
 
+**False friends:** `js/lesson/false-friends.js` is Singing's own list of Catalan
+false friends, one row per word, for teachers to edit. When the class language is
+Catalan, the prompt names the ones in the lyrics, so the AI neither hunts for them nor
+invents them. It judges each one in its line and writes it into the existing sections:
+word cards, 🎭 pop-ups, quiz questions in both directions, a hunt and a memory set.
+
 **Clean version:** off until the teacher ticks it on the song's pack page, and it
 then applies to everyone who plays the song. On a recording, words on the pack's
 clean list are masked on screen and on paper, and the singer drops out on them while
