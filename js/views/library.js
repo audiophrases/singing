@@ -8,6 +8,7 @@ import { SynthTrack } from '../music/player.js';
 import { folderLibraryControls } from './folder-library.js';
 import { onFolderStatus } from '../media/folder-library.js';
 import { teacherAccess } from '../cloud/access.js';
+import { findArtwork } from '../media/artwork.js';
 
 const FILTER_KEY = 'singing.libraryFilters.v1';
 const LEVELS = ['Pre-A1', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
@@ -47,6 +48,28 @@ export function songCover(song, { big = false } = {}) {
     const img = h('img', { src: `https://i.ytimg.com/vi/${song.youtube.id}/mqdefault.jpg`, alt: '', loading: 'lazy' });
     img.addEventListener('error', () => img.remove());
     cover.prepend(img);
+  }
+  if (song.source === 'audio' && song.title && song.artist) {
+    const load = async () => {
+      const candidates = await findArtwork(song);
+      if (!candidates.length) return;
+      let index = 0;
+      const img = h('img', { alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' });
+      img.addEventListener('error', () => {
+        index += 1;
+        if (index < candidates.length) img.src = candidates[index];
+        else img.remove();
+      });
+      img.src = candidates[index];
+      cover.prepend(img);
+    };
+    if (typeof IntersectionObserver === 'undefined') load();
+    else {
+      const observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) { observer.disconnect(); load(); }
+      }, { rootMargin: '200px' });
+      observer.observe(cover);
+    }
   }
   return cover;
 }
