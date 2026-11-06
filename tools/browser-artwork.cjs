@@ -39,7 +39,7 @@ module.exports = async (browser, base) => {
   const visits = { musicbrainz: 0, apple: 0, covers: 0 };
   const cors = { 'Access-Control-Allow-Origin': '*' };
   const json = (route, data) => route.fulfill({ contentType: 'application/json', headers: cors, body: JSON.stringify(data) });
-  const release = (id, title) => ({ status: 'Official', date: '1987', 'release-group': { id, title, 'primary-type': 'Album' } });
+  const release = (id, title) => ({ status: 'Official', date: '1987', 'artist-credit': [{ name: 'Art Band' }], 'release-group': { id, title, 'primary-type': 'Album' } });
   await context.route('https://musicbrainz.org/**', (route) => {
     visits.musicbrainz += 1;
     const url = new URL(route.request().url());
@@ -89,7 +89,7 @@ module.exports = async (browser, base) => {
   await teacher.locator('.song-card', { hasText: LOST_TITLE }).scrollIntoViewIfNeeded();
   await cardImage(FOUND_TITLE).waitFor({ state: 'attached' });
   await teacher.waitForFunction((titles) => {
-    const asked = Object.keys(JSON.parse(localStorage.getItem('singing.artwork.v1') || '{}'));
+    const asked = Object.keys(JSON.parse(localStorage.getItem('singing.artwork.v2') || '{}'));
     return titles.every((title) => asked.some((key) => key.includes(title.toLowerCase())));
   }, [FOUND_TITLE, LOST_TITLE]);
   // Other audio songs on the page take their turn, a second apart.
@@ -117,6 +117,15 @@ module.exports = async (browser, base) => {
   const firstCover = (await songDoc(found)).artwork;
   assert.match(firstCover, /^\/api\/art\//);
   assert.equal((await songDoc(found)).revision, 1, 'saving a cover made no revision');
+  await teacher.goto(`${createBase}#/song/${found}`);
+  const songCover = teacher.locator('.song-head .song-cover');
+  await songCover.locator('img').waitFor();
+  await teacher.mouse.move(0, 0);
+  const change = teacher.getByRole('button', { name: 'Add or change picture' });
+  const [coverBox, changeBox] = [await songCover.boundingBox(), await change.boundingBox()];
+  assert.ok(changeBox.y >= coverBox.y + coverBox.height, 'the button sits under the cover, not on it');
+  assert.equal(await change.evaluate((el) => getComputedStyle(el).opacity), '1', 'it shows without hovering');
+  if (shots) await teacher.screenshot({ path: `${shots}/button.png` });
 
   // A song that failed: better words find it, and the song keeps its name.
   await teacher.goto(`${createBase}#/song/${lost}`);

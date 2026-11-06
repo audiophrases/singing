@@ -7,10 +7,13 @@ const live = '04a2f7f1-1061-4a5e-bdae-32f893323822';
 const single = '6f3e9fa6-be7a-3de8-a2b2-2072ece8a54d';
 const applePicture = 'https://is1-ssl.mzstatic.com/image/thumb/Music/v4/aa/source/100x100bb.jpg';
 const cover = (id, size = 500) => `https://coverartarchive.org/release-group/${id}/front-${size}`;
-const release = (id, { type = 'Album', secondary, date = '1987', status = 'Official', title = 'An album' } = {}) => ({
-  status, date, 'release-group': { id, title, 'primary-type': type, ...(secondary ? { 'secondary-types': secondary } : {}) },
+const various = 'd6a1c8f4-3f3e-4a4e-9a57-5a3b0e4e9c11';
+const release = (id, { type = 'Album', secondary, date = '1987', status = 'Official', title = 'An album', by } = {}) => ({
+  status, date, ...(by === undefined ? {} : { 'artist-credit': by ? [{ name: by }] : [] }),
+  'release-group': { id, title, 'primary-type': type, ...(secondary ? { 'secondary-types': secondary } : {}) },
 });
-const recording = (title, artist, releases) => ({ title, 'artist-credit': [{ name: artist, artist: { name: artist } }], releases });
+// A release is the recording's artist's own unless it says otherwise.
+const recording = (title, artist, releases) => ({ title, 'artist-credit': [{ name: artist, artist: { name: artist } }], releases: releases.map((item) => ({ 'artist-credit': [{ name: artist }], ...item })) });
 const song = (title, artist = 'Artist') => ({ source: 'audio', title, artist });
 
 const realFetch = globalThis.fetch;
@@ -66,12 +69,51 @@ test('the original studio release comes first, and live albums and bootlegs do n
   assert.deepEqual(artworkCandidates(data, 'A song', 'Artist'), [cover(album), cover(single), cover(live)]);
 });
 
+// As MusicBrainz lists Sia's Chandelier: 137 releases, nearly all of them
+// collections, and some not marked as compilations.
+test('other people\'s collections are never a song\'s cover, however they are labelled', () => {
+  const data = { recordings: [recording('A song', 'Artist', [
+    release(various, { by: 'Various Artists', secondary: ['Compilation'], date: '1980' }),
+    release(live, { by: 'Various Artists', date: '1981' }),
+    release(single, { by: '', date: '1982' }),
+    release(album, { date: '1990' }),
+  ])] };
+  assert.deepEqual(artworkCandidates(data, 'A song', 'Artist'), [cover(album)]);
+  const onlyCollections = { recordings: [recording('A song', 'Artist', [release(live, { by: 'Various Artists' })])] };
+  assert.deepEqual(artworkCandidates(onlyCollections, 'A song', 'Artist'), []);
+});
+
+test('a film\'s soundtrack counts as the song\'s own, after the artist\'s', () => {
+  const data = { recordings: [recording('A song', 'Artist', [
+    release(live, { by: 'A Composer', secondary: ['Soundtrack'], date: '1980' }),
+    release(album, { date: '1990' }),
+  ])] };
+  assert.deepEqual(artworkCandidates(data, 'A song', 'Artist'), [cover(album), cover(live)]);
+});
+
+test('an album with no picture leads to Apple, not to a collection that has one', async () => {
+  const brainz = { recordings: [recording('Hit song', 'Artist', [release(album), release(live, { by: 'Various Artists' })])] };
+  const store = { results: [{ trackName: 'Hit song', artistName: 'Artist', artworkUrl100: applePicture }] };
+  const image = applePicture.replace('100x100bb', '500x500bb');
+  services({ brainz, store, images: { [image]: 200, [cover(live)]: 200 } });
+  assert.equal(await (await findCover(song('Hit song'))).text(), image);
+  assert.deepEqual(calls, ['musicbrainz.org', 'coverartarchive.org', 'itunes.apple.com', 'is1-ssl.mzstatic.com']);
+});
+
+test('a cover remembered by the older search is not used again', async () => {
+  saved.set('singing.artwork.v1', JSON.stringify({ '["old answer","artist"]': { url: cover(live), at: Date.now() } }));
+  const brainz = { recordings: [recording('Old answer', 'Artist', [release(album)])] };
+  services({ brainz, images: { [cover(album)]: 200, [cover(live)]: 200 } });
+  assert.equal(await (await findCover(song('Old answer'))).text(), cover(album));
+});
+
 test('Apple results must match too, and only Apple\'s pictures are used', () => {
   const result = (trackName, artistName, artworkUrl100 = applePicture) => ({ trackName, artistName, artworkUrl100 });
   const data = { results: [
     result('A song (Live)', 'Artist'),
     result('A song', 'Someone else'),
     result('A song', 'Artist', 'https://evil.example/100x100bb.jpg'),
+    { ...result('A song', 'Artist', applePicture.replace('source', 'collection')), collectionArtistName: 'Various Artists' },
     result('A song', 'Artist & Friends'),
   ] };
   assert.deepEqual(appleCandidates(data, 'a song', 'artist'), [applePicture.replace('100x100bb', '500x500bb')]);
@@ -99,9 +141,9 @@ test('a song with no cover is left alone until its title changes or a month pass
   assert.deepEqual(calls, [], 'no request at all on the next visit');
   await findCover(song('Nothing here either'));
   assert.equal(count('musicbrainz.org'), 1, 'a changed title is looked up');
-  const memory = JSON.parse(saved.get('singing.artwork.v1'));
+  const memory = JSON.parse(saved.get('singing.artwork.v2'));
   for (const entry of Object.values(memory)) entry.at -= 31 * 24 * 60 * 60 * 1000;
-  saved.set('singing.artwork.v1', JSON.stringify(memory));
+  saved.set('singing.artwork.v2', JSON.stringify(memory));
   services();
   await findCover(song('Nothing here'));
   assert.equal(count('musicbrainz.org'), 1, 'it looks again after a month');
@@ -168,14 +210,22 @@ test('the teacher\'s search offers albums, songs and Apple, with no need for an 
   services({ brainz, store });
   assert.deepEqual(await searchArtwork(' The Joshua Tree ', ' U2 '), [
     { name: 'The Joshua Tree', thumb: cover(album, 250), full: cover(album) },
-    { name: 'A single', thumb: cover(single, 250), full: cover(single) },
     { name: 'Deluxe', thumb: applePicture.replace('100x100bb', '250x250bb'), full: applePicture.replace('100x100bb', '500x500bb') },
+    { name: 'A single', thumb: cover(single, 250), full: cover(single) },
   ]);
   services({ brainz: (url) => {
     assert.doesNotMatch(new URL(url).searchParams.get('query'), /artist:/, 'the artist is optional');
     return url.includes('/release-group/') ? { 'release-groups': [] } : { recordings: [] };
   } });
   assert.deepEqual(await searchArtwork('Only a title'), []);
+});
+
+test('the teacher\'s search leads with the artist\'s own album and ends with collections', async () => {
+  const brainz = (url) => (url.includes('/release-group/')
+    ? { 'release-groups': [{ id: single, title: 'The single' }] }
+    : { recordings: [recording('A song', 'Artist', [release(various, { by: 'Various Artists', title: 'Pop party', date: '1980' }), release(album, { title: 'The album', date: '1990' })])] });
+  services({ brainz, store: { results: [{ collectionName: 'Apple album', artworkUrl100: applePicture }] } });
+  assert.deepEqual((await searchArtwork('A song', 'Artist')).map((item) => item.name), ['The album', 'The single', 'Apple album', 'Pop party']);
 });
 
 test('the teacher\'s search works if one service answers, and says so if none does', async () => {

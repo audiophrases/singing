@@ -40,11 +40,11 @@ export async function render(el, { id }) {
   // ----- header
   const transport = transportBar(track);
   const cover = songCover(song, { big: true });
-  if (teacherAccess() && song.mine && song.cloud && song.source === 'audio') {
-    cover.append(h('button', { class: 'cover-edit', type: 'button', onclick: () => artworkDialog(song, { onChange: (src) => showCover(cover, src) }) }, h('span', null, '🖼️ Change picture')));
-  }
+  const changeCover = teacherAccess() && song.mine && song.cloud && song.source === 'audio'
+    ? h('button', { class: 'btn btn-sm', type: 'button', onclick: () => artworkDialog(song, { onChange: (src) => showCover(cover, src) }) }, '🖼️ Add or change picture')
+    : null;
   const head = h('section', { class: 'card song-head' },
-    cover,
+    h('div', { class: 'cover-side' }, cover, changeCover),
     h('div', null,
       h('h1', null, song.title),
       h('div', { class: 'small' }, song.artist || '', song.credit ? ` · ${song.credit}` : ''),

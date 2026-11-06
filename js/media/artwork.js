@@ -4,7 +4,7 @@
  * learned stays in this browser, so a song with no cover anywhere is not looked
  * up again on every visit.
  */
-const MEMORY = 'singing.artwork.v1';
+const MEMORY = 'singing.artwork.v2'; // v1 could hold a compilation's cover
 const REMEMBER = 30 * 24 * 60 * 60 * 1000;
 const MAX_REMEMBERED = 500;
 const pending = new Map();
@@ -17,7 +17,7 @@ const lookupKey = (title, artist) => JSON.stringify([normalized(title), normaliz
 const musicBrainzId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const appleImage = /^https:\/\/[a-z0-9.-]+\.mzstatic\.com\/.+\/\d+x\d+bb\.jpg$/i;
 // A recording is listed under every album it is on, so asking MusicBrainz to
-// leave out live and compilation albums would lose the song itself: artworkCandidates sorts those last.
+// leave out live and compilation albums would lose the song itself: rankedGroups judges them instead.
 const OFFICIAL = ' AND status:official AND primarytype:(album OR single OR ep)';
 
 const groupCover = (id, size) => `https://coverartarchive.org/release-group/${id}/front-${size}`;
@@ -68,20 +68,27 @@ function isStudio(group) {
   return ['Album', 'Single', 'EP'].includes(group['primary-type']) && !group['secondary-types']?.length;
 }
 
-// Each album or single once, the original studio releases first: most live
-// bootlegs and many compilations have no cover to find.
-function rankedGroups(recordings) {
+// A hit is on hundreds of "Various Artists" collections, and many are not marked
+// as compilations, so only the artist's name on the release can be trusted. A
+// film's soundtrack is the song's own home too.
+function isOwn(release, wanted) {
+  return byArtist(release['artist-credit'] || [], wanted) || !!release['release-group']?.['secondary-types']?.includes('Soundtrack');
+}
+
+// Each album or single once: the artist's own first, and among those the
+// original studio releases, as most live bootlegs have no cover to find.
+function rankedGroups(recordings, wanted) {
   const groups = new Map();
   for (const recording of recordings) {
     for (const release of recording.releases || []) {
       const group = release['release-group'];
       if (!musicBrainzId.test(group?.id || '') || (release.status && release.status !== 'Official')) continue;
-      const date = release.date || '9999';
       const seen = groups.get(group.id);
-      if (!seen || date < seen.date) groups.set(group.id, { id: group.id, name: group.title || '', studio: isStudio(group), date });
+      const date = [release.date || '9999', seen?.date || '9999'].sort()[0];
+      groups.set(group.id, { id: group.id, name: group.title || '', studio: isStudio(group), own: seen?.own || isOwn(release, wanted), date });
     }
   }
-  return [...groups.values()].sort((a, b) => b.studio - a.studio || a.date.localeCompare(b.date));
+  return [...groups.values()].sort((a, b) => b.own - a.own || b.studio - a.studio || a.date.localeCompare(b.date));
 }
 
 export function artworkCandidates(data, title, artist) {
@@ -89,7 +96,9 @@ export function artworkCandidates(data, title, artist) {
   const wantedArtist = normalized(artist);
   if (!wantedTitle || !wantedArtist) return [];
   const exact = (data?.recordings || []).filter((recording) => normalized(recording.title) === wantedTitle && byArtist(recording['artist-credit'] || [], wantedArtist));
-  return rankedGroups(exact).slice(0, 5).map((group) => groupCover(group.id, 500));
+  // A saved cover stays, so a wrong one is worse than the emoji: other people's
+  // collections are never used. Apple is asked next.
+  return rankedGroups(exact, wantedArtist).filter((group) => group.own).slice(0, 5).map((group) => groupCover(group.id, 500));
 }
 
 export function appleCandidates(data, title, artist) {
@@ -97,7 +106,8 @@ export function appleCandidates(data, title, artist) {
   const wantedArtist = ` ${normalized(artist)} `;
   if (!wantedTitle || !wantedArtist.trim()) return [];
   const exact = (data?.results || []).filter((result) => normalized(result.trackName) === wantedTitle
-    && ` ${normalized(result.artistName)} `.includes(wantedArtist) && appleImage.test(result.artworkUrl100 || ''));
+    && ` ${normalized(result.artistName)} `.includes(wantedArtist) && normalized(result.collectionArtistName) !== 'various artists'
+    && appleImage.test(result.artworkUrl100 || ''));
   return [...new Set(exact.map((result) => appleCover(result.artworkUrl100, 500)))].slice(0, 3);
 }
 
@@ -146,7 +156,8 @@ export function findCover(song) {
 }
 
 // Choices for the teacher, who can see which is right, so nothing has to match
-// exactly and an album title works too. Throws only if no service answered.
+// exactly and an album title works too: the artist's own come first and other
+// people's collections last. Throws only if no service answered.
 export async function searchArtwork(title, artist = '') {
   const words = quote(title.trim());
   const by = artist.trim() ? ` AND artist:${quote(artist.trim())}` : '';
@@ -156,17 +167,19 @@ export async function searchArtwork(title, artist = '') {
     getJson(apple(`${artist} ${title}`.trim())),
   ]);
   if (albums.status === 'rejected' && songs.status === 'rejected' && store.status === 'rejected') throw new Error('The cover search is not answering.');
-  const groups = [
-    ...(albums.value?.['release-groups'] || []).filter((group) => musicBrainzId.test(group.id || '')).map((group) => ({ id: group.id, name: group.title || '' })).slice(0, 6),
-    ...rankedGroups(songs.value?.recordings || []).slice(0, 6),
-  ];
+  const ranked = rankedGroups(songs.value?.recordings || [], normalized(artist));
   const found = new Map();
-  for (const group of groups) {
-    if (!found.has(group.id)) found.set(group.id, { name: group.name, thumb: groupCover(group.id, 250), full: groupCover(group.id, 500) });
-  }
+  const addGroups = (groups) => {
+    for (const group of groups.slice(0, 6)) {
+      if (!found.has(group.id)) found.set(group.id, { name: group.name, thumb: groupCover(group.id, 250), full: groupCover(group.id, 500) });
+    }
+  };
+  addGroups(ranked.filter((group) => group.own));
+  addGroups((albums.value?.['release-groups'] || []).filter((group) => musicBrainzId.test(group.id || '')).map((group) => ({ id: group.id, name: group.title || '' })));
   for (const result of (store.value?.results || []).filter((item) => appleImage.test(item.artworkUrl100 || '')).slice(0, 6)) {
     found.set(result.artworkUrl100, { name: result.collectionName || result.trackName || '', thumb: appleCover(result.artworkUrl100, 250), full: appleCover(result.artworkUrl100, 500) });
   }
+  addGroups(ranked.filter((group) => !group.own));
   return [...found.values()];
 }
 
