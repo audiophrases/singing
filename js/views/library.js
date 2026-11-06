@@ -8,7 +8,8 @@ import { SynthTrack } from '../music/player.js';
 import { folderLibraryControls } from './folder-library.js';
 import { onFolderStatus } from '../media/folder-library.js';
 import { teacherAccess } from '../cloud/access.js';
-import { findArtwork } from '../media/artwork.js';
+import { setArtwork } from '../cloud/library.js';
+import { findCover, coverJpeg } from '../media/artwork.js';
 
 const FILTER_KEY = 'singing.libraryFilters.v1';
 const LEVELS = ['Pre-A1', 'A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
@@ -39,6 +40,33 @@ function sourceLabel(song) {
   return '';
 }
 
+export function showCover(cover, src) {
+  cover.querySelector('img')?.remove();
+  const img = h('img', { class: 'cover-art', alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', src });
+  img.addEventListener('error', () => img.remove());
+  cover.prepend(img);
+  return img;
+}
+
+function whenVisible(el, fn) {
+  if (typeof IntersectionObserver === 'undefined') { fn(); return; }
+  const observer = new IntersectionObserver((entries) => {
+    if (entries.some((entry) => entry.isIntersecting)) { observer.disconnect(); fn(); }
+  }, { rootMargin: '200px' });
+  observer.observe(el);
+}
+
+// A cover found for the teacher's own song is saved with it, for every device.
+// If that fails the song still shows it, and saves it on the next visit.
+async function lookUpCover(cover, song) {
+  const found = await findCover(song);
+  if (!found || cover.querySelector('img')) return;
+  const picture = await coverJpeg(found);
+  const src = URL.createObjectURL(picture);
+  showCover(cover, src).addEventListener('load', () => URL.revokeObjectURL(src), { once: true });
+  if (song.cloud && song.mine && teacherAccess()) await setArtwork(song, picture);
+}
+
 export function songCover(song, { big = false } = {}) {
   const cover = h('div', { class: 'song-cover', style: { '--hue': song.hue ?? 245 } },
     h('span', { class: 'cover-emoji', 'aria-hidden': 'true' }, song.emoji || '🎵'));
@@ -49,28 +77,8 @@ export function songCover(song, { big = false } = {}) {
     img.addEventListener('error', () => img.remove());
     cover.prepend(img);
   }
-  if (song.source === 'audio' && song.title && song.artist) {
-    const load = async () => {
-      const candidates = await findArtwork(song);
-      if (!candidates.length) return;
-      let index = 0;
-      const img = h('img', { alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' });
-      img.addEventListener('error', () => {
-        index += 1;
-        if (index < candidates.length) img.src = candidates[index];
-        else img.remove();
-      });
-      img.src = candidates[index];
-      cover.prepend(img);
-    };
-    if (typeof IntersectionObserver === 'undefined') load();
-    else {
-      const observer = new IntersectionObserver((entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) { observer.disconnect(); load(); }
-      }, { rootMargin: '200px' });
-      observer.observe(cover);
-    }
-  }
+  if (song.source === 'audio' && song.artwork) showCover(cover, song.artwork);
+  else if (song.source === 'audio' && song.title && song.artist) whenVisible(cover, () => lookUpCover(cover, song).catch(() => {}));
   return cover;
 }
 

@@ -77,6 +77,15 @@ export async function setSongPublic(song, value) {
   if (current) { cloudSongs.set(song.id, { ...current, public: value }); setCloudSongs([...cloudSongs.values()]); }
 }
 
+// Saves a JPEG as the song's picture and gives back its address. The song is
+// changed in place: telling the library would redraw it and restart every cover.
+export async function setArtwork(song, picture) {
+  const { artwork } = await api(`/api/songs/${song.id}/artwork`, { method: 'PUT', body: picture, headers: { 'Content-Type': 'image/jpeg' } });
+  const current = cloudSongs.get(song.id);
+  if (current) current.artwork = artwork;
+  return artwork;
+}
+
 async function asMp3(blob, name, onProgress) {
   if (/\.mp3$/i.test(name) || blob.type === 'audio/mpeg') return blob;
   onProgress(`Converting ${name} to MP3…`);

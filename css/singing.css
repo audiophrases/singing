@@ -301,6 +301,7 @@ kbd {
 .song-cover .cover-emoji { filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.2)); transition: transform 0.25s cubic-bezier(.3,1.6,.5,1); }
 .song-card:hover .cover-emoji { transform: scale(1.15) rotate(-6deg); }
 .song-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.song-cover:has(.cover-art) .cover-emoji { visibility: hidden; } /* its filter would paint it over the picture */
 .cover-src { position: absolute; top: 0.5rem; left: 0.5rem; font-size: 0.72rem; font-weight: 700; background: rgba(0, 0, 0, 0.35); color: #fff; padding: 0.12rem 0.45rem; border-radius: 0.4rem; }
 .cover-play {
   position: absolute;
@@ -339,6 +340,34 @@ kbd {
   align-items: start;
 }
 .song-head .song-cover { border-radius: 1rem; font-size: 4.6rem; aspect-ratio: 1; }
+.cover-edit {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-items: end;
+  justify-items: center;
+  padding: 0.55rem;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cover-edit span { background: rgba(0, 0, 0, 0.6); padding: 0.2rem 0.55rem; border-radius: 0.5rem; transition: opacity 0.15s; }
+.cover-edit:focus-visible { outline: 3px solid rgba(96, 93, 255, 0.7); outline-offset: -3px; }
+@media (hover: hover) {
+  .song-cover:has(.cover-art) .cover-edit span { opacity: 0; }
+  .song-cover:has(.cover-art) .cover-edit:hover span, .song-cover:has(.cover-art) .cover-edit:focus-visible span { opacity: 1; }
+}
+.art-search { display: grid; grid-template-columns: 2fr 1fr auto; gap: 0.6rem; align-items: end; }
+.art-search label { margin: 0; }
+.art-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 0.5rem; margin: 0.6rem 0; }
+.art-choice { padding: 0; border: 2px solid transparent; border-radius: 0.5rem; background: #eef0f6; cursor: pointer; overflow: hidden; aspect-ratio: 1; }
+.art-choice:hover, .art-choice:focus-visible { border-color: var(--primary); }
+.art-choice img { display: block; width: 100%; height: 100%; object-fit: cover; }
+@media (max-width: 640px) { .art-search { grid-template-columns: 1fr; } }
 .song-head h1 { font-family: var(--font-fun); font-size: clamp(1.5rem, 3vw, 2.2rem); margin: 0 0 0.2rem; }
 .song-meta { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.45rem 0; }
 .song-about { color: #3b4554; line-height: 1.5; margin: 0.4rem 0 0; max-width: 70ch; }

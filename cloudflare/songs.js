@@ -4,6 +4,9 @@ import { teacher } from './auth.js';
 const ROLES = ['audio', 'karaoke', 'vocals', 'sourceFile'];
 const MAX_FILE = 64 * 1024 * 1024;
 const MAX_LESSON = 400 * 1024;
+const MAX_ARTWORK = 512 * 1024;
+const isJpeg = (bytes) => bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+const artworkUrl = (assetId) => `/api/art/${assetId}`;
 export async function ownedSong(env, id, principal) {
   teacher(principal);
   const song = await env.DB.prepare('SELECT * FROM songs WHERE id = ? AND owner_id = ? AND deleted_at IS NULL').bind(id, principal.id).first();
@@ -40,6 +43,13 @@ export async function publicSongs(env) {
   const songs = documents.filter((doc) => (doc.source || 'band') === 'band').map(({ folderImport, sourceFile, audio, karaoke, vocals, cloud, revision, status, createdAt, ...song }) => ({ ...forStudents(song), public: true }));
   return json({ songs, started });
 }
+// A song's picture belongs to the song, not to a revision: saving one must not
+// make a song open in the Studio out of date, and an assignment pinned to an
+// older revision shows it too.
+async function withArtwork(env, document) {
+  const row = await env.DB.prepare("SELECT id FROM assets WHERE song_id = ? AND role = 'artwork' ORDER BY created_at DESC LIMIT 1").bind(document.id).first();
+  return row ? { ...document, artwork: artworkUrl(row.id) } : document;
+}
 // Who made a song a student saved (cloudflare/student-songs.js): for the owner only.
 const madeBy = (row) => (row.made_by ? { madeBy: JSON.parse(row.made_by) } : {});
 export function cleanSong(input) {
@@ -75,7 +85,7 @@ export async function songRoutes(request, env, path, principal, canReadAssigned 
     requireThat(song, 409, 'This imported song was deleted. Make a new copy to restore it.');
     return json({ id: song.id, revision: song.revision });
   }
-  const match = /^\/api\/songs\/([a-zA-Z0-9_-]+)(?:\/(assets|commit|playback|visibility))?$/.exec(path);
+  const match = /^\/api\/songs\/([a-zA-Z0-9_-]+)(?:\/(assets|commit|playback|visibility|artwork))?$/.exec(path);
   if (!match) return null;
   const [, id, action] = match;
   let song;
@@ -86,7 +96,7 @@ export async function songRoutes(request, env, path, principal, canReadAssigned 
   if (!action && request.method === 'GET') {
     const revision = Number(new URL(request.url).searchParams.get('revision')) || song.revision;
     if (principal.role === 'student') requireThat(await canReadAssigned(env, id, revision, principal), 404, 'Song not assigned to your class.');
-    const document = visibleSong(await manifest(env, id, revision), principal);
+    const document = await withArtwork(env, visibleSong(await manifest(env, id, revision), principal));
     return json({ song: principal.role === 'student' ? document : { ...document, public: song.is_public === 1, ...madeBy(song) } });
   }
   if (action === 'visibility' && request.method === 'POST') {
@@ -120,6 +130,7 @@ export async function songRoutes(request, env, path, principal, canReadAssigned 
     requireThat(asset, 413, 'Your storage allowance is full. Contact the administrator.');
     return json({ assetId: asset.id, uploaded: asset.state === 'uploaded', uploadUrl: `/api/assets/${asset.id}` });
   }
+  if (action === 'artwork' && request.method === 'PUT') return await saveArtwork(request, env, song, principal);
   if (action === 'commit' && request.method === 'POST') {
     const body = await bodyJson(request);
     requireThat(body.baseRevision === song.revision, 409, 'This song changed on another device. Reload before saving.');
@@ -158,7 +169,7 @@ export async function songRoutes(request, env, path, principal, canReadAssigned 
       if (error.status) throw error;
       throw new HttpError(409, 'This song changed on another device. Reload before saving.');
     }
-    return json({ song: { ...document, public: song.is_public === 1 && (document.source || 'band') === 'band', ...madeBy(song) } });
+    return json({ song: { ...await withArtwork(env, document), public: song.is_public === 1 && (document.source || 'band') === 'band', ...madeBy(song) } });
   }
   if (action === 'playback' && request.method === 'POST') {
     requireThat(song.revision > 0, 404, 'Save this song first.');
@@ -173,6 +184,50 @@ export async function songRoutes(request, env, path, principal, canReadAssigned 
     return json({ urls, expiresAt });
   }
   return null;
+}
+
+async function saveArtwork(request, env, song, principal) {
+  requireThat(song.revision > 0, 404, 'Save this song first.');
+  const size = Number(request.headers.get('Content-Length'));
+  requireThat(size > 0 && size <= MAX_ARTWORK, 413, 'This picture is too large.');
+  const bytes = new Uint8Array(await request.arrayBuffer());
+  // Only JPEG: a teacher's file must not be able to run as a page on this site.
+  requireThat(bytes.length === size && isJpeg(bytes), 415, 'Use a JPEG picture.');
+  const checksum = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const { results: previous } = await env.DB.prepare("SELECT id, object_key, checksum FROM assets WHERE song_id = ? AND role = 'artwork'").bind(song.id).all();
+  const same = previous.find((asset) => asset.checksum === checksum);
+  if (same) return json({ artwork: artworkUrl(same.id) });
+  const assetId = crypto.randomUUID(); const key = `owners/${await hash(principal.id)}/assets/${assetId}`;
+  await env.SONGS.put(key, bytes, { httpMetadata: { contentType: 'image/jpeg', cacheControl: 'private, max-age=31536000, immutable' } });
+  // One transaction, so a full storage allowance leaves the old picture in place.
+  const [added] = await env.DB.batch([
+    env.DB.prepare(`INSERT OR IGNORE INTO assets (id,song_id,owner_id,role,object_key,name,mime,size,checksum,state,created_at)
+      SELECT ?,?,?,'artwork',?,'cover.jpg','image/jpeg',?,?,'uploaded',? WHERE (SELECT COALESCE(SUM(size),0) FROM assets WHERE owner_id = ?) + ? <= ?`)
+      .bind(assetId, song.id, principal.id, key, size, checksum, Date.now(), principal.id, size, Number(env.OWNER_STORAGE_BYTES) || 1024 * 1024 * 1024),
+    env.DB.prepare("DELETE FROM assets WHERE song_id = ? AND role = 'artwork' AND id != ? AND EXISTS (SELECT 1 FROM assets WHERE id = ?)").bind(song.id, assetId, assetId),
+  ]);
+  if (!added.meta.changes) {
+    await env.SONGS.delete(key);
+    // Another device saved this same picture a moment ago.
+    const saved = await env.DB.prepare("SELECT id FROM assets WHERE song_id = ? AND role = 'artwork' AND checksum = ?").bind(song.id, checksum).first();
+    requireThat(saved, 413, 'Your storage allowance is full. Contact the administrator.');
+    return json({ artwork: artworkUrl(saved.id) });
+  }
+  await Promise.allSettled(previous.map((asset) => env.SONGS.delete(asset.object_key)));
+  return json({ artwork: artworkUrl(assetId) });
+}
+
+// A new picture gets a new address, so a browser can keep this one for good.
+// The address is random and appears only in the song, for those who can read it.
+export async function serveArtwork(request, env, assetId) {
+  const asset = await env.DB.prepare("SELECT a.object_key, a.size FROM assets a JOIN songs s ON s.id = a.song_id WHERE a.id = ? AND a.role = 'artwork' AND s.deleted_at IS NULL").bind(assetId).first();
+  requireThat(asset, 404, 'Picture not found.');
+  const object = await env.SONGS.get(asset.object_key);
+  requireThat(object, 404, 'Picture not found.');
+  return new Response(request.method === 'HEAD' ? null : object.body, { headers: {
+    'Content-Type': 'image/jpeg', 'Content-Length': String(asset.size), 'Cache-Control': 'private, max-age=31536000, immutable',
+    'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Cross-Origin-Resource-Policy': 'same-origin', 'Content-Disposition': 'inline',
+  } });
 }
 
 export async function uploadAsset(request, env, assetId, principal) {

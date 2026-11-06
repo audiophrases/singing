@@ -25,7 +25,7 @@ before(async () => {
       const path = new URL(request.url).pathname; const body = await request.json();
       if (path === '/config') return Response.json({ googleClientId: 'test-client' });
       if (path === '/login') {
-        if (!['alice', 'bob', 'carol', 'owner', 'student', 'outsider', 'quota'].includes(body.password)) return Response.json({ error: 'Wrong password.' }, { status: 401 });
+        if (!['alice', 'bob', 'carol', 'owner', 'student', 'outsider', 'quota', 'painter'].includes(body.password)) return Response.json({ error: 'Wrong password.' }, { status: 401 });
         const credential = crypto.randomUUID() + crypto.randomUUID();
         const principal = { id: body.password, role: ['student', 'outsider'].includes(body.password) ? 'student' : body.password === 'owner' ? 'owner' : 'teacher', displayName: body.password,
           classIds: [body.password === 'outsider' || body.password === 'bob' ? 'class_b' : 'class_a'] };
@@ -476,4 +476,73 @@ test('an assigned gap set is what students play, and the server marks it', async
   assert.equal((await answer(3, 'sing')).status, 400, 'no gap beyond the set');
   const done = await call(`/api/attempts/${started.data.attemptId}/submit`, { session: student, method: 'POST', body: { score: 999, max: 999 } });
   assert.deepEqual([done.data.score, done.data.max, done.data.kind], [2, 3, 'checked-answers'], 'the server marks it, whatever the browser says');
+});
+
+test('a song picture stays with the song, costs no revision, and a browser can keep it', async () => {
+  const painter = await login('painter'); const bob = await login('bob'); const student = await login('student');
+  const { id } = await song(painter);
+  const jpeg = (fill) => new Uint8Array([0xff, 0xd8, 0xff, 0xe0, ...new Array(64).fill(fill)]);
+  const put = (session, bytes, headers = {}, songId = id) => call(`/api/songs/${songId}/artwork`, { session, method: 'PUT', body: bytes, headers: { 'Content-Type': 'image/jpeg', 'Content-Length': String(bytes.length), ...headers } });
+  assert.equal((await put(painter, jpeg(1))).status, 404, 'a song is saved first');
+  const assets = { audio: await upload(painter, id), karaoke: await upload(painter, id, 'karaoke') };
+  await commit(painter, id, assets);
+
+  assert.equal((await put(painter, new TextEncoder().encode('<svg onload="alert(1)"></svg>'))).status, 415, 'nothing that could run on this site');
+  assert.equal((await put(painter, new Uint8Array(512 * 1024 + 1).fill(0xff))).status, 413);
+  assert.equal((await put(bob, jpeg(1))).status, 404, 'another teacher cannot change it');
+  assert.equal((await put(student, jpeg(1))).status, 403);
+  assert.equal((await put(painter, jpeg(1), { 'X-Singing-CSRF': 'wrong' })).status, 403);
+  assert.equal((await call(`/api/songs/${id}/artwork`, { method: 'PUT', body: jpeg(1), headers: { 'Content-Type': 'image/jpeg', 'Content-Length': '68' } })).status, 401);
+  assert.equal((await call(`/api/songs/${id}`, { session: painter })).data.song.artwork, undefined);
+
+  const saved = await put(painter, jpeg(1));
+  assert.equal(saved.status, 200, JSON.stringify(saved.data));
+  const url = saved.data.artwork;
+  assert.match(url, /^\/api\/art\/[a-f0-9-]{36}$/);
+
+  // A song open in the Studio keeps the revision it started from.
+  const opened = (await call(`/api/songs/${id}`, { session: painter })).data.song;
+  assert.equal(opened.artwork, url);
+  assert.equal(opened.revision, 1, 'no new revision');
+  const edited = await commit(painter, id, assets, 1);
+  assert.equal(edited.status, 200, JSON.stringify(edited.data));
+  assert.equal(edited.data.song.artwork, url, 'a save keeps the picture on screen');
+
+  const picture = await call(url, { session: painter });
+  assert.equal(picture.status, 200);
+  assert.deepEqual(new Uint8Array(picture.data), jpeg(1));
+  assert.equal(picture.headers.get('Content-Type'), 'image/jpeg');
+  assert.equal(picture.headers.get('Cache-Control'), 'private, max-age=31536000, immutable');
+  assert.equal(picture.headers.get('X-Content-Type-Options'), 'nosniff');
+  assert.equal((await call(url)).status, 401);
+
+  // A class on an older revision sees it too.
+  const made = await call('/api/assignments', { session: painter, method: 'POST', body: { title: 'Pictures', classIds: ['class_a'], attemptsLimit: 1, units: [{ songId: id, activity: 'karaoke' }] } });
+  assert.equal(made.status, 201, JSON.stringify(made.data));
+  const pinned = await call(`/api/songs/${id}?revision=2`, { session: student });
+  assert.equal(pinned.status, 200, JSON.stringify(pinned.data));
+  assert.equal(pinned.data.song.artwork, url);
+
+  assert.equal((await put(painter, jpeg(1))).data.artwork, url, 'the same picture is not stored twice');
+  const row = () => db.prepare("SELECT id, object_key FROM assets WHERE song_id = ? AND role = 'artwork'").bind(id).all();
+  const before = (await row()).results;
+  assert.equal(before.length, 1);
+  const replaced = (await put(painter, jpeg(2))).data.artwork;
+  assert.notEqual(replaced, url, 'a new picture needs a new address, or browsers keep the old one');
+  assert.equal((await call(url, { session: painter })).status, 404);
+  assert.deepEqual(new Uint8Array((await call(replaced, { session: painter })).data), jpeg(2));
+  assert.equal((await row()).results.length, 1);
+  assert.equal(await (await mf.getR2Bucket('SONGS')).head(before[0].object_key), null, 'the old file does not use up storage');
+
+  // With the allowance full, the old picture stays.
+  const reserve = (size, c) => call(`/api/songs/${id}/assets`, { session: painter, method: 'POST', body: { role: 'audio', size, name: 'full.mp3', mime: 'audio/mpeg', checksum: c.repeat(64) } });
+  assert.equal((await reserve(524288, 'a')).status, 200);
+  const { used } = await db.prepare('SELECT SUM(size) AS used FROM assets WHERE owner_id = ?').bind('painter').first();
+  assert.equal((await reserve(1048576 - used - 10, 'b')).status, 200);
+  assert.equal((await put(painter, jpeg(3))).status, 413);
+  assert.equal((await call(`/api/songs/${id}`, { session: painter })).data.song.artwork, replaced);
+  assert.equal((await call(replaced, { session: painter })).status, 200);
+
+  assert.equal((await call(`/api/songs/${id}`, { session: painter, method: 'DELETE', body: {} })).status, 200);
+  assert.equal((await call(replaced, { session: painter })).status, 404, 'a deleted song takes its picture with it');
 });

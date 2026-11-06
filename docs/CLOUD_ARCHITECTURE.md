@@ -21,7 +21,7 @@ Audited Singing `9b64227d6d563091f3832ac812c21c7117137de0` and PinPlay
 flowchart LR
   browser[Singing browser] --> singing[Singing Worker and static assets]
   singing --> db[(Singing D1: sessions, library, assignments, attempts)]
-  singing --> r2[(Private Singing R2: audio, karaoke, vocals, lyrics)]
+  singing --> r2[(Private Singing R2: audio, karaoke, vocals, lyrics, cover pictures)]
   singing -->|service binding only| identity[PinPlay ClassroomIdentity entrypoint]
   identity --> accounts[Existing PinPlay authentication and roster]
   pinplay[PinPlay app] --> quizzes[Existing PinPlay assignments and results]

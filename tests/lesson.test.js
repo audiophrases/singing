@@ -259,6 +259,7 @@ test('applying a pack to a band song writes to its lines', () => {
 });
 
 test('share links leave the pack behind', () => {
+  assert.equal(packableSong({ title: 'x', lines: [], artwork: '/api/art/private' }).artwork, undefined, 'the address only works when signed in');
   assert.equal(packableSong({ title: 'x', lines: [], lesson: { teacher: { notes: 'private' } } }).lesson, undefined);
 });
 
