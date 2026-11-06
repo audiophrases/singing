@@ -704,16 +704,18 @@ test('the prompt asks for depth over numbers, and for content that stays on the 
   assert.match(agent, /nothing is there only to reach a number/);
   assert.doesNotMatch(agent, /ends well short/, 'it left 2 gaps for a whole song');
   assert.match(agent, /Only the gaps, the cards, the quiz and the hunts have a minimum/);
-  assert.match(agent, /every gap set has at least 8 gaps, every hunt set has at least 3 words to find, and every level has at least 8 cards and 10 quiz questions/);
+  assert.match(agent, /every level has at least one gap set, every gap set has at least 8 gaps, every hunt set has at least 3 words to find, and every level has at least 8 cards and 10 quiz questions, 2 of them "before"/);
   assert.match(agent, /none opens with a label/);
   assert.match(agent, /at least 3 kinds are used and no kind takes more than half/);
   assert.match(agent, /No word is a gap in two sets, and the high level's gaps test word choice/);
-  assert.match(agent, /every gap option is a real word a student could really choose/);
+  assert.match(agent, /or means the same, no wrong form is correct in that sentence, and every gap option is a real word a student could really choose/);
+  assert.match(agent, /uses American spelling, and every lyric quote is unchanged/);
   assert.match(agent, /No level reuses a card from another level/);
   assert.match(agent, /gives the reason for that one answer, and no sentence is used twice/);
   const count = (name) => planBatches({ ai: 'agent' }).flatMap((b) => b.parts).filter((p) => p.includes(name)).reduce((n, p) => n + parseInt(p, 10), 0);
   assert.equal(count('"swaps"'), 14);
   assert.equal(count('"cards"'), 36);
+  assert.equal(planBatches({}).flatMap((b) => b.parts).filter((p) => p.includes('when "before"')).reduce((n, p) => n + parseInt(p, 10), 0), 6, 'a chatbot too needs 2 for each of 3 levels');
   for (const prompt of [agent, buildPrompt(song, timeline, {})]) {
     assert.match(prompt, /Every card starts from this song/);
     assert.match(prompt, /Never write "you may pass"/);
@@ -732,7 +734,12 @@ test('the prompt asks for depth over numbers, and for content that stays on the 
     assert.match(prompt, /Every explanation is about its own item/);
     assert.match(prompt, /never use the same sentence twice/);
     assert.match(prompt, /A set needs at least 3 words to find/);
-    assert.match(prompt, /Write at least 10 for each level, counting "before" and "after"/);
+    assert.match(prompt, /Write at least 10 for each level, and at least 2 of them must be "before"/);
+    assert.match(prompt, /write fewer sets if you need to, but every level gets at least one/);
+    assert.match(prompt, /A wrong verb or word form must really be wrong/);
+    assert.match(prompt, /only a word that means the same as the answer is banned/);
+    assert.doesNotMatch(prompt, /Each option must be wrong/, 'in a lyric a similar word nearly always makes sense, so it wrote no gaps for two levels');
+    assert.match(prompt, /All English you write uses American spelling/);
     assert.match(prompt, /Write at least 8 for each level/);
     assert.match(prompt, /most use a frame copied from its lyrics/);
     assert.match(prompt, /no more than 2 cards may share one/);
