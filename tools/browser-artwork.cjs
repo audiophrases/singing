@@ -107,6 +107,11 @@ module.exports = async (browser, base) => {
   await teacher.locator('.song-card', { hasText: LOST_TITLE }).scrollIntoViewIfNeeded();
   await teacher.waitForFunction(() => document.querySelector('.song-cover img[src^="/api/art/"]'));
   await cardImage(FOUND_TITLE).evaluate((img) => img.decode());
+  for (const title of [FOUND_TITLE, LOST_TITLE]) {
+    const box = await teacher.locator('.song-card', { hasText: title }).locator('.song-cover').boundingBox();
+    assert.ok(Math.abs(box.width - box.height) < 1, 'an album cover shows whole, and a card waiting for one keeps the same shape');
+  }
+  if (shots) await teacher.screenshot({ path: `${shots}/library.png` });
   await teacher.waitForTimeout(1500);
   assert.deepEqual(visits, seen, 'a reload makes no request to any picture service');
   assert.equal(await cardImage(LOST_TITLE).count(), 0);

@@ -69,7 +69,9 @@ async function lookUpCover(cover, song) {
 }
 
 export function songCover(song, { big = false } = {}) {
-  const cover = h('div', { class: 'song-cover', style: { '--hue': song.hue ?? 245 } },
+  // Audio songs show an album cover, or will once one is found: the space is
+  // kept from the start, so the page does not move when it arrives.
+  const cover = h('div', { class: song.source === 'audio' ? 'song-cover square' : 'song-cover', style: { '--hue': song.hue ?? 245 } },
     h('span', { class: 'cover-emoji', 'aria-hidden': 'true' }, song.emoji || '🎵'));
   const src = sourceLabel(song);
   if (src && !big) cover.append(h('span', { class: 'cover-src' }, src));
