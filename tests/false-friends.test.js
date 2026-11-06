@@ -65,6 +65,7 @@ test('the prompt names the false friends it found and tells the AI to judge them
   assert.match(prompt, /L2 "Actually": looks like Catalan "actualment"/);
   assert.match(prompt, /do not add any/);
   assert.match(prompt, /kind "false-friend"/);
+  assert.match(prompt, /If you keep 3 or more, also write one "hunts" set named "False friends"/, 'one word made a hunt that ended on the first click');
   assert.match(prompt, /"notice = adonar-se, not notícia"/, 'the example is from this song');
   assert.ok(prompt.indexOf('# False friends in these lyrics') > prompt.indexOf('# The lyrics'));
   assert.ok(prompt.indexOf('# False friends in these lyrics') < prompt.indexOf('# Think first'));
