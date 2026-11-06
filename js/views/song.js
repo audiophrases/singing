@@ -12,7 +12,7 @@ import { speak } from '../tts.js';
 import { lineIndexAt } from '../music/timeline.js';
 import { shareLink } from '../share.js';
 import { exportPinPlayQuiz } from '../pinplay-export.js';
-import { deleteCloudSong, setSongPublic, saveCloudSong, deleteStudentSong } from '../cloud/library.js';
+import { deleteCloudSong, setSongPublic, saveCloudSong, deleteStudentSong, saveSongBookmark, deleteSongBookmark } from '../cloud/library.js';
 import { teacherAccess, isOwner } from '../cloud/access.js';
 import { lessonOf, packCounts, plainLines } from '../lesson/pack.js';
 
@@ -48,6 +48,7 @@ export async function render(el, { id }) {
     h('div', null,
       h('h1', null, song.title),
       h('div', { class: 'small' }, song.artist || '', song.credit ? ` · ${song.credit}` : ''),
+      song.access ? h('p', { class: 'small' }, `Access expires ${new Date(song.access.expiresAt).toLocaleString()}. Saved songs have the same expiry.`) : null,
       h('div', { class: 'song-meta' },
         levelBadge(song.level),
         ...(song.grammar || []).map((g) => h('span', { class: 'badge' }, g)),
@@ -69,7 +70,7 @@ export async function render(el, { id }) {
     acts.append(h('h3', { class: 'section-title' }, `${g.emoji} ${g.name}`));
     acts.append(h('div', { class: 'activity-grid' }, list.map((x) => h('a', {
       class: 'activity',
-      href: `#/play/${encodeURIComponent(song.id)}/${x.id}`,
+      href: `#/play/${encodeURIComponent(song.id)}/${x.id}${song.protected ? `?revision=${song.revision}` : ''}`,
     },
     h('span', { class: 'act-emoji' }, x.emoji),
     h('span', { class: 'act-name' }, x.name),
@@ -81,17 +82,23 @@ export async function render(el, { id }) {
   acts.append(h('div', { class: 'activity-grid' },
     teacherAccess() ? h('a', { class: 'activity', href: `#/lesson/${encodeURIComponent(song.id)}` }, h('span', { class: 'act-emoji' }, '🧠'), h('span', { class: 'act-name' }, 'AI song pack'), h('span', { class: 'act-desc' }, lesson ? 'See this song\'s pack, add to it or replace it.' : 'A prompt for any AI: it studies the lyrics and adds depth to the games.')) : null,
     teacherAccess() && lesson?.chant ? h('a', { class: 'activity', href: `#/chant?lesson=${encodeURIComponent(song.id)}` }, h('span', { class: 'act-emoji' }, '✨'), h('span', { class: 'act-name' }, 'AI chant'), h('span', { class: 'act-desc' }, lesson.chant.teaches ? `An original chant: ${lesson.chant.teaches}.` : 'An original chant on the same language, for the Song maker.')) : null,
-    h('a', { class: 'activity', href: `#/remix/${encodeURIComponent(song.id)}` }, h('span', { class: 'act-emoji' }, '🪄'), h('span', { class: 'act-name' }, 'Remix'), h('span', { class: 'act-desc' }, 'Students write their own verses; the band sings them.')),
-    h('a', { class: 'activity', href: `#/print/${encodeURIComponent(song.id)}/gapfill` }, h('span', { class: 'act-emoji' }, '🖨️'), h('span', { class: 'act-name' }, 'Worksheets'), h('span', { class: 'act-desc' }, 'Gap fill, cut-up lines, bingo cards, lyrics sheet - ready to print.')),
+    !song.protected ? h('a', { class: 'activity', href: `#/remix/${encodeURIComponent(song.id)}` }, h('span', { class: 'act-emoji' }, '🪄'), h('span', { class: 'act-name' }, 'Remix'), h('span', { class: 'act-desc' }, 'Students write their own verses; the band sings them.')) : null,
+    !song.protected ? h('a', { class: 'activity', href: `#/print/${encodeURIComponent(song.id)}/gapfill` }, h('span', { class: 'act-emoji' }, '🖨️'), h('span', { class: 'act-name' }, 'Worksheets'), h('span', { class: 'act-desc' }, 'Gap fill, cut-up lines, bingo cards, lyrics sheet - ready to print.')) : null,
     teacherAccess() ? h('button', { class: 'activity', type: 'button', onclick: () => editCopy(song) }, h('span', { class: 'act-emoji' }, song.mine ? '✏️' : '📋'), h('span', { class: 'act-name' }, song.mine ? 'Edit song' : 'Copy and edit'), h('span', { class: 'act-desc' }, song.mine ? 'Change lyrics, timing, pictures and translations.' : 'Make your own version of this song in the Studio.')) : null,
     // Band songs in the owner's cloud library can go on the public player.
-    teacherAccess() && isOwner() && song.cloud && (song.source || 'band') === 'band' ? h('button', { class: 'activity', type: 'button', 'aria-pressed': String(!!song.public), onclick: async () => {
+    teacherAccess() && isOwner() && song.cloud && !song.accessControlled && (song.source || 'band') === 'band' ? h('button', { class: 'activity', type: 'button', 'aria-pressed': String(!!song.public), onclick: async () => {
       try { await setSongPublic(song, !song.public); } catch (e) { toast(e.message, 'bad'); return; }
       toast(song.public ? 'Now private: off the public page' : 'Now public: on the public page', 'ok');
       window.dispatchEvent(new Event('hashchange'));
     } }, h('span', { class: 'act-emoji' }, song.public ? '🌍' : '🔒'), h('span', { class: 'act-name' }, song.public ? 'Public' : 'Private'),
     h('span', { class: 'act-desc' }, song.public ? 'Anyone can play it on the public page, without signing in. Click to make it private.' : 'Only you and your assignments. Click to put it on the public page.')) : null,
-    h('button', { class: 'activity', type: 'button', onclick: () => shareLink(song) }, h('span', { class: 'act-emoji' }, '🔗'), h('span', { class: 'act-name' }, 'Share link'), h('span', { class: 'act-desc' }, 'A link that opens this song on any computer, nothing to install.')),
+    teacherAccess() ? h('button', { class: 'activity', type: 'button', onclick: () => shareLink(song) }, h('span', { class: 'act-emoji' }, '🔗'), h('span', { class: 'act-name' }, 'Share link'), h('span', { class: 'act-desc' }, 'Give selected students or classes seven days of access.')) : null,
+    song.protected ? h('button', { class: 'activity', type: 'button', onclick: async () => {
+      try { await saveSongBookmark(song); toast('Saved. The expiry date stays the same.', 'ok'); } catch (e) { toast(e.message, 'bad'); }
+    } }, h('span', { class: 'act-emoji' }, '⭐'), h('span', { class: 'act-name' }, 'Save to my songs'), h('span', { class: 'act-desc' }, 'Keep a bookmark. Access still expires on the date above.')) : null,
+    song.savedSong ? h('button', { class: 'activity', type: 'button', onclick: async () => {
+      try { await deleteSongBookmark(song); location.hash = '#/'; } catch (e) { toast(e.message, 'bad'); }
+    } }, h('span', { class: 'act-emoji' }, '🗑️'), h('span', { class: 'act-name' }, 'Remove saved song')) : null,
     teacherAccess() ? h('button', { class: 'activity', type: 'button', onclick: () => exportPinPlayQuiz(song) }, h('span', { class: 'act-emoji' }, '🎯'), h('span', { class: 'act-name' }, 'Export to PinPlay'), h('span', { class: 'act-desc' }, 'A PinPlay quiz (gap fills, word choice, line order) from this song.')) : null,
     // Song maker songs go back to the Song maker: a teacher's own, or a student's.
     song.composed && ((teacherAccess() && song.mine) || song.studentSong) ? h('a', { class: 'activity', href: `#/chant?edit=${encodeURIComponent(song.id)}` }, h('span', { class: 'act-emoji' }, '✨'), h('span', { class: 'act-name' }, 'Change in the Song maker'),

@@ -12,15 +12,17 @@
  *   #/lesson/<id>            AI song pack: prompt, batches, review
  *   #/print/<id>/<kind>      worksheets
  *   #/card/<id>/<seed>       a student's bingo card (phone)
- *   #/s/<data>               a shared song
+ *   #/share/<token>          an expiring shared song
+ *   #/s/<data>               retired legacy link
  *   #/help
  */
-import { h, clear, toast } from './ui.js';
+import { h, clear, toast, closeModals } from './ui.js';
 import { openTeamsDialog } from './views/teams.js';
 import { initFolderLibrary, stopWatching } from './media/folder-library.js';
-import { initCloud, cloudSession, onCloudSession } from './cloud/session.js';
+import { initCloud, cloudSession, onCloudSession, api } from './cloud/session.js';
 import { teacherArea, teacherAccess, isTeacher, assignmentRoute, teacherUrl, publicUrl } from './cloud/access.js';
-import { refreshCloudLibrary, resolveCloudSong, loadPublicSongs, refreshStudentSongs } from './cloud/library.js';
+import { refreshCloudLibrary, resolveCloudSong, loadPublicSongs, refreshStudentSongs, cacheCloudSong, lockProtectedSong } from './cloud/library.js';
+import { watchSongAccess, checkSongAccess } from './cloud/song-access.js';
 import { accountButton, renderSignIn } from './views/account.js';
 
 const cloudReady = initCloud().then(async (session) => {
@@ -50,7 +52,7 @@ function syncNavigation() {
 let previousPrincipal = null;
 onCloudSession((session) => {
   syncNavigation();
-  if (previousPrincipal && !session.principal) {
+  if (previousPrincipal && previousPrincipal.id !== session.principal?.id) {
     stopWatching();
     queueMicrotask(() => window.dispatchEvent(new Event('hashchange')));
   }
@@ -73,6 +75,7 @@ const routes = [
   { re: /^\/print\/([^/]+)\/([^/]+)$/, view: () => import('./views/print.js'), nav: 'library', keys: ['id', 'kind'] },
   { re: /^\/card\/([^/]+)\/([^/]+)$/, view: () => import('./views/card.js'), nav: '', keys: ['id', 'seed'] },
   { re: /^\/s\/(.+)$/, view: () => import('./views/shared.js'), nav: 'library', keys: ['data'] },
+  { re: /^\/share\/([a-f0-9]{64})$/, view: () => import('./views/shared.js'), nav: 'library', keys: ['token'] },
   { re: /^\/help$/, view: () => import('./views/help.js'), nav: 'help' },
 ];
 
@@ -80,6 +83,16 @@ const app = document.getElementById('app');
 const stage = document.getElementById('stage');
 let cleanup = null;
 let renderSeq = 0;
+
+function accessMessage(message, { signIn = false } = {}) {
+  clear(stage); stage.classList.add('hidden'); app.inert = false;
+  document.body.classList.remove('on-stage');
+  clear(app); closeModals();
+  if (signIn) { renderSignIn(app, { shared: true }); return; }
+  app.append(h('section', { class: 'card' }, h('h1', null, 'Song access'), h('p', { role: 'status' }, message),
+    h('a', { class: 'btn', href: '#/' }, 'Back to the songs'),
+    h('button', { class: 'btn', type: 'button', onclick: () => window.dispatchEvent(new Event('hashchange')) }, 'Check access again')));
+}
 
 function parseHash() {
   const raw = location.hash.replace(/^#/, '') || '/';
@@ -98,6 +111,12 @@ async function render() {
     try { cleanup(); } catch (e) { console.error(e); }
   }
   cleanup = null;
+  // Clear private content before any route lookup, permission check or import.
+  // A failed load must never leave the previous page without its access watcher.
+  closeModals();
+  clear(stage); stage.classList.add('hidden'); app.inert = false;
+  document.body.classList.remove('on-stage');
+  clear(app).append(h('p', { class: 'small', role: 'status' }, 'Loading…'));
   const route = routes.find((r) => r.re.test(path));
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', !!route && a.dataset.nav === route.nav));
   if (!route) {
@@ -128,9 +147,37 @@ async function render() {
     clear(app); renderSignIn(app);
     return;
   }
-  if (params.id && route.nav !== 'assignments' && !params.attempt) {
-    try { await resolveCloudSong(params.id); }
-    catch (e) { toast(e.message, 'bad'); }
+  let protectedSong = null;
+  let verifyAccess;
+  try {
+    let resolved;
+    if (params.token) {
+      if (!cloudSession().principal) { accessMessage('', { signIn: true }); return; }
+      ({ song: resolved } = await api('/api/shared/open', { method: 'POST', body: { token: params.token } }));
+      params.song = resolved; cacheCloudSong(resolved);
+      verifyAccess = () => api('/api/shared/access', { method: 'POST', body: { token: params.token } });
+    } else if (params.attempt) {
+      const run = await api(`/api/attempts/${encodeURIComponent(params.attempt)}`);
+      if (run.attempt.song_id !== params.id || run.attempt.activity !== params.game) throw new Error('This attempt belongs to another activity.');
+      params.assignmentRun = run; resolved = run.song;
+      verifyAccess = () => api(`/api/attempts/${encodeURIComponent(params.attempt)}/access`);
+    } else {
+      const songId = route.nav !== 'assignments' ? params.id || params.song || params.lesson || params.edit : null;
+      if (songId) resolved = await resolveCloudSong(songId, { revision: params.revision });
+      if (!resolved && songId && !cloudSession().principal && /^[a-f0-9-]{36}$/.test(songId)) { accessMessage('', { signIn: true }); return; }
+    }
+    if (seq !== renderSeq) return;
+    if (resolved?.protected) {
+      if (!/^\/(song|play|share)\//.test(path)) {
+        accessMessage('This shared song is available for online listening and activities. Saving a copy, printing and remixing are unavailable.');
+        return;
+      }
+      protectedSong = resolved;
+      verifyAccess ||= () => checkSongAccess(resolved);
+    }
+  } catch (e) {
+    if (seq === renderSeq) accessMessage(e.message, { signIn: e.status === 401 });
+    return;
   }
   let mod;
   try {
@@ -145,14 +192,26 @@ async function render() {
   app.inert = !!route.stage;
   document.body.classList.toggle('on-stage', !!route.stage);
   if (!route.stage) clear(stage);
-  const target = route.stage ? stage : app;
+  // Each render owns its mount: late async work cannot restore a locked page.
+  const target = h('div');
   if (!route.stage) {
     clear(app);
     window.scrollTo(0, 0);
   }
+  clear(route.stage ? stage : app).append(target);
   try {
     const nextCleanup = await mod.render(target, params);
-    if (seq === renderSeq) cleanup = nextCleanup;
+    if (seq === renderSeq) {
+      const stopAccess = watchSongAccess(protectedSong, { verify: verifyAccess, onLock: (message) => {
+        if (seq !== renderSeq) return;
+        renderSeq++;
+        if (typeof nextCleanup === 'function') nextCleanup();
+        cleanup = null;
+        lockProtectedSong(protectedSong.id);
+        accessMessage(message);
+      } });
+      if (seq === renderSeq) cleanup = () => { stopAccess(); if (typeof nextCleanup === 'function') nextCleanup(); };
+    }
     else if (typeof nextCleanup === 'function') nextCleanup();
   } catch (e) {
     if (seq !== renderSeq) return;

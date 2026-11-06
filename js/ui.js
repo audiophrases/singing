@@ -103,6 +103,7 @@ export function openModal(content, { wide = false, onClose, dismissable = true }
 export function modalOpen() {
   return modalStack.length > 0;
 }
+export function closeModals() { for (const modal of [...modalStack].reverse()) modal.close(); }
 
 export function confirmDialog(message, { ok = 'OK', cancel = 'Cancel', danger = false, title = '' } = {}) {
   return new Promise((resolve) => {

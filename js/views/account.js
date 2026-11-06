@@ -1,6 +1,6 @@
 import { h, openModal, toast, clear } from '../ui.js';
 import { cloudSession, onCloudSession, signIn, signOut } from '../cloud/session.js';
-import { refreshCloudLibrary, migrateLocalSongs, importSongBackup } from '../cloud/library.js';
+import { refreshCloudLibrary, refreshStudentSongs, migrateLocalSongs, importSongBackup } from '../cloud/library.js';
 import { localUserSongs } from '../store.js';
 import { createSongBackup } from '../media/backup.js';
 import { getMedia } from '../media/store.js';
@@ -31,11 +31,11 @@ export function signInToSave() {
   });
 }
 
-export function renderSignIn(el, { teacher = false } = {}) {
+export function renderSignIn(el, { teacher = false, shared = false } = {}) {
   const panel = accountContent({ teacher, onChanged: () => window.dispatchEvent(new Event('hashchange')) });
   el.append(h('section', { class: 'card account-card' },
-    h('h1', null, teacher ? 'Teacher access' : 'Sign in for your assignment'),
-    h('p', null, teacher ? 'Manage your songs, classes and assignments here. Use your existing PinPlay teacher account.' : 'Use the school Google account your teacher has added to the class. Your assignment will open after sign-in.'),
+    h('h1', null, teacher ? 'Teacher access' : shared ? 'Sign in to open this song' : 'Sign in for your assignment'),
+    h('p', null, teacher ? 'Manage your songs, classes and assignments here. Use your existing PinPlay teacher account.' : shared ? 'Use the school Google account selected by your teacher. Song access lasts until the expiry shown in the link.' : 'Use the school Google account your teacher has added to the class. Your assignment will open after sign-in.'),
     panel.body, panel.status,
     h('p', { class: 'small' }, h('a', { href: publicUrl('#/') }, 'Play Singing without signing in'))));
 }
@@ -102,6 +102,7 @@ function accountContent({ teacher, onChanged }) {
     const finishSignIn = async (credentials) => {
       await signIn(credentials);
       if (teacher && isTeacher()) await refreshCloudLibrary();
+      else if (cloudSession().principal?.role === 'student') await refreshStudentSongs();
       onChanged(); toast('Signed in', 'ok');
     };
     if (teacher) {

@@ -103,6 +103,7 @@ export function setSharedSong(song) {
 }
 
 export function saveUserSong(song) {
+  if (song.protected || song.access) throw new Error('Shared songs can only be saved as expiring bookmarks.');
   if (song.cloud) throw new Error('Save this song to your cloud library.');
   if (song.source === 'audio' || ['audio', 'karaoke', 'vocals', 'sourceFile'].some((role) => song[role]?.mediaId)) throw new Error('Uploaded songs must be saved to your private cloud library. Sign in as a teacher.');
   const list = localUserSongs();

@@ -1,14 +1,15 @@
 /*
  * The song library: every built-in song plus the teacher's own, as cards.
  */
-import { h, clear, levelBadge, pick, debounce } from '../ui.js';
+import { h, clear, levelBadge, pick, debounce, toast } from '../ui.js';
 import { allSongs, getProgress, onSongs } from '../store.js';
 import { GAMES, gameFits } from '../games/index.js';
 import { SynthTrack } from '../music/player.js';
 import { folderLibraryControls } from './folder-library.js';
 import { onFolderStatus } from '../media/folder-library.js';
 import { teacherAccess } from '../cloud/access.js';
-import { setArtwork } from '../cloud/library.js';
+import { setArtwork, refreshStudentSongs, deleteSongBookmark } from '../cloud/library.js';
+import { cloudSession } from '../cloud/session.js';
 import { findCover, coverJpeg } from '../media/artwork.js';
 
 const FILTER_KEY = 'singing.libraryFilters.v1';
@@ -78,14 +79,14 @@ export function songCover(song, { big = false } = {}) {
     cover.prepend(img);
   }
   if (song.source === 'audio' && song.artwork) showCover(cover, song.artwork);
-  else if (song.source === 'audio' && song.title && song.artist) whenVisible(cover, () => lookUpCover(cover, song).catch(() => {}));
+  else if (song.source === 'audio' && song.title && song.artist && !song.protected) whenVisible(cover, () => lookUpCover(cover, song).catch(() => {}));
   return cover;
 }
 
 function card(song, mineBadge) {
   const link = h('a', { class: 'song-card', href: `#/song/${encodeURIComponent(song.id)}`, style: { '--hue': song.hue ?? 245 } });
   const cover = songCover(song);
-  if (!song.source || song.source === 'band') {
+  if (!song.protected && (!song.source || song.source === 'band')) {
     const btn = h('button', { class: 'cover-play', type: 'button', title: 'Listen to the start', 'aria-label': `Listen to ${song.title}` }, '▶');
     btn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -112,10 +113,16 @@ function card(song, mineBadge) {
       levelBadge(song.level),
       mineBadge && song.mine ? h('span', { class: 'badge' }, '⭐ Mine') : null,
       song.cloud && song.public ? h('span', { class: 'badge' }, '🌍 Public') : null,
+      song.protected ? h('span', { class: 'badge' }, song.locked ? '🔒 Access expired' : '⭐ Saved access') : null,
+      song.protected && song.access ? h('span', { class: 'small' }, `Expires ${new Date(song.access.expiresAt).toLocaleString()}`) : null,
       song.madeBy ? h('span', { class: 'badge', title: `Made by ${song.madeBy.name}` }, `🎓 ${String(song.madeBy.name).split(/\s+/)[0]}`) : null,
       ...(song.grammar || []).slice(0, 2).map((g) => h('span', { class: 'badge' }, g)),
     ),
   ));
+  if (song.savedSong) link.append(h('button', { class: 'btn btn-sm', type: 'button', onclick: async (e) => {
+    e.preventDefault(); e.stopPropagation();
+    try { await deleteSongBookmark(song); } catch (error) { toast(error.message, 'bad'); }
+  } }, 'Remove saved song'));
   return h('li', null, link);
 }
 
@@ -133,7 +140,8 @@ function matches(song, f) {
 }
 
 export function surpriseMe() {
-  const songs = allSongs();
+  const songs = allSongs().filter((s) => !s.protected);
+  if (!songs.length) return;
   const song = pick(songs);
   const games = GAMES.filter((g) => !g.mic && gameFits(g, song, (song.lines || song.synced || []).length));
   const game = pick(games);
@@ -236,5 +244,9 @@ export async function render(el) {
   draw();
   const off = onFolderStatus((state) => { if (state.changed) draw(); });
   const offSongs = onSongs(draw);
-  return () => { stopPreview(); folders?.destroy(); off(); offSongs(); };
+  const refresh = () => { if (cloudSession().principal?.role === 'student' && !document.hidden) refreshStudentSongs().catch(() => {}); };
+  const timer = setInterval(refresh, 30000);
+  window.addEventListener('focus', refresh);
+  refresh();
+  return () => { stopPreview(); folders?.destroy(); off(); offSongs(); clearInterval(timer); window.removeEventListener('focus', refresh); };
 }

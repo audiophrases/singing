@@ -217,7 +217,9 @@ export class AudioTrack extends PolledTrack {
   }
 
   poll() {
-    if (this.song.cloud && this.song.playbackExpiresAt - Date.now() < 60000 && !this.refreshing && !this.destroyed) this.refreshPlayback().catch(() => {});
+    const remaining = Math.min(this.song.playbackExpiresAt - Date.now(), this.song.playbackDeadline == null ? Infinity : this.song.playbackDeadline - performance.now());
+    const renewBefore = Math.min(60000, (this.song.playbackDuration ?? 120000) / 2);
+    if (this.song.cloud && remaining < renewBefore && !this.refreshing && !this.destroyed) this.refreshPlayback().catch(() => {});
     super.poll();
     this.syncKaraoke();
     this.watchClean();
@@ -258,7 +260,7 @@ export class AudioTrack extends PolledTrack {
   }
 
   async rawPlay() {
-    if (this.song.cloud && this.song.playbackExpiresAt <= Date.now() && !this.refreshing) await this.refreshPlayback();
+    if (this.song.cloud && (this.song.playbackExpiresAt <= Date.now() || this.song.playbackDeadline <= performance.now()) && !this.refreshing) await this.refreshPlayback();
     await unlockAudio();
     try { await this.audio.play(); } catch (e) { this.playing = false; throw e; }
     this.syncKaraoke(true);
@@ -288,9 +290,9 @@ export class AudioTrack extends PolledTrack {
     this.destroyed = true;
     super.destroy();
     for (const n of [this.main, this.karNode, this.vocNode]) if (n) try { n.node.disconnect(); n.gain.disconnect(); } catch { /* ignore */ }
-    this.audio.removeAttribute('src');
-    if (this.kar) this.kar.removeAttribute('src');
-    if (this.voc) this.voc.removeAttribute('src');
+    for (const element of [this.audio, this.kar, this.voc]) if (element) {
+      element.removeAttribute('src'); element.load?.();
+    }
     this.objectUrls.forEach((u) => URL.revokeObjectURL(u));
   }
 }

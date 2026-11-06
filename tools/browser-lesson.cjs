@@ -422,16 +422,29 @@ module.exports = async (browser, base) => {
   watch(visitor, 'public');
   await stubGoogle(visitor, 'outsider');
   await visitor.goto(`${base}#/song/${id}`);
+  await visitor.getByRole('heading', { name: 'Sign in to open this song', exact: true }).waitFor();
+  assert.equal(await visitor.locator('.word-card').count(), 0, 'an assignment makes its song private');
+  const publicId = await teacher.evaluate(async (songId) => {
+    const { api } = await import('/js/cloud/session.js');
+    const { song } = await api(`/api/songs/${songId}`);
+    const created = await api('/api/songs', { method: 'POST', body: { clientId: `public-pack-${crypto.randomUUID()}` } });
+    await api(`/api/songs/${created.id}/commit`, { method: 'POST', body: { baseRevision: 0, song: { ...song, title: 'Public pack browser copy' }, assets: {}, rightsConfirmed: true } });
+    await api(`/api/songs/${created.id}/visibility`, { method: 'POST', body: { public: true } });
+    return created.id;
+  }, id);
+  await visitor.goto(`${base}#/song/${publicId}`);
+  // Reload the public library after publishing the separate, unrestricted copy.
+  await visitor.reload();
   await visitor.locator('.word-card').first().waitFor();
   assert.equal(await visitor.locator('.lesson-warnings').count(), 0);
   assert.equal(await visitor.locator('.act-pack').count(), 0);
   assert.equal(await visitor.getByRole('link', { name: /AI song pack/ }).count(), 0);
   assert.equal((await visitor.locator('#app').innerText()).includes('Eating alone'), false);
-  const leak = await visitor.evaluate(async (songId) => JSON.stringify((await import('/js/store.js')).getSong(songId).lesson.teacher ?? null), id);
+  const leak = await visitor.evaluate(async (songId) => JSON.stringify((await import('/js/store.js')).getSong(songId).lesson.teacher ?? null), publicId);
   assert.equal(leak, 'null');
-  await visitor.goto(`${base}#/lesson/${id}`);
+  await visitor.goto(`${base}#/lesson/${publicId}`);
   await visitor.waitForURL(/create\//);
-  ok('Public page: pack games and word cards, no notes, no pack page');
+  ok('Assigned songs stay private; a separate public copy has pack games and word cards, without teacher notes or a pack page');
 
   // --------------------------------------------- many files at once, an agent
   await go(`#/lesson/${id}`);

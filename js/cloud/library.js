@@ -5,11 +5,35 @@ import { mp3Blob } from '../media/mp3.js';
 import { setCloudSongs, setPublicSongs, localUserSongs, markMigrated, getSong } from '../store.js';
 import { addStarterSongs } from './starters.js';
 import { toast } from '../ui.js';
+import { leaseRemaining } from './lease.js';
 
 const digest = async (blob) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()))].map((b) => b.toString(16).padStart(2, '0')).join('');
 const cloudSongs = new Map();
 let seeding = null;
-onCloudSession((s) => { if (!s.principal) { cloudSongs.clear(); setCloudSongs([]); } });
+let libraryPrincipal = null;
+onCloudSession((s) => {
+  if (libraryPrincipal !== s.principal?.id) { cloudSongs.clear(); setCloudSongs([]); }
+  libraryPrincipal = s.principal?.id;
+});
+
+export function cacheCloudSong(song) {
+  cloudSongs.set(song.id, { ...song, ...(cloudSongs.get(song.id)?.savedSong ? { savedSong: true } : {}) }); setCloudSongs([...cloudSongs.values()]);
+}
+export function lockProtectedSong(id) {
+  const current = cloudSongs.get(id);
+  if (!current?.protected) return;
+  cloudSongs.set(id, { id, title: current.title, cloud: true, protected: true, savedSong: current.savedSong,
+    bookmark: true, mine: false, locked: true, emoji: '🔒' });
+  setCloudSongs([...cloudSongs.values()]);
+}
+export async function saveSongBookmark(song) {
+  await api('/api/saved-songs', { method: 'POST', body: { songId: song.id, revision: song.revision } });
+  await refreshStudentSongs();
+}
+export async function deleteSongBookmark(song) {
+  await api(`/api/saved-songs/${song.id}`, { method: 'DELETE', body: {} });
+  cloudSongs.delete(song.id); setCloudSongs([...cloudSongs.values()]);
+}
 
 export async function refreshCloudLibrary() {
   const current = cloudSession().principal;
@@ -56,13 +80,14 @@ export async function loadPublicSongs() {
 export async function refreshStudentSongs() {
   const current = cloudSession().principal;
   if (current?.role !== 'student') return;
-  const { songs } = await api('/api/my-songs');
+  const [own, saved] = await Promise.all([api('/api/my-songs'), api('/api/saved-songs')]);
   if (cloudSession().principal?.id !== current.id) return;
   cloudSongs.clear();
-  for (const song of songs) cloudSongs.set(song.id, song);
+  for (const song of [...own.songs, ...saved.songs]) cloudSongs.set(song.id, song);
   setCloudSongs([...cloudSongs.values()]);
 }
 export async function saveStudentSong(song, { id } = {}) {
+  if (song.protected || song.access) throw new Error('Shared songs can only be saved as expiring bookmarks.');
   const { song: saved } = await api('/api/my-songs', { method: 'POST', body: { id, clientId: song.id, song } });
   cloudSongs.set(saved.id, saved); setCloudSongs([...cloudSongs.values()]);
   return saved;
@@ -152,10 +177,12 @@ export async function deleteCloudSong(song) {
 }
 export async function playbackSong(song) {
   if (!song.cloud) return song;
-  const { urls, expiresAt } = await api(`/api/songs/${song.id}/playback`, { method: 'POST', body: { revision: song.revision } });
+  const { urls, expiresAt, access, playbackDeadline, playbackDuration } = await api(`/api/songs/${song.id}/playback`, { method: 'POST', body: { revision: song.revision } });
   const copy = structuredClone(song);
   for (const role of ['audio', 'karaoke', 'vocals', 'sourceFile']) if (copy[role] && urls[role]) copy[role].url = urls[role];
   copy.playbackExpiresAt = expiresAt;
+  copy.playbackDeadline = playbackDeadline; copy.playbackDuration = playbackDuration;
+  if (access) copy.access = access;
   return copy;
 }
 export async function cloudMediaBlob(ref, song) {
@@ -186,11 +213,18 @@ export async function migrateLocalSongs({ rightsConfirmed, onProgress = () => {}
   return result;
 }
 
-export async function resolveCloudSong(id) {
+export async function resolveCloudSong(id, { revision } = {}) {
   const cached = getSong(id);
-  if (cached) return cached;
+  if (cached && revision == null && !cached.protected && !(cached.cloud && cloudSession().principal?.role === 'student')) return cached;
   if (!cloudSession().principal || !/^[a-zA-Z0-9_-]{1,96}$/.test(id)) return null;
-  const { song } = await api(`/api/songs/${id}`);
+  const principalId = cloudSession().principal.id;
+  if (navigator.onLine === false) { lockProtectedSong(id); throw new Error('Connect to the internet to check access to this song.'); }
+  let song;
+  try { ({ song } = await api(`/api/songs/${id}${revision == null ? '' : `?revision=${encodeURIComponent(revision)}`}`)); }
+  catch (e) { lockProtectedSong(id); throw e; }
+  if (cloudSession().principal?.id !== principalId) throw new Error('Your account changed. Reopen the song.');
+  if (song.protected && !leaseRemaining(song.access)) throw new Error('Access expired. Ask your teacher for a new link.');
+  if (cached?.savedSong) song.savedSong = true;
   cloudSongs.set(song.id, song); setCloudSongs([...cloudSongs.values()]);
   return song;
 }

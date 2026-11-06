@@ -16,10 +16,10 @@ const upstream = new Map();
 before(async () => {
   mf = new Miniflare(convertV4MiniflareOptions({ workers: [{ name: 'singing',
     modules: [
-      ...['worker.js', 'http.js', 'auth.js', 'songs.js', 'student-songs.js', 'assignments.js'].map((name) => `cloudflare/${name}`),
+      ...['worker.js', 'http.js', 'auth.js', 'songs.js', 'student-songs.js', 'assignments.js', 'shares.js', 'song-access.js'].map((name) => `cloudflare/${name}`),
       ...['lesson/pack.js', 'lyrics/gaps.js', 'lyrics/text.js', 'lyrics/wordlists.js', 'lyrics/grammar.js', 'lyrics/rhymes.js', 'music/timeline.js', 'music/score.js', 'music/notes.js', 'ui.js'].map((name) => `js/${name}`),
     ].map((name) => ({ type: 'ESModule', path: fileURLToPath(new URL(`../../${name}`, import.meta.url)) })),
-    compatibilityDate: '2026-10-21', d1Databases: ['DB'], r2Buckets: ['SONGS'],
+    compatibilityDate: '2026-10-21', d1Databases: ['DB', 'LEGACY'], r2Buckets: ['SONGS'],
     bindings: { OWNER_STORAGE_BYTES: '1048576', MAX_FILE_BYTES: '524288' },
     serviceBindings: { IDENTITY: async (request) => {
       const path = new URL(request.url).pathname; const body = await request.json();
@@ -35,6 +35,10 @@ before(async () => {
       const principal = upstream.get(body.credential);
       if (!principal || revoked.has(principal.id)) return Response.json({ error: 'Access revoked.' }, { status: 403 });
       if (path === '/classes') return Response.json({ classes: principal.classIds.map((id) => ({ id, name: id })) });
+      if (path === '/roster') return Response.json({ students: [
+        ...(principal.classIds.includes('class_a') ? [{ id: 'student', displayName: 'Student', className: 'class_a' }] : []),
+        ...(principal.classIds.includes('class_b') ? [{ id: 'outsider', displayName: 'Outsider', className: 'class_b' }] : []),
+      ] });
       return Response.json({ principal });
     } },
   }] }));
@@ -43,7 +47,7 @@ before(async () => {
   for (const statement of sql.split(';').map((s) => s.trim()).filter(Boolean)) await db.prepare(statement).run();
   const assignments = await readFile(new URL('../../cloudflare/migrations/0002_assignments.sql', import.meta.url), 'utf8');
   for (const statement of assignments.split(';').map((s) => s.trim()).filter(Boolean)) await db.prepare(statement).run();
-  for (const name of ['0003_public_songs.sql', '0004_student_songs.sql']) {
+  for (const name of ['0003_public_songs.sql', '0004_student_songs.sql', '0005_expiring_shares.sql']) {
     const sql = await readFile(new URL(`../../cloudflare/migrations/${name}`, import.meta.url), 'utf8');
     for (const statement of sql.split(';').map((s) => s.trim()).filter(Boolean)) await db.prepare(statement).run();
   }
@@ -55,7 +59,7 @@ async function call(path, { session, method = 'GET', body, headers = {}, origin 
     Origin: origin, ...(session ? { Cookie: session.cookie, 'X-Singing-CSRF': session.csrf } : {}),
     ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...headers,
   }, body: body instanceof Uint8Array ? body : body === undefined ? undefined : JSON.stringify(body) });
-  const data = response.headers.get('Content-Type')?.includes('application/json') ? await response.json() : await response.arrayBuffer();
+  const data = method === 'HEAD' ? null : response.headers.get('Content-Type')?.includes('application/json') ? await response.json() : await response.arrayBuffer();
   return { status: response.status, data, headers: response.headers };
 }
 async function login(name) {
@@ -545,4 +549,180 @@ test('a song picture stays with the song, costs no revision, and a browser can k
 
   assert.equal((await call(`/api/songs/${id}`, { session: painter, method: 'DELETE', body: {} })).status, 200);
   assert.equal((await call(replaced, { session: painter })).status, 404, 'a deleted song takes its picture with it');
+});
+
+async function sharedRecording() {
+  const teacher = await login('alice'); const student = await login('student'); const outsider = await login('outsider');
+  const { id } = await song(teacher);
+  const assets = {};
+  for (const role of ['audio', 'karaoke', 'vocals', 'sourceFile']) assets[role] = await upload(teacher, id, role);
+  assert.equal((await commit(teacher, id, assets)).status, 200);
+  return { teacher, student, outsider, id, assets };
+}
+const createShare = (teacher, id, targets = { classIds: ['class_a'] }) => call('/api/share-links', { session: teacher, method: 'POST', body: { songId: id, ...targets } });
+const openShare = (session, token) => call('/api/shared/open', { session, method: 'POST', body: { token } });
+
+test('expiring shares bind recipients, hash tokens, pin revisions and save metadata-only bookmarks', async () => {
+  const { teacher, student, outsider, id, assets } = await sharedRecording();
+  assert.equal((await createShare(teacher, id, { classIds: ['class_b'] })).status, 403);
+  assert.equal((await createShare(teacher, id, { studentIds: ['outsider'] })).status, 403);
+  assert.equal((await createShare(student, id)).status, 403);
+  const created = await createShare(teacher, id);
+  assert.equal(created.status, 201, JSON.stringify(created.data));
+  assert.equal(created.data.expiresAt - created.data.serverNow, 604800000);
+  const row = await db.prepare('SELECT * FROM share_links WHERE id = ?').bind(created.data.id).first();
+  assert.notEqual(row.token_hash, created.data.token);
+  assert.equal(row.token_hash, createHash('sha256').update(created.data.token).digest('hex'));
+  assert.equal((await openShare(undefined, created.data.token)).status, 401);
+  assert.equal((await openShare(outsider, created.data.token)).status, 403);
+  const opened = await openShare(student, created.data.token);
+  assert.equal(opened.status, 200, JSON.stringify(opened.data));
+  assert.equal(opened.data.song.protected, true);
+  assert.equal(opened.data.song.cloud, true);
+  assert.equal(opened.data.song.revision, 1);
+  assert.equal(opened.data.song.sourceFile, undefined);
+  assert.equal(opened.data.song.access.expiresAt, created.data.expiresAt);
+  assert.equal((await commit(teacher, id, assets, 1)).status, 200);
+  assert.equal((await openShare(student, created.data.token)).data.song.revision, 1, 'a link retains its shared version after teacher edits');
+  assert.equal((await call(`/api/songs/${id}?revision=2`, { session: student })).status, 404);
+  assert.equal((await call(`/api/songs/${id}?revision=invalid`, { session: student })).status, 400);
+  assert.equal((await call('/api/saved-songs', { session: student, method: 'POST', body: { songId: id } })).status, 200);
+  const saved = (await call('/api/saved-songs', { session: student })).data.songs.find((s) => s.id === id);
+  assert.equal(saved.locked, false);
+  assert.equal(saved.access.expiresAt, created.data.expiresAt, 'saving does not restart access');
+  for (const key of ['lines', 'synced', 'audio', 'karaoke', 'vocals', 'lesson']) assert.equal(key in saved, false);
+  assert.equal((await call('/api/my-songs', { session: student, method: 'POST', body: { clientId: 'forbidden-shared-copy', song: opened.data.song } })).status, 403);
+  const bob = await login('bob');
+  assert.equal((await call(`/api/share-links?songId=${id}`, { session: bob })).status, 404);
+  assert.equal((await call(`/api/share-links/${created.data.id}/revoke`, { session: bob, method: 'POST', body: {} })).status, 404);
+});
+
+test('expiry blocks saved songs, lyrics and every audio stem even with an existing playback pass', async () => {
+  const { teacher, student, id } = await sharedRecording();
+  const created = await createShare(teacher, id);
+  const expiry = Date.now() + 30000;
+  await db.prepare('UPDATE share_links SET expires_at = ? WHERE id = ?').bind(expiry, created.data.id).run();
+  await call('/api/saved-songs', { session: student, method: 'POST', body: { songId: id } });
+  const playback = await call(`/api/songs/${id}/playback`, { session: student, method: 'POST', body: {} });
+  assert.equal(playback.status, 200, JSON.stringify(playback.data));
+  assert.ok(playback.data.expiresAt <= expiry, 'a playback pass never outlasts its permission');
+  assert.deepEqual(Object.keys(playback.data.urls).sort(), ['audio', 'karaoke', 'vocals']);
+  for (const url of Object.values(playback.data.urls)) {
+    assert.equal((await call(url, { session: student, headers: { Range: 'bytes=0-3' } })).status, 206);
+  }
+  await db.prepare('UPDATE share_links SET expires_at = ? WHERE id = ?').bind(Date.now() - 1, created.data.id).run();
+  assert.equal((await openShare(student, created.data.token)).status, 410);
+  assert.equal((await call(`/api/songs/${id}`, { session: student })).status, 404);
+  assert.equal((await call(`/api/songs/${id}/access`, { session: student })).status, 410);
+  assert.equal((await call(`/api/songs/${id}/playback`, { session: student, method: 'POST', body: {} })).status, 404);
+  for (const url of Object.values(playback.data.urls)) {
+    assert.equal((await call(url, { session: student })).status, 403);
+    assert.equal((await call(url, { session: student, method: 'HEAD' })).status, 403);
+  }
+  const saved = (await call('/api/saved-songs', { session: student })).data.songs.find((s) => s.id === id);
+  assert.equal(saved.locked, true);
+  assert.equal(saved.access, null);
+  assert.equal((await call(`/api/songs/${id}`, { session: teacher })).status, 200, 'the teacher retains the original');
+});
+
+test('replacement links restore the same bookmark for selected students while old URLs remain expired', async () => {
+  const { teacher, student, outsider, id } = await sharedRecording();
+  const original = await createShare(teacher, id);
+  await call('/api/saved-songs', { session: student, method: 'POST', body: { songId: id } });
+  await db.prepare('UPDATE share_links SET expires_at = 0 WHERE id = ?').bind(original.data.id).run();
+  const replacement = await createShare(teacher, id, { studentIds: ['student'] });
+  assert.equal(replacement.status, 201, JSON.stringify(replacement.data));
+  assert.notEqual(replacement.data.token, original.data.token);
+  assert.equal((await openShare(student, original.data.token)).status, 410);
+  assert.equal((await openShare(student, replacement.data.token)).status, 200);
+  assert.equal((await openShare(outsider, replacement.data.token)).status, 403);
+  const entries = (await call('/api/saved-songs', { session: student })).data.songs.filter((s) => s.id === id);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].locked, false);
+  assert.equal(entries[0].access.expiresAt, replacement.data.expiresAt);
+  assert.equal((await call(`/api/share-links/${replacement.data.id}/revoke`, { session: teacher, method: 'POST', body: {} })).status, 200);
+  assert.equal((await openShare(student, replacement.data.token)).status, 410);
+  assert.equal((await call(`/api/songs/${id}`, { session: student })).status, 404);
+  assert.equal((await call(`/api/saved-songs/${id}`, { session: student, method: 'DELETE', body: {} })).status, 200);
+  assert.equal((await call('/api/saved-songs', { session: student })).data.songs.some((s) => s.id === id), false);
+});
+
+test('revocation and current class membership also control existing media URLs and artwork', async () => {
+  const { teacher, student, id } = await sharedRecording();
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+  const art = await call(`/api/songs/${id}/artwork`, { session: teacher, method: 'PUT', body: jpeg, headers: { 'Content-Type': 'image/jpeg', 'Content-Length': String(jpeg.length) } });
+  const created = await createShare(teacher, id);
+  const playback = await call(`/api/songs/${id}/playback`, { session: student, method: 'POST', body: {} });
+  assert.equal((await call(art.data.artwork, { session: student })).headers.get('Cache-Control'), 'private, no-store');
+  const credential = student.cookie.slice(student.cookie.indexOf('=') + 1);
+  const principal = upstream.get(credential); const previous = principal.classIds;
+  try {
+    principal.classIds = ['class_b'];
+    assert.equal((await openShare(student, created.data.token)).status, 403);
+    assert.equal((await call(playback.data.urls.audio, { session: student })).status, 403);
+    assert.equal((await call(art.data.artwork, { session: student })).status, 403);
+  } finally { principal.classIds = previous; }
+  await call(`/api/share-links/${created.data.id}/revoke`, { session: teacher, method: 'POST', body: {} });
+  assert.equal((await call(playback.data.urls.audio, { session: student })).status, 403);
+  assert.equal((await call(art.data.artwork, { session: student })).status, 403);
+});
+
+test('assignment expiry and deadlines close lyrics, attempt contexts, saved access and media', async () => {
+  const { teacher, student, id } = await sharedRecording();
+  const created = await call('/api/assignments', { session: teacher, method: 'POST', body: { title: 'Seven days', classIds: ['class_a'], attemptsLimit: 1, units: [{ songId: id, activity: 'karaoke' }] } });
+  const detail = await call(`/api/assignments/${created.data.id}`, { session: student });
+  assert.equal(detail.data.assignment.expires_at - detail.data.assignment.created_at, 604800000);
+  const started = await call(`/api/units/${detail.data.units[0].id}/start`, { session: student, method: 'POST', body: {} });
+  const attempt = await call(`/api/attempts/${started.data.attemptId}`, { session: student });
+  assert.equal(attempt.data.song.protected, true);
+  const playback = await call(`/api/songs/${id}/playback`, { session: student, method: 'POST', body: {} });
+  await call('/api/saved-songs', { session: student, method: 'POST', body: { songId: id } });
+  for (const field of ['due_at', 'expires_at']) {
+    await db.prepare(`UPDATE assignments SET ${field} = ? WHERE id = ?`).bind(Date.now() - 1, created.data.id).run();
+    assert.equal((await call(`/api/songs/${id}`, { session: student })).status, 404);
+    assert.equal((await call(`/api/attempts/${started.data.attemptId}`, { session: student })).status, 410);
+    assert.equal((await call(`/api/attempts/${started.data.attemptId}/access`, { session: student })).status, 410);
+    assert.equal((await call(playback.data.urls.audio, { session: student })).status, 403);
+    await db.prepare('UPDATE assignments SET due_at = NULL WHERE id = ?').bind(created.data.id).run();
+  }
+  assert.equal((await call('/api/saved-songs', { session: student })).data.songs.find((s) => s.id === id).locked, true);
+});
+
+test('a protected song cannot be republished to bypass its expiry', async () => {
+  const owner = await login('owner'); const { id } = await song(owner);
+  const band = { ...structuredClone(STARTER_SONGS[0]), title: 'Protected band song', source: 'band' };
+  assert.equal((await call(`/api/songs/${id}/commit`, { session: owner, method: 'POST', body: { song: band, assets: {}, baseRevision: 0, rightsConfirmed: true } })).status, 200);
+  assert.equal((await call(`/api/songs/${id}/visibility`, { session: owner, method: 'POST', body: { public: true } })).status, 200);
+  assert.equal((await createShare(owner, id)).status, 409);
+  await call(`/api/songs/${id}/visibility`, { session: owner, method: 'POST', body: { public: false } });
+  assert.equal((await createShare(owner, id)).status, 201);
+  assert.equal((await call(`/api/songs/${id}/visibility`, { session: owner, method: 'POST', body: { public: true } })).status, 409);
+  assert.equal((await call('/api/public/songs')).data.songs.some((s) => s.id === id), false);
+});
+
+test('upgrading an existing database expires old assignments and preserves songs and results', async () => {
+  const legacy = await mf.getD1Database('LEGACY');
+  const apply = async (name) => {
+    const sql = await readFile(new URL(`../../cloudflare/migrations/${name}`, import.meta.url), 'utf8');
+    for (const statement of sql.split(';').map((s) => s.trim()).filter(Boolean)) await legacy.prepare(statement).run();
+  };
+  for (const name of ['0001_cloud_library.sql', '0002_assignments.sql', '0003_public_songs.sql', '0004_student_songs.sql']) await apply(name);
+  const created = Date.now() - 604800000 - 1000;
+  await legacy.batch([
+    legacy.prepare("INSERT INTO songs (id,owner_id,client_id,revision,title,is_public,created_at,updated_at) VALUES ('legacy','owner','legacy',1,'Keep this song',1,?,?)").bind(created, created),
+    legacy.prepare("INSERT INTO song_versions (song_id,revision,manifest_key,created_at) VALUES ('legacy',1,'keep-this-object',?)").bind(created),
+    legacy.prepare("INSERT INTO assignments (id,owner_id,title,attempts_limit,created_at) VALUES ('legacy-assignment','owner','Older assignment',1,?)").bind(created),
+    legacy.prepare("INSERT INTO assignment_units (id,assignment_id,song_id,revision,activity,settings_json) VALUES ('legacy-unit','legacy-assignment','legacy',1,'karaoke','{}')"),
+    legacy.prepare("INSERT INTO attempts (id,unit_id,student_id,student_name,ordinal,seed,started_at,score,max_score) VALUES ('legacy-result','legacy-unit','student','Student',1,1,?,5,5)").bind(created),
+  ]);
+  await apply('0005_expiring_shares.sql');
+  const assignment = await legacy.prepare("SELECT * FROM assignments WHERE id = 'legacy-assignment'").first();
+  assert.equal(assignment.expires_at, created + 604800000);
+  assert.ok(assignment.expires_at < Date.now());
+  assert.equal(assignment.active, 1, 'expiry does not delete assignment history');
+  const saved = await legacy.prepare("SELECT * FROM songs WHERE id = 'legacy'").first();
+  assert.equal(saved.title, 'Keep this song'); assert.equal(saved.revision, 1);
+  assert.equal(saved.is_public, 0); assert.equal(saved.access_controlled, 1); assert.equal(saved.deleted_at, null);
+  assert.equal((await legacy.prepare("SELECT manifest_key FROM song_versions WHERE song_id = 'legacy'").first()).manifest_key, 'keep-this-object');
+  assert.equal((await legacy.prepare("SELECT score FROM attempts WHERE id = 'legacy-result'").first()).score, 5);
 });

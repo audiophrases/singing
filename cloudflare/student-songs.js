@@ -36,6 +36,7 @@ export async function studentSongRoutes(request, env, path, principal) {
   if (id || request.method !== 'POST') return null;
 
   const body = await bodyJson(request);
+  requireThat(!body.song?.protected && !body.song?.access && !body.song?.cloud, 403, 'Shared songs can only be saved as expiring bookmarks.');
   const clean = cleanSong(body.song);
   requireThat((clean.source || 'band') === 'band', 400, 'Only songs from the Song maker can be saved here.');
   delete clean.folderImport;

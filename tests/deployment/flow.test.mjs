@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -64,6 +64,7 @@ async function fixture(t, setup = () => {}) {
   await cp(path.join(repository, 'wrangler.jsonc'), path.join(root, 'wrangler.jsonc'));
   await mkdir(path.join(root, 'cloudflare'), { recursive: true });
   await cp(path.join(repository, 'cloudflare/migrations'), path.join(root, 'cloudflare/migrations'), { recursive: true });
+  const migrationNames = (await readdir(path.join(root, 'cloudflare/migrations'))).filter((name) => name.endsWith('.sql')).sort();
   await mkdir(path.join(root, 'integrations'), { recursive: true });
   await writeFile(path.join(root, 'integrations/pinplay-classroom.patch'), 'fixture identity patch');
   const patchHash = createHash('sha256').update('fixture identity patch').digest('hex');
@@ -145,7 +146,7 @@ async function fixture(t, setup = () => {}) {
       if (args[1] === 'execute') {
         assert.equal(args[2], 'DB');
         if (argument(args, '--command') === 'SELECT name FROM d1_migrations ORDER BY name') {
-          return json([{ success: true, results: (world.migrationNames || ['0001_cloud_library.sql', '0002_assignments.sql', '0003_public_songs.sql', '0004_student_songs.sql']).map((name) => ({ name })) }]);
+          return json([{ success: true, results: (world.migrationNames || migrationNames).map((name) => ({ name })) }]);
         }
         assert.equal(argument(args, '--command'), "SELECT name FROM sqlite_master WHERE type = 'table'");
         return json([{ success: true, results: world.tables.map((name) => ({ name })) }]);

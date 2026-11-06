@@ -1,3 +1,5 @@
+import { stampAccess } from './lease.js';
+
 let state = { available: false, principal: null, csrf: '', googleClientId: '', error: '' };
 const listeners = new Set();
 export const cloudSession = () => ({ ...state });
@@ -5,7 +7,9 @@ export function onCloudSession(fn) { listeners.add(fn); return () => listeners.d
 function update(patch) { state = { ...state, ...patch }; for (const fn of listeners) fn(cloudSession()); }
 
 export async function api(path, { method = 'GET', body, headers = {}, ...options } = {}) {
+  const requestStarted = performance.now();
   const response = await fetch(path, { ...options, method, credentials: 'same-origin',
+    cache: 'no-store',
     signal: options.signal || AbortSignal.timeout(method === 'PUT' ? 120000 : 15000),
     headers: { ...(body && !(body instanceof Blob) ? { 'Content-Type': 'application/json' } : {}),
       ...(!['GET', 'HEAD'].includes(method) && state.csrf ? { 'X-Singing-CSRF': state.csrf } : {}), ...headers },
@@ -17,7 +21,7 @@ export async function api(path, { method = 'GET', body, headers = {}, ...options
     if (response.status === 401) update({ principal: null, csrf: '' });
     throw Object.assign(new Error(data?.error || 'Cloud service is unavailable. Open the cloud-hosted Singing app and try again.'), { status: response.status });
   }
-  return data;
+  return stampAccess(data, requestStarted);
 }
 
 export async function initCloud() {

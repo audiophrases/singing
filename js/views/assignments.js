@@ -28,7 +28,7 @@ export async function render(el, { id } = {}) {
     isTeacher && principal.role === 'owner' ? h('button', { class: 'btn', type: 'button', onclick: () => run(manageTeachers) }, 'Manage teachers') : null), list);
   if (!assignments.length) list.append(h('p', { class: 'empty' }, 'No assignments yet.'));
   for (const a of assignments) list.append(h('a', { class: 'card', href: `#/assignment/${a.id}`, style: { display: 'block', textDecoration: 'none', color: 'inherit' } },
-    h('h2', null, a.title), h('p', { class: 'small' }, `${a.active ? 'Open' : 'Closed'} · ${date(a.due_at)} · ${a.attempts_limit} attempt(s) per activity`)));
+    h('h2', null, a.title), h('p', { class: 'small' }, `${!a.active ? 'Closed' : a.access_expired ? 'Expired' : 'Open'} · Access expires ${date(Math.min(a.expires_at, a.due_at ?? Infinity))} · ${a.attempts_limit} attempt(s) per activity`)));
 }
 
 async function createAssignment() {
@@ -83,7 +83,7 @@ async function createAssignment() {
     finally { save.disabled = false; }
   } }, 'Create assignment');
   const modal = openModal([h('h2', null, 'Create a Singing assignment'), field('Title', title), field('Song', songSelect),
-    h('p', { class: 'small' }, 'Recordings need an original MP3, karaoke MP3 and synchronized lyrics before assigning.'),
+    h('p', { class: 'small' }, 'Student access ends after seven days, or at the deadline if sooner. Assigned songs become private. Recordings need an original MP3, karaoke MP3 and synchronized lyrics.'),
     h('h3', null, 'Activities'), activities, field('Listening difficulty', difficulty), gapSetField,
     h('h3', null, 'Classes'), classInputs.length ? classInputs.map((c) => h('label', { class: 'inline' }, c.input, ` ${c.name}`)) : h('p', null, 'No permitted classes yet. Add students and their class in PinPlay, or ask your administrator to grant class access.'),
     field('Deadline (your local time)', due), field('Attempts per activity', limit),
@@ -95,7 +95,7 @@ async function createAssignment() {
 async function detail(el, id, isTeacher) {
   const { assignment, units } = await api(`/api/assignments/${id}`);
   const card = h('section', { class: 'card' }, h('a', { href: '#/assignments' }, '← Assignments'),
-    h('h1', null, assignment.title), h('p', { class: 'small' }, `${date(assignment.due_at)} · ${assignment.attempts_limit} attempts per activity`));
+    h('h1', null, assignment.title), h('p', { class: 'small' }, `Access expires ${date(Math.min(assignment.expires_at, assignment.due_at ?? Infinity))} · ${assignment.attempts_limit} attempts per activity`));
   el.append(card);
   if (isTeacher) {
     const link = publicUrl(`#/assignment/${id}`);
@@ -113,7 +113,7 @@ async function detail(el, id, isTeacher) {
     if (isTeacher) section.append(h('a', { class: 'btn', href: `#/play/${u.song_id}/${u.activity}` }, 'Preview activity'));
     else {
       const open = u.attempts.find((a) => !a.submitted_at);
-      section.append(h('button', { class: 'btn primary', type: 'button', disabled: !assignment.active || (!open && u.attempts.length >= assignment.attempts_limit), onclick: () => run(async () => {
+      section.append(h('button', { class: 'btn primary', type: 'button', disabled: !assignment.active || assignment.access_expired || (!open && u.attempts.length >= assignment.attempts_limit), onclick: () => run(async () => {
         const { attemptId } = await api(`/api/units/${u.id}/start`, { method: 'POST', body: {} });
         location.hash = `#/play/${u.song_id}/${u.activity}?attempt=${attemptId}`;
       }) }, open ? 'Continue attempt' : 'Start activity'));

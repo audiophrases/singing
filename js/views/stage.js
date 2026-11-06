@@ -27,7 +27,7 @@ export async function render(root, params) {
   let assignmentRun = null;
   if (params.attempt) {
     try {
-      assignmentRun = await api(`/api/attempts/${encodeURIComponent(params.attempt)}`);
+      assignmentRun = params.assignmentRun || await api(`/api/attempts/${encodeURIComponent(params.attempt)}`);
       if (assignmentRun.attempt.song_id !== params.id || assignmentRun.attempt.activity !== params.game) throw new Error('This attempt belongs to another activity.');
       if (assignmentRun.attempt.submitted_at) {
         clear(root).append(h('div', { class: 'stage-main' }, h('h2', null, 'Attempt already submitted'), h('a', { class: 'btn', href: `#/assignment/${assignmentRun.attempt.assignment_id}` }, 'Back to assignment')));

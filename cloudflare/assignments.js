@@ -6,6 +6,7 @@ import { checkAnswer } from '../js/lyrics/text.js';
 import { timelineFromSynced, timelineFromCompiled } from '../js/music/timeline.js';
 import { compileSong } from '../js/music/score.js';
 import { cleanTimeline } from '../js/lesson/pack.js';
+import { SHARE_TTL, assignmentExpiry, accessInfo } from './song-access.js';
 
 const ACTIVITIES = new Set(['karaoke', 'echo', 'round', 'pitch', 'gapfill', 'choose', 'wrongword', 'order', 'bingo', 'finish', 'builder', 'hotmic', 'freeze', 'rhyme', 'hunt', 'speak', 'quiz']);
 export async function accessibleAssignment(env, id, principal) {
@@ -17,23 +18,16 @@ export async function accessibleAssignment(env, id, principal) {
   } else requireThat(row.owner_id === principal.id, 404, 'Assignment not found.');
   return row;
 }
-export async function assignedVersion(env, songId, revision, principal) {
-  const { results } = await env.DB.prepare(`SELECT DISTINCT a.id FROM assignments a
-    JOIN assignment_units u ON u.assignment_id = a.id WHERE u.song_id = ? AND u.revision = ? AND a.active = 1`).bind(songId, revision).all();
-  for (const row of results) {
-    try { await accessibleAssignment(env, row.id, principal); return true; } catch (e) { if (e.status !== 404) throw e; }
-  }
-  return false;
-}
 function checkDeadline(assignment) {
   requireThat(assignment.active, 410, 'This assignment is closed.');
-  requireThat(!assignment.due_at || Date.now() <= assignment.due_at, 410, 'The deadline for this assignment has passed.');
+  requireThat(Date.now() < assignmentExpiry(assignment), 410, 'Access to this assignment has expired. Ask your teacher for a new link.');
 }
 async function attemptContext(env, id, principal) {
   const row = await env.DB.prepare(`SELECT t.*,u.assignment_id,u.song_id,u.revision,u.activity,u.settings_json
     FROM attempts t JOIN assignment_units u ON u.id = t.unit_id WHERE t.id = ? AND t.student_id = ?`).bind(id, principal.id).first();
   requireThat(row, 404, 'Attempt not found.');
   const assignment = await accessibleAssignment(env, row.assignment_id, principal);
+  checkDeadline(assignment);
   const available = await env.DB.prepare('SELECT id FROM songs WHERE id = ? AND deleted_at IS NULL').bind(row.song_id).first();
   requireThat(available, 410, 'This song has been withdrawn.');
   return { row, assignment };
@@ -69,7 +63,7 @@ export async function assignmentRoutes(request, env, path, principal) {
       rows = (await env.DB.prepare(`SELECT DISTINCT a.* FROM assignments a JOIN assignment_targets t ON t.assignment_id = a.id
         WHERE a.active = 1 AND t.class_id IN (${principal.classIds.map(() => '?').join(',')}) ORDER BY a.created_at DESC LIMIT 200`).bind(...principal.classIds).all()).results;
     } else rows = (await env.DB.prepare('SELECT * FROM assignments WHERE owner_id = ? ORDER BY created_at DESC LIMIT 200').bind(principal.id).all()).results;
-    return json({ assignments: rows });
+    return json({ assignments: rows.map((row) => ({ ...row, access_expired: assignmentExpiry(row) <= Date.now() })) });
   }
   if (path === '/api/assignments' && request.method === 'POST') {
     teacher(principal);
@@ -99,8 +93,10 @@ export async function assignmentRoutes(request, env, path, principal) {
       const settings = { level: ['easy', 'medium', 'hard', 'all'].includes(input.settings?.level) ? input.settings.level : 'easy', input: input.settings?.input === 'bank' ? 'bank' : 'type', focus };
       units.push({ id: crypto.randomUUID(), songId: song.id, revision: song.revision, activity: input.activity, settings });
     }
+    const createdAt = Date.now();
     await env.DB.batch([
-      env.DB.prepare('INSERT INTO assignments (id,owner_id,title,due_at,attempts_limit,created_at) VALUES (?,?,?,?,?,?)').bind(id, principal.id, body.title.trim(), dueAt, body.attemptsLimit, Date.now()),
+      ...[...new Set(units.map((u) => u.songId))].map((songId) => env.DB.prepare('UPDATE songs SET access_controlled = 1, is_public = 0 WHERE id = ?').bind(songId)),
+      env.DB.prepare('INSERT INTO assignments (id,owner_id,title,due_at,attempts_limit,created_at,expires_at) VALUES (?,?,?,?,?,?,?)').bind(id, principal.id, body.title.trim(), dueAt, body.attemptsLimit, createdAt, createdAt + SHARE_TTL),
       ...[...new Set(body.classIds)].map((classId) => env.DB.prepare('INSERT INTO assignment_targets (assignment_id,class_id) VALUES (?,?)').bind(id, classId)),
       ...units.map((u) => env.DB.prepare('INSERT INTO assignment_units (id,assignment_id,song_id,revision,activity,settings_json) VALUES (?,?,?,?,?,?)').bind(u.id, id, u.songId, u.revision, u.activity, JSON.stringify(u.settings))),
     ]);
@@ -131,7 +127,7 @@ export async function assignmentRoutes(request, env, path, principal) {
       const { results: units } = await env.DB.prepare('SELECT * FROM assignment_units WHERE assignment_id = ?').bind(id).all();
       const documents = await Promise.all(units.map(async (u) => ({ ...u, songTitle: (await manifest(env, u.song_id, u.revision)).title,
         attempts: principal.role !== 'student' ? [] : (await env.DB.prepare('SELECT id,ordinal,started_at,submitted_at,score,max_score,result_kind FROM attempts WHERE unit_id = ? AND student_id = ? ORDER BY ordinal').bind(u.id, principal.id).all()).results })));
-      return json({ assignment, units: documents });
+      return json({ assignment: { ...assignment, access_expired: assignmentExpiry(assignment) <= Date.now() }, units: documents });
     }
   }
   const unit = /^\/api\/units\/([\w-]+)\/start$/.exec(path);
@@ -155,13 +151,15 @@ export async function assignmentRoutes(request, env, path, principal) {
     requireThat(await env.DB.prepare('SELECT id FROM attempts WHERE id = ?').bind(id).first(), 409, 'Attempt limit reached for this activity.');
     return json({ attemptId: id });
   }
-  const attempt = /^\/api\/attempts\/([\w-]+)(?:\/(answers|submit))?$/.exec(path);
+  const attempt = /^\/api\/attempts\/([\w-]+)(?:\/(answers|submit|access))?$/.exec(path);
   if (attempt) {
     const [, id, action] = attempt;
     const { row, assignment } = await attemptContext(env, id, principal);
+    if (action === 'access' && request.method === 'GET') return json({ access: accessInfo(assignmentExpiry(assignment)) });
     if (!action && request.method === 'GET') {
       const { results: answers } = await env.DB.prepare('SELECT item_id,answer,skipped FROM attempt_answers WHERE attempt_id = ?').bind(id).all();
-      return json({ attempt: row, settings: { ...JSON.parse(row.settings_json), seed: row.seed }, answers, song: visibleSong(await manifest(env, row.song_id, row.revision), principal) });
+      return json({ attempt: row, settings: { ...JSON.parse(row.settings_json), seed: row.seed }, answers,
+        song: { ...visibleSong(await manifest(env, row.song_id, row.revision), principal), access: accessInfo(assignmentExpiry(assignment)) } });
     }
     if (action === 'answers' && request.method === 'POST') {
       checkDeadline(assignment); requireThat(!row.submitted_at, 409, 'This attempt is already submitted.');

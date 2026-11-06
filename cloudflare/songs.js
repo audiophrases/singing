@@ -5,6 +5,12 @@ const ROLES = ['audio', 'karaoke', 'vocals', 'sourceFile'];
 const MAX_FILE = 64 * 1024 * 1024;
 const MAX_LESSON = 400 * 1024;
 const MAX_ARTWORK = 512 * 1024;
+function songRevision(value) {
+  if (value == null) return null;
+  const revision = Number(value);
+  requireThat(['string', 'number'].includes(typeof value) && Number.isSafeInteger(revision) && revision > 0, 400, 'Invalid song version.');
+  return revision;
+}
 const isJpeg = (bytes) => bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
 const artworkUrl = (assetId) => `/api/art/${assetId}`;
 export async function ownedSong(env, id, principal) {
@@ -30,7 +36,7 @@ const forStudents = (song) => {
 export function visibleSong(document, principal) {
   if (principal.role !== 'student') return document;
   const { folderImport, sourceFile, about, clientId, ...song } = document;
-  return { ...forStudents(song), mine: false };
+  return { ...forStudents(song), mine: false, cloud: true, protected: true };
 }
 // The public player: band songs the owner switched to public. Only the owner
 // can switch a song to public, and only while it is played by the band. Until
@@ -38,7 +44,7 @@ export function visibleSong(document, principal) {
 export async function publicSongs(env) {
   const started = !!(await env.DB.prepare('SELECT 1 FROM public_library WHERE id = 1').first());
   if (!started) return json({ songs: [], started });
-  const { results } = await env.DB.prepare('SELECT id, revision FROM songs WHERE is_public = 1 AND deleted_at IS NULL AND revision > 0 ORDER BY updated_at DESC LIMIT 500').all();
+  const { results } = await env.DB.prepare('SELECT id, revision FROM songs WHERE is_public = 1 AND access_controlled = 0 AND deleted_at IS NULL AND revision > 0 ORDER BY updated_at DESC LIMIT 500').all();
   const documents = await Promise.all(results.map((row) => manifest(env, row.id, row.revision)));
   const songs = documents.filter((doc) => (doc.source || 'band') === 'band').map(({ folderImport, sourceFile, audio, karaoke, vocals, cloud, revision, status, createdAt, ...song }) => ({ ...forStudents(song), public: true }));
   return json({ songs, started });
@@ -65,7 +71,7 @@ export function cleanSong(input) {
   return clean;
 }
 
-export async function songRoutes(request, env, path, principal, canReadAssigned = async () => false) {
+export async function songRoutes(request, env, path, principal, readAccess = async () => null) {
   if (path === '/api/songs' && request.method === 'GET') {
     teacher(principal);
     if (principal.role === 'owner') await env.DB.batch([
@@ -85,7 +91,7 @@ export async function songRoutes(request, env, path, principal, canReadAssigned 
     requireThat(song, 409, 'This imported song was deleted. Make a new copy to restore it.');
     return json({ id: song.id, revision: song.revision });
   }
-  const match = /^\/api\/songs\/([a-zA-Z0-9_-]+)(?:\/(assets|commit|playback|visibility|artwork))?$/.exec(path);
+  const match = /^\/api\/songs\/([a-zA-Z0-9_-]+)(?:\/(assets|commit|playback|visibility|artwork|access))?$/.exec(path);
   if (!match) return null;
   const [, id, action] = match;
   let song;
@@ -94,10 +100,18 @@ export async function songRoutes(request, env, path, principal, canReadAssigned 
     requireThat(song, 404, 'Song not found.');
   } else song = await ownedSong(env, id, principal);
   if (!action && request.method === 'GET') {
-    const revision = Number(new URL(request.url).searchParams.get('revision')) || song.revision;
-    if (principal.role === 'student') requireThat(await canReadAssigned(env, id, revision, principal), 404, 'Song not assigned to your class.');
+    const requested = songRevision(new URL(request.url).searchParams.get('revision'));
+    const access = principal.role === 'student' ? await readAccess(env, id, requested, principal) : null;
+    if (principal.role === 'student') requireThat(access, 404, 'Access expired or unavailable. Ask your teacher for a new link.');
+    const revision = access?.revision ?? requested ?? song.revision;
     const document = await withArtwork(env, visibleSong(await manifest(env, id, revision), principal));
-    return json({ song: principal.role === 'student' ? document : { ...document, public: song.is_public === 1, ...madeBy(song) } });
+    return json({ song: principal.role === 'student' ? { ...document, access } : { ...document, public: song.is_public === 1, accessControlled: !!song.access_controlled, ...madeBy(song) } });
+  }
+  if (action === 'access' && request.method === 'GET') {
+    const requested = songRevision(new URL(request.url).searchParams.get('revision'));
+    const access = principal.role === 'student' ? await readAccess(env, id, requested, principal) : null;
+    requireThat(principal.role !== 'student' || access, 410, 'Access expired or withdrawn. Ask your teacher for a new link.');
+    return json({ access });
   }
   if (action === 'visibility' && request.method === 'POST') {
     const body = await bodyJson(request, 1024);
@@ -105,8 +119,10 @@ export async function songRoutes(request, env, path, principal, canReadAssigned 
     if (body.public) {
       requireThat(principal.role === 'owner', 403, 'Only the owner account can put songs on the public page.');
       requireThat(song.revision > 0 && ((await manifest(env, id, song.revision)).source || 'band') === 'band', 400, 'Only songs played by the band can be public.');
+      requireThat(!song.access_controlled, 409, 'This song has protected student access. Keep it private, or create a separate public song.');
     }
-    await env.DB.prepare('UPDATE songs SET is_public = ? WHERE id = ?').bind(body.public ? 1 : 0, id).run();
+    const changed = await env.DB.prepare('UPDATE songs SET is_public = ? WHERE id = ? AND (? = 0 OR access_controlled = 0)').bind(body.public ? 1 : 0, id, body.public ? 1 : 0).run();
+    requireThat(changed.meta.changes === 1, 409, 'This song has protected student access and must stay private.');
     return json({ public: body.public });
   }
   if (!action && request.method === 'DELETE') {
@@ -169,19 +185,21 @@ export async function songRoutes(request, env, path, principal, canReadAssigned 
       if (error.status) throw error;
       throw new HttpError(409, 'This song changed on another device. Reload before saving.');
     }
-    return json({ song: { ...await withArtwork(env, document), public: song.is_public === 1 && (document.source || 'band') === 'band', ...madeBy(song) } });
+    return json({ song: { ...await withArtwork(env, document), public: song.is_public === 1 && (document.source || 'band') === 'band', accessControlled: !!song.access_controlled, ...madeBy(song) } });
   }
   if (action === 'playback' && request.method === 'POST') {
     requireThat(song.revision > 0, 404, 'Save this song first.');
     const body = await bodyJson(request, 4096);
-    const revision = Number(body.revision) || song.revision;
+    const requested = songRevision(body.revision);
+    const access = principal.role === 'student' ? await readAccess(env, id, requested, principal) : null;
+    if (principal.role === 'student') requireThat(access, 404, 'Access expired or unavailable. Ask your teacher for a new link.');
+    const revision = access?.revision ?? requested ?? song.revision;
     requireThat(Number.isInteger(revision) && revision > 0 && revision <= song.revision, 404, 'Song version not found.');
-    if (principal.role === 'student') requireThat(await canReadAssigned(env, id, revision, principal), 404, 'Song not assigned to your class.');
-    const grant = token(); const expiresAt = Date.now() + 10 * 60 * 1000;
+    const grant = token(); const expiresAt = Math.min(Date.now() + 10 * 60 * 1000, access?.expiresAt ?? Infinity);
     await env.DB.prepare('INSERT INTO playback_grants (token_hash,session_hash,song_id,revision,expires_at) VALUES (?,?,?,?,?)').bind(await hash(grant), principal.sessionHash, id, revision, expiresAt).run();
     const doc = await manifest(env, id, revision); const urls = {};
     for (const role of ROLES) if (doc[role]?.assetId && (role !== 'sourceFile' || principal.role !== 'student')) urls[role] = `/api/media/${id}/${role}?grant=${grant}`;
-    return json({ urls, expiresAt });
+    return json({ urls, expiresAt, serverNow: Date.now(), ...(access ? { access } : {}) });
   }
   return null;
 }
@@ -219,13 +237,14 @@ async function saveArtwork(request, env, song, principal) {
 
 // A new picture gets a new address, so a browser can keep this one for good.
 // The address is random and appears only in the song, for those who can read it.
-export async function serveArtwork(request, env, assetId) {
-  const asset = await env.DB.prepare("SELECT a.object_key, a.size FROM assets a JOIN songs s ON s.id = a.song_id WHERE a.id = ? AND a.role = 'artwork' AND s.deleted_at IS NULL").bind(assetId).first();
+export async function serveArtwork(request, env, assetId, principal, readAccess = async () => null) {
+  const asset = await env.DB.prepare("SELECT a.object_key, a.size, a.song_id, s.owner_id FROM assets a JOIN songs s ON s.id = a.song_id WHERE a.id = ? AND a.role = 'artwork' AND s.deleted_at IS NULL").bind(assetId).first();
   requireThat(asset, 404, 'Picture not found.');
+  requireThat(principal.role === 'student' ? await readAccess(env, asset.song_id, null, principal) : asset.owner_id === principal.id, 403, 'Picture access expired or unavailable.');
   const object = await env.SONGS.get(asset.object_key);
   requireThat(object, 404, 'Picture not found.');
   return new Response(request.method === 'HEAD' ? null : object.body, { headers: {
-    'Content-Type': 'image/jpeg', 'Content-Length': String(asset.size), 'Cache-Control': 'private, max-age=31536000, immutable',
+    'Content-Type': 'image/jpeg', 'Content-Length': String(asset.size), 'Cache-Control': principal.role === 'student' ? 'private, no-store' : 'private, max-age=31536000, immutable',
     'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Cross-Origin-Resource-Policy': 'same-origin', 'Content-Disposition': 'inline',
   } });
 }
@@ -248,14 +267,14 @@ export async function uploadAsset(request, env, assetId, principal) {
   return json({ ok: true });
 }
 
-export async function serveMedia(request, env, id, role, principal, canReadAssigned = async () => false) {
+export async function serveMedia(request, env, id, role, principal, readAccess = async () => null) {
   const grant = new URL(request.url).searchParams.get('grant') || '';
   const row = await env.DB.prepare(`SELECT g.revision,s.owner_id FROM playback_grants g JOIN songs s ON s.id = g.song_id
     WHERE g.token_hash = ? AND g.session_hash = ? AND g.song_id = ? AND g.expires_at > ? AND s.deleted_at IS NULL`)
     .bind(await hash(grant), principal.sessionHash, id, Date.now()).first();
   requireThat(row, 403, 'Playback access expired. Reload the song.');
   requireThat(principal.role === 'student'
-    ? role !== 'sourceFile' && await canReadAssigned(env, id, row.revision, principal)
+    ? role !== 'sourceFile' && await readAccess(env, id, row.revision, principal)
     : row.owner_id === principal.id, 403, 'Playback is no longer authorized.');
   const asset = await env.DB.prepare('SELECT a.* FROM version_assets v JOIN assets a ON a.id = v.asset_id WHERE v.song_id = ? AND v.revision = ? AND v.role = ?').bind(id, row.revision, role).first();
   requireThat(asset, 404, 'Audio file not found.');

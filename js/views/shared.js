@@ -1,36 +1,25 @@
-/*
- * A song that arrived in a share link: preview it, play it, keep it.
- */
 import { h, toast } from '../ui.js';
-import { decodeSong } from '../share.js';
-import { setSharedSong, saveUserSong, getSong, newSongId } from '../store.js';
+import { saveSongBookmark } from '../cloud/library.js';
+import { cloudSession } from '../cloud/session.js';
 import { songCover } from './library.js';
 
-export async function render(el, { data }) {
-  let song;
-  try {
-    song = await decodeSong(data);
-  } catch (e) {
-    el.append(h('div', { class: 'empty' }, h('span', { class: 'big' }, '🔗'), `This link does not work: ${e.message}`));
+export async function render(el, { song, data }) {
+  if (data || !song) {
+    el.append(h('section', { class: 'card' }, h('h1', null, 'A new share link is needed'),
+      h('p', null, 'This older link has been retired. Ask your teacher for a new link.')));
     return null;
   }
-  // Never shadow a starter or public song with a copy that has the same id.
-  if (!song.id || (getSong(song.id) && !getSong(song.id).mine)) song.id = newSongId(song.title);
-  setSharedSong(song);
-  const exists = getSong(song.id) && getSong(song.id).mine;
-  el.append(h('section', { class: 'card song-head' },
-    songCover(song, { big: true }),
-    h('div', null,
-      h('div', { class: 'small' }, '🔗 A song shared with you'),
-      h('h1', null, song.title),
+  const save = h('button', { class: 'btn', type: 'button', onclick: async () => {
+    save.disabled = true;
+    try { await saveSongBookmark(song); toast('Saved. Access ends on the same expiry date.', 'ok'); }
+    catch (e) { toast(e.message, 'bad'); }
+    finally { save.disabled = false; }
+  } }, '⭐ Save to my songs');
+  el.append(h('section', { class: 'card song-head' }, songCover(song, { big: true }),
+    h('div', null, h('div', { class: 'small' }, '🔗 A song shared with you'), h('h1', null, song.title),
       h('p', { class: 'small' }, song.artist || ''),
-      h('div', { class: 'row top-space' },
-        h('a', { class: 'btn primary', href: `#/song/${encodeURIComponent(song.id)}` }, '▶ Open it'),
-        h('button', { class: 'btn', type: 'button', onclick: () => {
-          saveUserSong(song);
-          toast(exists ? 'Updated in your songs' : 'Saved in your songs ⭐', 'ok');
-          location.hash = `#/song/${encodeURIComponent(song.id)}`;
-        } }, exists ? '💾 Update my copy' : '💾 Save to my songs')),
-      song.source === 'audio' ? h('p', { class: 'small bad' }, 'This song uses an audio file that is not in the link. Add your own copy in the Studio.') : null)));
+      song.access ? h('p', { class: 'small' }, `Access expires ${new Date(song.access.expiresAt).toLocaleString()}. Saving this song keeps its expiry date.`) : null,
+      h('div', { class: 'row top-space' }, h('a', { class: 'btn primary', href: `#/song/${encodeURIComponent(song.id)}${song.protected ? `?revision=${song.revision}` : ''}` }, '▶ Open song'),
+        cloudSession().principal?.role === 'student' ? save : null))));
   return null;
 }

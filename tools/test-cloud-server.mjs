@@ -15,7 +15,7 @@ await collect('cloudflare/'); await collect('js/');
 const entry = fileURLToPath(new URL('cloudflare/worker.js', root));
 modules.sort((a, b) => a.path === entry ? -1 : b.path === entry ? 1 : 0);
 const sessions = new Map();
-const mf = new Miniflare(convertV4MiniflareOptions({ port: 8788, host: '127.0.0.1', workers: [{
+const mf = new Miniflare(convertV4MiniflareOptions({ port: Number(process.env.SINGING_TEST_PORT || 8788), host: '127.0.0.1', workers: [{
   name: 'singing', modulesRoot: fileURLToPath(root), modules,
   compatibilityDate: '2026-10-21', d1Databases: ['DB'], r2Buckets: ['SONGS'],
   serviceBindings: { ASSETS: async (request) => {
@@ -50,9 +50,20 @@ const mf = new Miniflare(convertV4MiniflareOptions({ port: 8788, host: '127.0.0.
   } },
 }] }));
 const db = await mf.getD1Database('DB');
-for (const filename of ['0001_cloud_library.sql', '0002_assignments.sql', '0003_public_songs.sql', '0004_student_songs.sql']) {
+for (const filename of ['0001_cloud_library.sql', '0002_assignments.sql', '0003_public_songs.sql', '0004_student_songs.sql', '0005_expiring_shares.sql']) {
   const sql = await readFile(new URL(`cloudflare/migrations/${filename}`, root), 'utf8');
   for (const statement of sql.split(';').map((s) => s.trim()).filter(Boolean)) await db.prepare(statement).run();
 }
 console.log(`Local isolated cloud fixture ready at ${await mf.ready}`);
+process.send?.({ ready: true });
+// Parent-process controls for browser expiry tests. Never exposed over HTTP.
+process.on('message', async (message) => {
+  try {
+    if (message.action === 'shutdown') { await mf.dispose(); process.exit(0); }
+    if (message.action !== 'setShareExpiry' || !/^[a-f0-9-]{36}$/.test(message.shareId)
+      || !Number.isSafeInteger(message.afterMs) || Math.abs(message.afterMs) > 604800000) throw new Error('Invalid fixture command.');
+    await db.prepare('UPDATE share_links SET expires_at = ? WHERE id = ?').bind(Date.now() + message.afterMs, message.shareId).run();
+    process.send?.({ requestId: message.requestId, ok: true });
+  } catch (e) { process.send?.({ requestId: message.requestId, error: e.message }); }
+});
 process.on('SIGINT', async () => { await mf.dispose(); process.exit(0); });
