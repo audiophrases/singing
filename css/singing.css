@@ -480,6 +480,9 @@ kbd {
 }
 .stage canvas.viz { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.55; }
 .stage > * { position: relative; }
+/* The router mounts each render in its own div inside #stage, and the stage view
+   makes that div a .stage too: it must still fill the room, not just its content. */
+.stage > .stage { position: absolute; inset: 0; }
 .stage .btn { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.18); color: #fff; }
 .stage .btn:hover { background: rgba(255, 255, 255, 0.2); }
 .stage .btn.primary { background: hsl(var(--hue) 90% 62%); border-color: hsl(var(--hue) 90% 62%); color: #0b0c1a; font-weight: 700; }
