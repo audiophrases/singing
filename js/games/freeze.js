@@ -26,10 +26,10 @@ export async function start(ctx) {
   const card = setupCard({
     emoji: '🧊',
     title: 'Freeze dance',
-    intro: 'Stand up! Do the action on the screen. When the music stops: FREEZE like a statue! If you move, you sit down.',
+    intro: 'Stand up! Keep doing the action on the screen until it changes. Each action lasts at least 4 seconds. When the music stops: FREEZE like a statue! If you move, you sit down.',
     body: h('div', null,
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'New action'),
-        choiceRow([[1, 'Every bar'], [2, 'Every 2 bars'], [4, 'Every 4 bars']], conf.every, (v) => { conf.every = v; })),
+        choiceRow([[1, 'Every line'], [2, 'Every other line'], [4, 'Every 4 lines']], conf.every, (v) => { conf.every = v; })),
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Freezes'),
         choiceRow([['few', 'A few'], ['medium', 'Some'], ['many', 'Lots!']], conf.freeze, (v) => { conf.freeze = v; }))),
     onStart: () => { card.destroy(); begin(); },
@@ -49,9 +49,9 @@ export async function start(ctx) {
     clear(main).append(h('div', { class: 'fz-wrap' }, action, lyric, freezeEl));
     ctx.setBottom(null);
 
-    const bar = (timeline.beat || 0.6) * (timeline.meter || 4);
-    const span = bar * conf.every;
+    const sung = timeline.lines.filter((l) => !l.instrumental);
     let lastSlot = -1;
+    let lastActionAt = -Infinity;
     let freezeTimer = 0;
     let frozen = false;
     let nextFreezeAt = 0;
@@ -74,7 +74,6 @@ export async function start(ctx) {
       freezeTimer = setTimeout(() => {
         freezeEl.classList.add('hidden');
         frozen = false;
-        show('GO!', '🎉');
         planFreeze();
         track.play();
       }, secs * 1000);
@@ -84,19 +83,25 @@ export async function start(ctx) {
     const loop = () => {
       const t = track.time();
       if (track.playing && !frozen) {
-        // Words in the lyrics that are actions win over the deck.
         const l = timeline.lines.find((x) => t >= x.start && t < x.end);
-        const w = l && l.words.find((x) => t >= x.start - 0.1 && t < x.end + 0.3 && (moves.has(normWord(x.text)) || ACTION_WORDS[normWord(x.text)]));
-        const slot = Math.floor(t / span);
-        if (w) {
-          const n = normWord(w.text);
-          const move = moves.get(n);
-          if (action.dataset.word !== n) { action.dataset.word = n; show(move?.text || `${n.toUpperCase()}!`, move?.emoji || ACTION_WORDS[n]); }
-        } else if (slot !== lastSlot) {
+        const lineIndex = sung.indexOf(l);
+        const slot = lineIndex < 0 ? -1 : Math.floor(lineIndex / conf.every);
+        // Pick once at the line boundary; individual words must not override
+        // the chosen pace. Short lines also allow at least four seconds to move.
+        if (slot >= 0 && slot !== lastSlot) {
           lastSlot = slot;
-          const [text, emoji] = deck[di++ % deck.length];
-          action.dataset.word = '';
-          show(text, emoji);
+          if (t < lastActionAt || t - lastActionAt >= 4) {
+            const w = (l.words || []).find((x) => moves.has(normWord(x.text)) || ACTION_WORDS[normWord(x.text)]);
+            if (w) {
+              const n = normWord(w.text);
+              const move = moves.get(n);
+              show(move?.text || `${n.toUpperCase()}!`, move?.emoji || ACTION_WORDS[n]);
+            } else {
+              const [text, emoji] = deck[di++ % deck.length];
+              show(text, emoji);
+            }
+            lastActionAt = t;
+          }
         }
         lyric.textContent = l && !l.instrumental ? l.text : '';
         if (nextFreezeAt && t >= nextFreezeAt) freeze();
