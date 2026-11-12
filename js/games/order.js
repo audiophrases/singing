@@ -20,7 +20,7 @@ export async function start(ctx) {
   const card = setupCard({
     emoji: '🧩',
     title: 'Line order',
-    intro: 'The lines are mixed up! Listen and click the line you hear. Can you rebuild the whole song?',
+    intro: 'The lines are mixed up! Listen and click the line you hear. Each correct answer earns 10 points, even after the music pauses. Wrong clicks lose 2 points.',
     body: h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Lines'),
       choiceRow([...new Set([4, 6, 8, 12].filter((n) => n < unique.length).concat([unique.length]))].map((n) => [n, n === unique.length ? `All ${n}` : String(n)]), conf.count, (v) => { conf.count = v; })),
     onStart: () => { card.destroy(); begin(); },
@@ -62,7 +62,8 @@ export async function start(ctx) {
         slot.querySelector('.lo-text').textContent = c.line.text;
         btn.classList.add('used');
         btn.disabled = true;
-        const pts = waiting !== null ? 5 : 10;
+        // The automatic listening pause must not reduce credit for a correct answer.
+        const pts = 10;
         score.add(pts);
         ctx.award(1);
         floatEmoji(`+${pts}`, cc.x, cc.y - 20, { size: 28 });
