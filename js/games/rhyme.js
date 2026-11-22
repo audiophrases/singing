@@ -1,16 +1,20 @@
 /*
  * Rhyme memory: turn two cards - if the words rhyme, you keep them and go
  * again. Every card says its word aloud, so it is pronunciation practice too.
+ *
+ * In teams it always plays in turn order (js/views/turnbar.js): the team
+ * chooses two cards, the teacher turns them; a pair is 2 points and the team
+ * goes again, no pair and it is the next team's turn. No steals.
  */
 import { h, clear, shuffle, seeded } from '../ui.js';
 import { setupCard, choiceRow } from './common.js';
 import { rhymePairs, rhymes } from '../lyrics/rhymes.js';
 import { normWord } from '../lyrics/text.js';
 import { rhymeFamily } from '../lyrics/wordlists.js';
-import { getTeams, addPoints, endTurn } from '../store.js';
 import { sfx, confetti } from '../sfx.js';
 import { speak } from '../tts.js';
 import { lessonOf, orderSets, pickSet, readAloud, setLabel } from '../lesson/pack.js';
+import { POINTS } from './turns.js';
 
 export function rhymeSet(timeline, count, rnd) {
   const pairs = rhymePairs(timeline).map((p) => [p.a, p.b]);
@@ -45,7 +49,8 @@ export async function start(ctx) {
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Pairs'),
         choiceRow([[4, '4'], [6, '6'], [8, '8'], [10, '10']], conf.pairs, (v) => { conf.pairs = v; })),
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Say words'),
-        choiceRow([[true, '🔊 Yes'], [false, '🔇 No']], conf.say, (v) => { conf.say = v; }))),
+        choiceRow([[true, '🔊 Yes'], [false, '🔇 No']], conf.say, (v) => { conf.say = v; })),
+      ctx.turns?.setup({ only: true, note: (next) => `${next.emoji} ${next.name} starts. The team chooses two cards and you turn them: a pair is ${POINTS.own} points and the team goes again; no pair, and it is the next team's turn. 🤷 Pass (P) loses the turn.` })),
     onStart: () => { card.destroy(); begin(); },
   });
   clear(main).append(card);
@@ -69,10 +74,26 @@ export async function start(ctx) {
     let found = 0;
     let busy = false;
     let moves = 0;
-    const turnText = () => {
-      const t = getTeams();
-      status.textContent = t.on ? `${t.list[(t.turn || 0) % t.list.length].emoji} ${t.list[(t.turn || 0) % t.list.length].name}'s turn` : `Pairs: ${found} / ${pairs.length} · Moves: ${moves}`;
+    // Teams: each go is one team's turn; the banner says whose.
+    const T = ctx.turns?.active ? ctx.turns : null;
+    const left = () => grid.querySelectorAll('.rm-card:not(.done)').length;
+    const turnText = () => { status.textContent = `Pairs: ${found} / ${pairs.length} · Moves: ${moves}`; };
+    const turn = {
+      mode: 'turns',
+      steal: false,
+      keep: true,
+      prompt: 'Click the two cards they choose',
+      show: false,
+      onOutcome: (o) => onTurn(o),
+      flash: (o) => (o.points ? null : o.result === 'wrong' ? '❌ No match. Next team!' : o.result === 'timeout' ? '⏰ Time\'s up! Next team' : '🤷 Next team'),
     };
+    function onTurn(o) {
+      if (!o.done) return;
+      // A pass (or time's up) with one card turned: turn it back.
+      if (!o.meta.pair) { for (const x of open) x.el.classList.remove('up'); open = []; }
+      if (!left()) return;
+      setTimeout(() => { if (grid.isConnected && left() && !T.isOpen()) T.open(turn); }, o.result === 'wrong' ? 1400 : 800);
+    }
     cards.forEach((c) => {
       const el = h('button', { class: `rm-card${c.word.length > 14 ? ' wordy' : ''}`, type: 'button' }, h('span', { class: 'rm-back' }, '🎵'), h('span', { class: 'rm-front' }, c.word));
       el.addEventListener('click', () => flip(c, el));
@@ -83,6 +104,7 @@ export async function start(ctx) {
 
     function flip(c, el) {
       if (busy || el.classList.contains('up') || el.classList.contains('done')) return;
+      if (T && !T.isOpen()) return; // between turns
       el.classList.add('up');
       if (conf.say && readAloud(set, c.side)) speak(c.word);
       open.push({ c, el });
@@ -94,10 +116,9 @@ export async function start(ctx) {
         found += a.c.pair === b.c.pair ? 1 : 0;
         a.el.classList.add('done');
         b.el.classList.add('done');
-        sfx('correct', { volume: 0.5 });
-        const t = getTeams();
-        if (t.on) addPoints(t.list[(t.turn || 0) % t.list.length].id, 1);
-        if (grid.querySelectorAll('.rm-card:not(.done)').length === 0) {
+        if (T) T.mark('right', { pair: true }); // the banner scores it: the team goes again
+        else sfx('correct', { volume: 0.5 });
+        if (!left()) {
           confetti();
           setTimeout(() => ctx.finish({ emoji: '🃏', title: 'All pairs found!', text: `${moves} moves.`, stars: moves <= pairs.length * 1.5 ? 3 : moves <= pairs.length * 2.5 ? 2 : 1 }), 900);
         }
@@ -105,17 +126,17 @@ export async function start(ctx) {
         return;
       }
       busy = true;
-      sfx('wrong', { volume: 0.3 });
+      // A miss ends the team's turn (a pair lets it go again).
+      if (T) T.mark('wrong', { pair: true });
+      else sfx('wrong', { volume: 0.3 });
       setTimeout(() => {
         a.el.classList.remove('up');
         b.el.classList.remove('up');
         busy = false;
-        // A miss ends the team's turn (a pair lets it go again).
-        const t = getTeams();
-        if (t.on) { const turn = (t.turn || 0) % t.list.length; endTurn(t.list[turn].id, turn + 1); }
         turnText();
       }, 1300);
     }
+    if (T) T.open(turn);
     cleanup = () => {};
   }
 }

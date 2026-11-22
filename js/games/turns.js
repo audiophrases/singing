@@ -15,6 +15,10 @@
  * Outcomes: 'right' (scored first time), 'stolen' (scored on the steal),
  * 'steal' (the next team may try), 'open' (first hand up: the other teams may
  * try), 'reveal' (nobody scored), 'none' (ignored: first hand up needs a team).
+ *
+ * A game can change the rules for its items: Rhyme memory plays
+ * { ...rules, mode: 'turns', steal: false, keep: true } - no steals, and a
+ * pair keeps the turn (keepsTurn).
  */
 
 export const POINTS = { own: 2, steal: 1, first: 1 };
@@ -36,7 +40,7 @@ export function openItem({ teams, turn = 0, rules }) {
   const n = Math.max(1, Math.floor(teams) || 1);
   if (rules.mode === 'first') return { mode: 'first', n, owner: null, answering: null, phase: 'open', tried: [], done: false, outcome: null };
   const owner = wrap(Number(turn) || 0, n);
-  return { mode: 'turns', n, owner, answering: owner, phase: 'turn', tried: [], done: false, outcome: null };
+  return { mode: 'turns', n, owner, answering: owner, phase: 'turn', tried: [], done: false, outcome: null, keep: !!rules.keep };
 }
 
 export function markItem(item, result, rules) {
@@ -94,8 +98,14 @@ export function stepTeam(item, dir) {
   return item;
 }
 
+// A team that scores on its own turn plays again (rules.keep).
+export function keepsTurn(item) {
+  return !!item?.keep && item.mode === 'turns' && item.outcome === 'right';
+}
+
 // Whose turn comes next: the team after the one whose turn it was, whoever
 // stole. First hand up has no order, so the turn stays where it was.
 export function nextTurn(item, turn) {
+  if (keepsTurn(item)) return item.owner;
   return item?.mode === 'turns' && item.owner !== null ? wrap(item.owner + 1, item.n) : turn;
 }

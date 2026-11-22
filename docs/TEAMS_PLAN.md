@@ -20,7 +20,7 @@ decisions below are settled.
 ## Decisions (owner, 2026-11-22)
 
 | Question | Decision |
-|---|---|
+| --- | --- |
 | Points | **2** right on your own turn, **1** for a steal. First hand up: 1. No minus points. |
 | Wrong answer | **One steal**, by the next team only. |
 | Pass / don't know | A **🤷 Pass** button (key **P**): the team loses its turn, with no buzzer. The next team can still steal it. |
@@ -65,15 +65,15 @@ time. They are stored with the teams.
 ## Teacher input per game
 
 | Game | One turn | Teacher presses |
-|---|---|---|
+| --- | --- | --- |
 | Song quiz | a question | **1–4** for the option they said |
 | Choose the word | a gap | **1–3** |
 | Fill the gaps | a gap | **Y** right / **N** wrong (answer mode "🗣️ Said aloud"); typing still possible |
 | Finish the line | a stop | **Y** / **N**; the song then sings the ending |
 | Wrong word | a line | click the word they name |
 | Line order | a line | click the line they name |
-| Grammar hunt | one word | click the word they name |
-| Rhyme memory | two cards | click the two cards they choose |
+| Grammar hunt | one word | click the word they name; when nobody finds one, the game shows one |
+| Rhyme memory | two cards | click the two cards they choose; a pair keeps the turn, no steals, always in turn order |
 | Line builder | a line | tap the tiles in the order they say; a wrong tile hands the rest to the next team |
 | Say it! | a line at the mic | the mic marks it, then the next team comes up |
 
@@ -123,6 +123,22 @@ pass, ↑/↓, the next game carrying the order on). Help page and README at the
   playing on while the game waits; stage content scrolls instead of being cut
   off at the top when it is taller than the screen.
   Checked in Chrome (1280×800): 3 teams through all three games, right, wrong
-  + steal, pass, time's up, ↑/↓, first hand up, games without teams, Karaoke
+  and steal, pass, time's up, ↑/↓, first hand up, games without teams, Karaoke
   layout.
-- Next: step 3.
+- 2026-11-22: **step 3 built.** Fill the gaps, Wrong word, Line order, Grammar
+  hunt and Rhyme memory play on the banner (`turns` in `js/games/index.js`;
+  Rhyme memory is `turns: 'only'`). Fill the gaps has a 🗣️ Said aloud answer
+  mode in teams (Y/N, the default there); typing and tapping also go through
+  the banner (the teacher types or clicks what the team says, and the box
+  opens only at the stop). Wrong word and Line order: one line per turn, the
+  word or card a team missed stays red for the steal. Grammar hunt: one word
+  per turn, wrong words stay crossed out, the game shows one when nobody finds
+  one. Rhyme memory: rules `{ steal: false, keep: true }` (`keepsTurn` in
+  `turns.js`), a pass turns an open card back. The banner gained per-game
+  options (`prompt`, `mode`, `steal`, `keep`, `show`, `flash`) and **S** shows
+  the answer in every turn game. Also fixed: **R** in Wrong word and Line order
+  at a stop now stops at that line again.
+  Checked in Chrome: 3 teams through all five games (right, wrong + steal,
+  pass, S, R at a stop, no early answers), the step 1–2 games again, and games
+  without teams.
+- Next: step 4 (Teams dialog).

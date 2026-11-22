@@ -4,6 +4,10 @@
  * gaps are filled. Right while the music is still playing = speed bonus.
  *
  * Also used by "Choose the word" (mode 'choose': three options per gap).
+ *
+ * In teams every gap is one team's turn (js/views/turnbar.js): the music
+ * waits at the line, the team says the word aloud and the teacher marks it
+ * (mode 'say': Y/N), types it or clicks it in the word bank.
  */
 import { h, clear, shuffle, seeded } from '../ui.js';
 import { pickGaps, distractors, wordPool, gapMode, matchCase, GAP_LEVELS } from '../lyrics/gaps.js';
@@ -12,6 +16,7 @@ import { categoriesInTimeline } from '../lyrics/grammar.js';
 import { checkAnswer, normWord, hintFor } from '../lyrics/text.js';
 import { lineStops, setupCard, choiceRow, scoreBox, lyricView, stars, centerOf } from './common.js';
 import { sfx, floatEmoji } from '../sfx.js';
+import { onTeams } from '../store.js';
 
 export async function start(ctx, forced = {}) {
   const { track, timeline, main, params } = ctx;
@@ -48,16 +53,28 @@ export async function start(ctx, forced = {}) {
         return sel;
       })()) : null,
     difficultyNote,
-    forced.input ? null : h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Answer by'),
-      choiceRow([['type', '⌨️ Typing'], ['bank', '👆 Tapping words']], conf.input, (v) => { conf.input = v; })),
   );
+  // Answer by: in teams the words are said aloud by default.
+  const answerRow = forced.input ? null : h('div', { class: 'setup-row' });
+  let chosenInput = !!params.input;
+  const drawAnswerRow = () => {
+    if (!answerRow) return;
+    const teams = !!ctx.turns?.active;
+    if (!teams && conf.input === 'say') conf.input = 'type';
+    if (teams && !chosenInput) conf.input = 'say';
+    clear(answerRow).append(h('span', { class: 'setup-label' }, 'Answer by'),
+      choiceRow([...(teams ? [['say', '🗣️ Said aloud', 'The team says the word; you press Y or N']] : []), ['type', '⌨️ Typing'], ['bank', '👆 Tapping words']], conf.input, (v) => { conf.input = v; chosenInput = true; }));
+  };
+  drawAnswerRow();
+  if (answerRow) setupBody.append(answerRow);
   if (ctx.assignment) setupBody.querySelectorAll('button, input, select').forEach((control) => { control.disabled = true; });
-  // Choose the word in teams: each gap is one team's turn (js/views/turnbar.js).
+  else if (answerRow) ctx.addCleanup(onTeams((t, detail = {}) => { if (!detail.bump && card.isConnected) drawAnswerRow(); }));
+  // In teams each gap is one team's turn (js/views/turnbar.js).
   const teamRows = ctx.turns?.setup();
   if (teamRows) setupBody.append(teamRows);
   const intro = forced.input === 'choose'
     ? 'Listen and choose the word you hear. The music waits for you at the end of each line. In teams, each team gets a word in turn and says its answer aloud.'
-    : 'Listen and type the missing words. The music waits at the end of each line. Type before the line ends for a speed bonus!';
+    : 'Listen and type the missing words. The music waits at the end of each line. Type before the line ends for a speed bonus! In teams, each team gets a word in turn and says it aloud.';
   const card = setupCard({
     emoji: forced.input === 'choose' ? '🔘' : '⌨️',
     title: forced.input === 'choose' ? 'Choose the word' : 'Fill the gaps',
@@ -108,9 +125,10 @@ export async function start(ctx, forced = {}) {
       if (saved.skipped) item.status = 'revealed';
       else if (answer === 'right' || (answer === 'close' && conf.input === 'type')) item.status = answer;
     }
-    // Choose the word in teams: the music waits at each line and every gap is
-    // one team's turn, answered aloud; the teacher presses the option it said.
-    const T = conf.input === 'choose' && ctx.turns?.active ? ctx.turns : null;
+    // Teams: the music waits at each line and every gap is one team's turn,
+    // answered aloud; the teacher marks it (say), types it or clicks it.
+    const T = ctx.turns?.active ? ctx.turns : null;
+    if (conf.input === 'say' && !T) conf.input = 'type';
     let turnItem = null; // the gap the open turn is about
     const score = scoreBox();
     const progress = h('div', { class: 'gf-progress' });
@@ -140,7 +158,7 @@ export async function start(ctx, forced = {}) {
       h('button', { class: 'btn', type: 'button', title: 'Show a letter (Tab)', onclick: () => hint() }, '💡 Hint'),
       h('button', { class: 'btn', type: 'button', title: 'Show the word (S)', onclick: () => reveal() }, '⏭️ Skip'),
     );
-    const answerArea = h('div', { class: 'gf-answer' }, conf.input === 'type' ? input : bank, msg, why, tools);
+    const answerArea = h('div', { class: 'gf-answer' }, conf.input === 'type' ? input : conf.input === 'say' ? null : bank, msg, why, tools);
     clear(main).append(h('div', { class: 'gf-wrap' }, h('div', { class: 'gf-top' }, progress, score.el), view.el, answerArea));
     ctx.setBottom(null);
 
@@ -173,7 +191,7 @@ export async function start(ctx, forced = {}) {
 
     function drawBank() {
       clear(bank);
-      if (conf.input === 'type') return;
+      if (conf.input === 'type' || conf.input === 'say') return;
       if (!active || (T && waitingLine === null)) { bank.append(h('span', { class: 'small' }, 'Listen…')); return; }
       let opts;
       if (conf.input === 'choose') {
@@ -188,17 +206,30 @@ export async function start(ctx, forced = {}) {
       opts.forEach((w, i) => bank.append(h('button', { class: `btn bank-word${active.tried.has(w) ? ' wrong' : ''}`, type: 'button', disabled: active.tried.has(w), onclick: (e) => tryAnswer(w, e.currentTarget) }, h('kbd', null, String(i + 1)), ` ${w}`)));
     }
 
+    // Typing in teams: the box opens with the turn (no early answers).
+    function syncInput() {
+      if (!T || conf.input !== 'type') return;
+      const on = waitingLine !== null && T.isOpen() && !!active && turnItem === active;
+      input.disabled = !on;
+      input.placeholder = on ? 'Type the word they say…' : 'Listen…';
+      if (on) input.focus();
+    }
+
     function openTurn() {
       if (!T || waitingLine === null || !active || T.isOpen()) return;
       turnItem = active;
-      T.open({ onOutcome: onTurn });
+      T.open({ judge: conf.input === 'say', onOutcome: onTurn, prompt: conf.input === 'type' ? 'Type the word they say' : '' });
+      syncInput();
     }
 
     function onTurn(o) {
       const it = turnItem;
       if (!it || it.status !== 'open') return;
+      if (conf.input === 'type') { input.value = ''; input.classList.remove('wrong'); }
       if (!o.done) {
         if (o.meta.word) { it.tried.add(o.meta.word); drawBank(); }
+        if (conf.input === 'type' && o.result === 'wrong') { input.classList.add('shake'); setTimeout(() => input.classList.remove('shake'), 400); }
+        syncInput();
         return;
       }
       turnItem = null;
@@ -208,6 +239,7 @@ export async function start(ctx, forced = {}) {
       if (waitingLine !== null && !lineDone(waitingLine)) {
         setTimeout(() => { if (waitingLine !== null) { active = null; drawActive(); openTurn(); } }, 900);
       }
+      syncInput();
     }
 
     function settle(it, status, points, answer = it.word) {
@@ -245,9 +277,11 @@ export async function start(ctx, forced = {}) {
     function tryAnswer(text, btn) {
       if (!active) return false;
       if (T) {
-        if (waitingLine === null || !T.isOpen() || turnItem !== active) return false;
+        if (waitingLine === null || !T.isOpen() || turnItem !== active || !text.trim()) return false;
         if (!T.ready()) { T.nudge(); return false; }
-        const ok = checkAnswer(text, active.word) === 'right';
+        const res = checkAnswer(text, active.word);
+        // Typed by the teacher: a small slip in the spelling still counts.
+        const ok = res === 'right' || (res === 'close' && conf.input === 'type');
         T.mark(ok ? 'right' : 'wrong', { word: text });
         return ok;
       }
@@ -282,7 +316,10 @@ export async function start(ctx, forced = {}) {
       input.classList.toggle('wrong', typed.length > 0 && !target.startsWith(typed.replace(/[^a-z0-9']/g, '')));
     });
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
+      if (e.key === 'Enter' && T) {
+        e.preventDefault();
+        tryAnswer(input.value); // the banner sounds and scores it
+      } else if (e.key === 'Enter') {
         e.preventDefault();
         if (!tryAnswer(input.value)) {
           input.classList.add('shake');
@@ -337,7 +374,8 @@ export async function start(ctx, forced = {}) {
       const again = waitingLine === stop.line;
       waitingLine = stop.line;
       view.hold(stop.line);
-      msg.textContent = conf.input === 'type' ? '⏸ Type the missing word! (R: again · Tab: hint)' : '⏸ Which word did you hear?';
+      msg.textContent = conf.input === 'say' ? '⏸ What is the missing word? Say it! (R: again · Tab: hint)'
+        : conf.input === 'type' ? `⏸ ${T ? 'What is the missing word?' : 'Type the missing word!'} (R: again · Tab: hint)` : '⏸ Which word did you hear?';
       resolveWait = () => {
         waitingLine = null;
         view.release();
@@ -347,13 +385,13 @@ export async function start(ctx, forced = {}) {
       active = null;
       drawActive();
       if (T) openTurn();
-      if (conf.input === 'type') input.focus();
+      else if (conf.input === 'type') input.focus();
     }));
 
     ctx.onKey((e) => {
       const k = e.key.toLowerCase();
       if (k === 'r') { replay(); return true; }
-      if (k === 's' && conf.input !== 'type') { reveal(); return true; }
+      if (k === 's' && (conf.input !== 'type' || T)) { reveal(); return true; }
       if (conf.input !== 'type' && /^[1-9]$/.test(k)) {
         const b = bank.querySelectorAll('.bank-word')[Number(k) - 1];
         if (b) b.click();
@@ -388,10 +426,10 @@ export async function start(ctx, forced = {}) {
       });
     });
 
-    if (T) T.idle();
+    if (T) { T.idle(); syncInput(); }
     track.seek(0);
     track.play();
-    if (conf.input === 'type') setTimeout(() => input.focus(), 50);
+    if (conf.input === 'type' && !T) setTimeout(() => input.focus(), 50);
 
     cleanupGame = () => {
       cancelAnimationFrame(raf);

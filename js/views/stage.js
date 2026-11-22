@@ -61,7 +61,7 @@ export async function render(root, params) {
   const bottom = h('div', { class: 'stage-bottom' });
   // Homework is played alone: no teams there.
   const teamPlay = !assignmentRun;
-  const teams = teamStrip({ glow: (t) => teamPlay && (game.scores || (game.turns && rulesOf(t).mode === 'turns')) });
+  const teams = teamStrip({ glow: (t) => teamPlay && (game.scores || (game.turns && (game.turns === 'only' || rulesOf(t).mode === 'turns'))) });
   cleanups.push(() => teams.destroy && teams.destroy());
   const turnbar = game.turns ? turnBar({ enabled: () => teamPlay }) : null;
   if (turnbar) {

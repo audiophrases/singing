@@ -848,6 +848,7 @@ kbd {
 }
 .ww-word:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
 .ww-word.nope { background: rgba(239, 68, 68, 0.4); }
+.ww-word.nope:disabled { color: rgba(255, 255, 255, 0.6); text-decoration: line-through; }
 .k-line.next .ww-word { color: rgba(255, 255, 255, 0.9); }
 .ww-wrong { color: #f87171; text-decoration-thickness: 0.08em; opacity: 0.8; font-size: 0.8em; }
 .ww-right { color: #4ade80; }
@@ -860,6 +861,8 @@ kbd {
 .lo-slots { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.4rem; }
 .lo-slot { display: flex; gap: 0.7rem; align-items: center; padding: 0.55rem 0.8rem; border-radius: 0.8rem; border: 2px dashed rgba(255, 255, 255, 0.22); font-family: var(--font-fun); font-size: clamp(1rem, 1.8vw, 1.45rem); min-height: 3rem; }
 .lo-slot.done { border-style: solid; border-color: #4ade80; background: rgba(74, 222, 128, 0.12); animation: pop-in 0.3s; }
+/* Teams: nobody named it, so it was just shown. */
+.lo-slot.done.shown { border-color: #fb923c; background: rgba(251, 146, 60, 0.12); }
 .lo-num { font-weight: 800; color: hsl(var(--hue) 90% 75%); min-width: 1.4rem; }
 .lo-text { opacity: 0.9; }
 .lo-cards { display: flex; flex-direction: column; gap: 0.45rem; }
@@ -964,6 +967,8 @@ kbd {
 .hunt-word.found { background: #fde047; color: #1c2430; font-weight: 700; }
 .hunt-word.revealed { box-shadow: inset 0 -0.15em 0 #fb923c; }
 .hunt-word.nope { background: rgba(239, 68, 68, 0.5); }
+/* Teams: a word a team named that is not one. */
+.hunt-word.miss { color: rgba(255, 255, 255, 0.45); text-decoration: line-through; text-decoration-color: #f87171; cursor: default; }
 .hunt-word.fixed { outline: 1px dashed rgba(255, 255, 255, 0.5); }
 
 /* Say it */

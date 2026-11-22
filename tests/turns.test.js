@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { openItem, markItem, chooseTeam, stepTeam, nextTurn, rulesOf, POINTS } from '../js/games/turns.js';
+import { openItem, markItem, chooseTeam, stepTeam, nextTurn, keepsTurn, rulesOf, POINTS } from '../js/games/turns.js';
 
 const TURNS = rulesOf({});
 const NO_STEAL = rulesOf({ rules: { steal: false } });
@@ -111,4 +111,21 @@ test('first hand up: when every team has missed, or time is up, the answer is sh
   r = markItem(chooseTeam(r.item, 1), 'pass', FIRST);
   assert.equal(r.outcome, 'reveal');
   assert.equal(markItem(openItem({ teams: 2, turn: 0, rules: FIRST }), 'timeout', FIRST).outcome, 'reveal');
+});
+
+test('keep (Rhyme memory): a pair keeps the turn, a miss passes it on with no steal', () => {
+  const MEMORY = { ...TURNS, steal: false, keep: true };
+  let r = markItem(openItem({ teams: 3, turn: 1, rules: MEMORY }), 'right', MEMORY);
+  assert.deepEqual(r.award, { team: 1, points: POINTS.own });
+  assert.equal(keepsTurn(r.item), true);
+  assert.equal(nextTurn(r.item, 1), 1, 'the same team goes again');
+  r = markItem(openItem({ teams: 3, turn: 1, rules: MEMORY }), 'wrong', MEMORY);
+  assert.equal(r.outcome, 'reveal', 'no steal');
+  assert.equal(keepsTurn(r.item), false);
+  assert.equal(nextTurn(r.item, 1), 2);
+  r = markItem(openItem({ teams: 3, turn: 2, rules: MEMORY }), 'pass', MEMORY);
+  assert.equal(nextTurn(r.item, 2), 0);
+  // Without keep, right still moves the turn on.
+  r = markItem(openItem({ teams: 3, turn: 1, rules: TURNS }), 'right', TURNS);
+  assert.equal(keepsTurn(r.item), false);
 });

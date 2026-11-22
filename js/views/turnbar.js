@@ -10,16 +10,21 @@
  *   T.open({ judge, onOutcome })     an item is open: a team must answer
  *                                    judge: the teacher marks ✓/✗ (Y/N) instead
  *                                    of clicking the option the team said
+ *       prompt: 'Click the word they say'    what the teacher does (the hint)
+ *       mode: 'turns', steal: false, keep: true   this game's own rules
+ *                                    (js/games/turns.js; Rhyme memory)
+ *       flash(info) -> text|null     the game's own words after an item
  *   T.ready() / T.nudge()            first hand up: has a team been picked?
  *   T.mark('right'|'wrong'|'pass'|'reveal', meta)
  *   onOutcome({ outcome, result, done, team, points, meta })
  *
  * Keys while an item is open: Y right, N wrong, P pass (first hand up:
- * nobody), ↑/↓ who is answering.
+ * nobody), S show the answer (show: false - Rhyme memory has none), ↑/↓ who
+ * is answering.
  */
 import { h, clear, toast } from '../ui.js';
 import { getTeams, addPoints, endTurn, setTurn, setTeamRules, onTeams } from '../store.js';
-import { openItem, markItem, chooseTeam, stepTeam, nextTurn, rulesOf, POINTS, THINK_TIMES } from '../games/turns.js';
+import { openItem, markItem, chooseTeam, stepTeam, nextTurn, keepsTurn, rulesOf, POINTS, THINK_TIMES } from '../games/turns.js';
 import { choiceRow } from '../games/common.js';
 import { openTeamsDialog } from './teams.js';
 import { sfx, confetti } from '../sfx.js';
@@ -29,7 +34,8 @@ const FLASH_MS = 1800;
 export function turnBar({ enabled = () => true } = {}) {
   const el = h('div', { class: 'turn-bar hidden', role: 'status', 'aria-live': 'polite' });
   let item = null;   // the open item (js/games/turns.js), null between items
-  let spec = null;   // { judge, onOutcome } of the open item
+  let spec = null;   // what the game asked for in open(), kept between items
+  let rules = null;  // the open item's rules: the teams' plus the game's own
   let ids = [];      // team ids, in order, when the item opened
   let note = '';     // what just happened ("❌ Not quite.")
   let flash = null;  // { text, hue } after an item, for a moment
@@ -61,12 +67,22 @@ export function turnBar({ enabled = () => true } = {}) {
   }
 
   // ------------------------------------------------------------------ input
-  function open({ judge = false, onOutcome = () => {} } = {}) {
+  const rulesFor = (teams, s = spec) => {
+    const r = { ...rulesOf(teams) };
+    if (s?.mode) r.mode = s.mode;
+    if (s?.steal === false) r.steal = false;
+    if (s?.keep) r.keep = true;
+    return r;
+  };
+
+  function open(opts = {}) {
+    const { judge = false, onOutcome = () => {}, prompt = '', mode = null, steal = null, keep = false, show = true, flash: say = null } = opts;
     const teams = getTeams();
     if (!teamsOn(teams)) return false;
     ids = teams.list.map((t) => t.id);
-    spec = { judge, onOutcome };
-    item = openItem({ teams: ids.length, turn: teams.turn || 0, rules: rulesOf(teams) });
+    spec = { judge, onOutcome, prompt, mode, steal, keep, show, say, opts };
+    rules = rulesFor(teams);
+    item = openItem({ teams: ids.length, turn: teams.turn || 0, rules });
     note = '';
     clearTimeout(flashTimer);
     flash = null;
@@ -79,7 +95,7 @@ export function turnBar({ enabled = () => true } = {}) {
 
   function mark(result, meta = {}) {
     if (!item || item.done) return null;
-    const res = markItem(item, result, rulesOf(getTeams()));
+    const res = markItem(item, result, rules);
     if (res.outcome === 'none') { nudge(); return null; }
     const before = item;
     const award = res.award;
@@ -92,8 +108,12 @@ export function turnBar({ enabled = () => true } = {}) {
       stopTimer();
       const owner = teamAt(before.owner);
       flash = flashFor(res.outcome, result, scorer, award);
+      const said = spec.say?.(info);
+      if (said) flash = { ...flash, text: said };
       item = null;
-      if (res.item.mode === 'turns' && owner) endTurn(owner.id, nextTurn(res.item, before.owner));
+      // A pair in Rhyme memory: the same team goes again (its turn isn't over).
+      if (keepsTurn(res.item)) setTurn(before.owner);
+      else if (res.item.mode === 'turns' && owner) endTurn(owner.id, nextTurn(res.item, before.owner));
       clearTimeout(flashTimer);
       flashTimer = setTimeout(() => { flash = null; draw(); }, FLASH_MS);
     } else {
@@ -134,6 +154,7 @@ export function turnBar({ enabled = () => true } = {}) {
     if (k === 'y' && spec.judge) { mark('right'); return true; }
     if (k === 'n') { mark('wrong'); return true; }
     if (k === 'p') { mark(item.mode === 'first' ? 'reveal' : 'pass'); return true; }
+    if (k === 's' && spec.show) { mark('reveal'); return true; }
     if (k === 'arrowdown' || k === 'arrowup') { step(k === 'arrowdown' ? 1 : -1); return true; }
     return false;
   }
@@ -151,8 +172,9 @@ export function turnBar({ enabled = () => true } = {}) {
   const btn = (label, key, onclick, cls = '') => h('button', { class: `btn tb-btn ${cls}`, type: 'button', onclick }, label, key ? h('kbd', null, key) : null);
 
   function drawOpen(teams) {
-    const r = rulesOf(teams);
+    const r = rules;
     const first = item.mode === 'first';
+    const prompt = spec.prompt || 'Press the number they say';
     const who = teamAt(item.answering, teams);
     const card = h('div', { class: 'tb-card', style: { '--team-hue': who ? who.hue : 'var(--hue)' } });
     if (first) {
@@ -170,7 +192,7 @@ export function turnBar({ enabled = () => true } = {}) {
         }, `${t.emoji} ${t.name}`));
       });
       card.append(row, h('div', { class: 'tb-actions' }, btn('🙈 Nobody', 'P', () => mark('reveal'))));
-      card.append(h('div', { class: 'tb-hint' }, spec.judge ? 'Click the team that got it.' : 'Click the team whose hand went up, then the option they say.'));
+      card.append(h('div', { class: 'tb-hint' }, spec.judge ? 'Click the team that got it.' : `Click the team whose hand went up, then ${prompt[0].toLowerCase()}${prompt.slice(1)}.`));
     } else {
       const steal = item.phase === 'steal';
       card.append(h('div', { class: 'tb-who' }, h('span', { class: 'tb-emoji' }, who?.emoji || '🎯'), h('span', null, who?.name || ''),
@@ -180,14 +202,15 @@ export function turnBar({ enabled = () => true } = {}) {
       if (spec.judge) actions.append(btn('✓ Right', 'Y', () => mark('right'), 'tb-right'), btn('✗ Wrong', 'N', () => mark('wrong'), 'tb-wrong'));
       actions.append(btn('🤷 Pass', 'P', () => mark('pass')));
       card.append(actions);
-      card.append(h('div', { class: 'tb-hint' }, spec.judge ? `${POINTS.own} points, ${POINTS.steal} for a steal · ↑/↓ another team` : `Press the number they say · ${POINTS.own} points, ${POINTS.steal} for a steal`));
+      const pts = r.keep ? `${POINTS.own} points and go again` : r.steal && item.n > 1 ? `${POINTS.own} points, ${POINTS.steal} for a steal` : `${POINTS.own} points`;
+      card.append(h('div', { class: 'tb-hint' }, spec.judge ? `${spec.prompt ? `${spec.prompt} · ` : ''}${pts} · ↑/↓ another team` : `${prompt} · ${pts}`));
     }
     if (r.think) card.append(h('div', { class: 'tb-timer' }, h('div', { class: 'tb-timer-fill' })));
     el.append(card);
   }
 
   function drawIdle(teams) {
-    const r = rulesOf(teams);
+    const r = rulesFor(teams);
     if (r.mode === 'first') {
       el.append(h('div', { class: 'tb-card idle' }, h('span', null, '✋ First hand up')));
       return;
@@ -215,7 +238,7 @@ export function turnBar({ enabled = () => true } = {}) {
       // The teams themselves changed mid-item: start that item again.
       const s = spec;
       item = null;
-      if (teamsOn(teams)) open(s); else draw();
+      if (teamsOn(teams)) open(s.opts); else draw();
       return;
     }
     draw();
@@ -242,9 +265,10 @@ export function turnBar({ enabled = () => true } = {}) {
 /*
  * The team rows for a game's set-up card: who is playing and how they answer.
  * hide: rows of the game that teams replace (its own timer) - hidden while
- * teams are on.
+ * teams are on. only: the game always plays in turn order with its own rules
+ * (Rhyme memory), so no Answering and Steal rows; note(next) says how.
  */
-export function turnSetup({ hide = [] } = {}) {
+export function turnSetup({ hide = [], only = false, note = null } = {}) {
   const box = h('div', { class: 'turn-setup' });
   const row = (label, ...children) => h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, label), ...children);
   const draw = (teams = getTeams()) => {
@@ -255,14 +279,15 @@ export function turnSetup({ hide = [] } = {}) {
       return;
     }
     const r = rulesOf(teams);
+    if (only) r.mode = 'turns';
     const next = teams.list[(teams.turn || 0) % teams.list.length];
     box.append(
       row('Teams', h('span', { class: 'turn-setup-teams' }, teams.list.map((t) => h('span', { class: `team-chip${r.mode === 'turns' && t === next ? ' turn' : ''}`, style: { '--team-hue': t.hue } }, h('span', { class: 'tc-emoji' }, t.emoji), h('span', { class: 'tc-name' }, t.name)))),
         h('button', { class: 'btn btn-sm', type: 'button', onclick: () => openTeamsDialog() }, '✏️ Edit')),
-      row('Answering', choiceRow([['turns', '🔄 Turns'], ['first', '✋ First hand up']], r.mode, (v) => setTeamRules({ mode: v }))),
-      r.mode === 'turns' ? row('Steal', choiceRow([[true, '🦝 Next team can steal'], [false, 'No steals']], r.steal, (v) => setTeamRules({ steal: v }))) : null,
+      only ? null : row('Answering', choiceRow([['turns', '🔄 Turns'], ['first', '✋ First hand up']], r.mode, (v) => setTeamRules({ mode: v }))),
+      !only && r.mode === 'turns' ? row('Steal', choiceRow([[true, '🦝 Next team can steal'], [false, 'No steals']], r.steal, (v) => setTeamRules({ steal: v }))) : null,
       row('Thinking time', choiceRow(THINK_TIMES.map((s) => [s, s ? `${s} s` : 'No limit']), r.think, (v) => setTeamRules({ think: v }))),
-      h('p', { class: 'small turn-setup-note' }, r.mode === 'turns'
+      h('p', { class: 'small turn-setup-note' }, note ? note(next) : r.mode === 'turns'
         ? `${next.emoji} ${next.name} starts. Each team answers in turn: ${POINTS.own} points if right${r.steal ? `, or the next team can steal it for ${POINTS.steal}` : ''}. 🤷 Pass (P) loses the turn.`
         : `Click the team whose hand went up first, then enter its answer: ${POINTS.first} point. A team that is wrong is out for that question.`),
     );
