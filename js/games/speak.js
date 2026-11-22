@@ -5,7 +5,9 @@
  * In teams each line is one team's turn (js/views/turnbar.js): the mic
  * suggests right (75% of the words or more) or wrong, the teacher decides
  * (Enter accepts, Y / N), then the next line comes up for the next team. A
- * mic that fails (blocked, heard nothing) costs nobody the turn.
+ * mic that fails (blocked, heard nothing) costs nobody the turn. A recording
+ * and its suggestion belong to their line and their try: ◀ ▶, a steal or
+ * ↑/↓ drop them.
  */
 import { h, clear } from '../ui.js';
 import { setupCard, choiceRow } from './common.js';
@@ -95,9 +97,18 @@ export async function start(ctx) {
       for (const n of notes) tipBox.append(h('div', { class: 'gf-why' }, n.skill ? h('b', null, `${n.skill}: `) : null, n.tip));
       if (!marks) { clear(heardBox); clear(scoreEl); }
     };
+    // Drop the recording in progress: it ends without marking anything.
+    const stopMic = () => {
+      if (!rec) return;
+      const r = rec;
+      rec = null;
+      r.abort();
+      micBtn.textContent = '🎙️ Speak';
+      micBtn.classList.remove('listening');
+    };
     const listen = () => {
       stopSpeaking();
-      if (rec) { rec.abort(); rec = null; }
+      stopMic();
       rec = new SR();
       rec.lang = getSettings().speechLang || 'en-US';
       rec.interimResults = true;
@@ -108,7 +119,14 @@ export async function start(ctx) {
       let heard = '';     // what the mic heard so far (interim results too)
       let failed = false; // blocked, nothing heard, stopped: nothing to mark
       const me = rec;
+      // A recording belongs to the line on screen and the team trying it: if
+      // either changes before it ends, it counts for nothing.
+      const line = idx;
+      const turnId = T?.turnId;
+      const stale = () => idx !== line || (T && T.turnId !== turnId);
+      T?.suggest(null); // a new try replaces the last suggestion
       rec.onresult = (e) => {
+        if (stale()) return;
         let text = '';
         for (let i = 0; i < e.results.length; i += 1) text += `${e.results[i][0].transcript} `;
         heard = text.trim();
@@ -117,7 +135,7 @@ export async function start(ctx) {
       };
       rec.onerror = (e) => {
         failed = true;
-        if (e.error === 'aborted') return;
+        if (e.error === 'aborted' || stale()) return;
         heardBox.textContent = e.error === 'not-allowed' ? '🚫 The microphone is blocked.' : e.error === 'no-speech' ? 'I did not hear anything. Try again!' : `Error: ${e.error}`;
       };
       rec.onend = () => {
@@ -128,7 +146,7 @@ export async function start(ctx) {
         // Only words the mic really heard are marked: an error message is
         // not an answer, and the team can simply try again.
         const said = (finalText || heard).trim();
-        if (failed || !said) return;
+        if (failed || !said || stale()) return;
         const l = lines[idx];
         const marks = compareWords(l.words.map((w) => w.text), said.split(/\s+/));
         const pct = Math.round((marks.filter(Boolean).length / marks.length) * 100);
@@ -146,14 +164,21 @@ export async function start(ctx) {
     };
     micBtn.addEventListener('click', () => (rec ? rec.stop() : listen()));
     const go = (d) => {
-      idx = Math.max(0, Math.min(lines.length - 1, idx + d));
+      const next = Math.max(0, Math.min(lines.length - 1, idx + d));
+      // At the first or last line there is nowhere to go: no fresh turn on a
+      // line that was just scored.
+      if (next === idx) return;
+      stopMic();
+      idx = next;
       shown = false;
+      T?.suggest(null); // the mic's guess was about the old line
       draw();
       // Teams: a new line always has a turn to score.
       if (T && !T.isOpen()) T.open(turn);
     };
     function onTurn(o) {
       const at = idx;
+      stopMic(); // the try is over: a recording still going is not for it
       if (!o.done) {
         // The next team tries the same line: a clean line after a moment.
         setTimeout(() => { if (idx === at && T.isOpen()) draw(); }, 1500);
@@ -206,6 +231,6 @@ export async function start(ctx) {
       if (k === 'arrowleft') { go(-1); return true; }
       return false;
     });
-    cleanup = () => { if (rec) rec.abort(); stopSpeaking(); };
+    cleanup = () => { stopMic(); stopSpeaking(); };
   }
 }

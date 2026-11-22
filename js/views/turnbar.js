@@ -15,7 +15,11 @@
  *                                    (js/games/turns.js; Rhyme memory)
  *       flash(info) -> text|null     the game's own words after an item
  *   T.suggest('right'|'wrong')       a guess (Say it!'s mic): the button
- *                                    lights up, Enter accepts it, Y / N decide
+ *                                    lights up, Enter accepts it, Y / N decide;
+ *                                    T.suggest(null) drops it, and so does any
+ *                                    new try (a steal, ↑/↓, the next item)
+ *   T.turnId                         changes with every new try: a guess
+ *                                    started under an old one is stale
  *   T.ready() / T.nudge()            first hand up: has a team been picked?
  *   T.mark('right'|'wrong'|'pass'|'reveal', meta)
  *   onOutcome({ outcome, result, done, team, points, meta })
@@ -49,7 +53,12 @@ export function turnBar({ enabled = () => true } = {}) {
   let raf = 0;
   let playing = false;   // this game started in teams: it keeps them to the end
   let suggested = null;  // 'right' | 'wrong': a guess the teacher can accept
+  let turnId = 0;        // changes whenever the item, or who is answering it, does
   let wasOn = getTeams().on;
+
+  // Every change of item (opened, on to the steal, another team chosen,
+  // closed) is a new try: a suggestion made for the old one is dropped.
+  const setItem = (next) => { item = next; turnId += 1; suggested = null; };
 
   const teamsOn = (teams = getTeams()) => enabled() && teams.list.length > 0 && (teams.on || playing);
   const teamAt = (i, teams = getTeams()) => (i === null || i === undefined ? null : teams.list.find((t) => t.id === ids[i]) || null);
@@ -90,9 +99,8 @@ export function turnBar({ enabled = () => true } = {}) {
     ids = teams.list.map((t) => t.id);
     spec = { judge, onOutcome, prompt, mode, steal, keep, show, say, opts };
     rules = rulesFor(teams);
-    item = openItem({ teams: ids.length, turn: teams.turn || 0, rules });
+    setItem(openItem({ teams: ids.length, turn: teams.turn || 0, rules }));
     playing = true;
-    suggested = null;
     note = '';
     clearTimeout(flashTimer);
     flash = null;
@@ -107,7 +115,6 @@ export function turnBar({ enabled = () => true } = {}) {
     if (!item || item.done) return null;
     const res = markItem(item, result, rules);
     if (res.outcome === 'none') { nudge(); return null; }
-    suggested = null;
     const before = item;
     const award = res.award;
     const scorer = award ? teamAt(award.team) : null;
@@ -121,14 +128,14 @@ export function turnBar({ enabled = () => true } = {}) {
       flash = flashFor(res.outcome, result, scorer, award);
       const said = spec.say?.(info);
       if (said) flash = { ...flash, text: said };
-      item = null;
+      setItem(null);
       // A pair in Rhyme memory: the same team goes again (its turn isn't over).
       if (keepsTurn(res.item)) setTurn(before.owner);
       else if (res.item.mode === 'turns' && owner) endTurn(owner.id, nextTurn(res.item, before.owner));
       clearTimeout(flashTimer);
       flashTimer = setTimeout(() => { flash = null; draw(); }, FLASH_MS);
     } else {
-      item = res.item;
+      setItem(res.item);
       startTimer();
     }
     draw();
@@ -140,7 +147,7 @@ export function turnBar({ enabled = () => true } = {}) {
     if (!item) return;
     const next = chooseTeam(item, i);
     if (next === item) return;
-    item = next;
+    setItem(next);
     if (item.mode === 'turns' && item.phase === 'turn') { ids = getTeams().list.map((t) => t.id); setTurn(item.owner); }
     draw();
   }
@@ -148,7 +155,7 @@ export function turnBar({ enabled = () => true } = {}) {
     if (!item) return;
     const next = stepTeam(item, dir);
     if (next === item) return;
-    item = next;
+    setItem(next);
     if (item.mode === 'turns' && item.phase === 'turn') setTurn(item.owner);
     draw();
   }
@@ -265,7 +272,7 @@ export function turnBar({ enabled = () => true } = {}) {
     if (item && teams.list.map((t) => t.id).join() !== ids.join()) {
       // The teams themselves changed mid-item: start that item again.
       const s = spec;
-      item = null;
+      setItem(null);
       if (teamsOn(teams)) open(s.opts); else draw();
       return;
     }
@@ -275,14 +282,18 @@ export function turnBar({ enabled = () => true } = {}) {
   const api = {
     get active() { return teamsOn(); },
     get playing() { return playing; },
+    get turnId() { return turnId; },
     open,
     mark,
     nudge,
-    suggest(result) { if (item) { suggested = result === 'right' ? 'right' : 'wrong'; draw(); } },
+    suggest(result) {
+      const next = !item || !result ? null : result === 'right' ? 'right' : 'wrong';
+      if (next !== suggested) { suggested = next; draw(); }
+    },
     ready: () => !item || item.mode !== 'first' || item.answering !== null,
     isOpen: () => !!item,
     idle() { if (!item) { shown = true; if (teamsOn()) playing = true; draw(); } },
-    end() { stopTimer(); clearTimeout(flashTimer); item = null; flash = null; shown = false; playing = false; suggested = null; draw(); },
+    end() { stopTimer(); clearTimeout(flashTimer); setItem(null); flash = null; shown = false; playing = false; draw(); },
   };
   return {
     el,

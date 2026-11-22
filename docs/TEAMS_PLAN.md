@@ -181,3 +181,13 @@ pass, ↑/↓, the next game carrying the order on). Help page and README at the
   stealing team). (6) Say it!: ◀ ▶ while waiting for the next line opens a
   turn on the new line. (7) No literal "null" on start cards that leave out
   the Answering or Steal row.
+- 2026-11-22: **two more Say it! scoring fixes.** (1) A recording and the
+  mic's suggestion belong to the line and the try that produced them: ◀ ▶,
+  a steal or ↑/↓ drop the suggestion and stop the mic, and a recording that
+  ends after either changed marks nothing (before, a "right" on line 1
+  followed by ▶ and Enter gave line 2 two points). The banner has a
+  `turnId` that changes with every new try. (2) ◀ on the first line and ▶
+  on the last do nothing; before, ▶ after scoring the last line opened a
+  fresh turn on it, so Y could score it again and again. Also fixed:
+  `ctx.turns` copied the banner's getters once (`...turnbar.api`), so
+  `playing` and `turnId` read there never changed.

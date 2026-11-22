@@ -161,7 +161,10 @@ export async function render(root, params) {
     options: (build) => { optionsBuilder = build; },
     turns: turnbar ? {
       ...turnbar.api,
+      // The spread copies a getter's value once: these must stay live.
       get active() { return turnbar.api.active; },
+      get playing() { return turnbar.api.playing; },
+      get turnId() { return turnbar.api.turnId; },
       // The team rows for the set-up card (none in homework).
       setup: (opts) => {
         if (!teamPlay) return null;
