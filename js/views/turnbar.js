@@ -14,15 +14,20 @@
  *       mode: 'turns', steal: false, keep: true   this game's own rules
  *                                    (js/games/turns.js; Rhyme memory)
  *       flash(info) -> text|null     the game's own words after an item
+ *   T.suggest('right'|'wrong')       a guess (Say it!'s mic): the button
+ *                                    lights up, Enter accepts it, Y / N decide
  *   T.ready() / T.nudge()            first hand up: has a team been picked?
  *   T.mark('right'|'wrong'|'pass'|'reveal', meta)
  *   onOutcome({ outcome, result, done, team, points, meta })
  *
  * Keys while an item is open: Y right, N wrong, P pass (first hand up:
  * nobody), S show the answer (show: false - Rhyme memory has none), ↑/↓ who
- * is answering.
+ * is answering, Enter accept a suggestion.
+ *
+ * A game that starts in teams keeps them until it ends: switching teams off
+ * mid-game takes effect for the next game, so no item is left without a turn.
  */
-import { h, clear, toast } from '../ui.js';
+import { h, clear, add, toast } from '../ui.js';
 import { getTeams, addPoints, endTurn, setTurn, setTeamRules, onTeams } from '../store.js';
 import { openItem, markItem, chooseTeam, stepTeam, nextTurn, keepsTurn, rulesOf, whoAnswers, POINTS, THINK_TIMES } from '../games/turns.js';
 import { choiceRow } from '../games/common.js';
@@ -42,8 +47,11 @@ export function turnBar({ enabled = () => true } = {}) {
   let flashTimer = 0;
   let shown = false;
   let raf = 0;
+  let playing = false;   // this game started in teams: it keeps them to the end
+  let suggested = null;  // 'right' | 'wrong': a guess the teacher can accept
+  let wasOn = getTeams().on;
 
-  const teamsOn = (teams = getTeams()) => enabled() && teams.on && teams.list.length > 0;
+  const teamsOn = (teams = getTeams()) => enabled() && teams.list.length > 0 && (teams.on || playing);
   const teamAt = (i, teams = getTeams()) => (i === null || i === undefined ? null : teams.list.find((t) => t.id === ids[i]) || null);
 
   // ------------------------------------------------------------ thinking time
@@ -83,6 +91,8 @@ export function turnBar({ enabled = () => true } = {}) {
     spec = { judge, onOutcome, prompt, mode, steal, keep, show, say, opts };
     rules = rulesFor(teams);
     item = openItem({ teams: ids.length, turn: teams.turn || 0, rules });
+    playing = true;
+    suggested = null;
     note = '';
     clearTimeout(flashTimer);
     flash = null;
@@ -97,6 +107,7 @@ export function turnBar({ enabled = () => true } = {}) {
     if (!item || item.done) return null;
     const res = markItem(item, result, rules);
     if (res.outcome === 'none') { nudge(); return null; }
+    suggested = null;
     const before = item;
     const award = res.award;
     const scorer = award ? teamAt(award.team) : null;
@@ -155,6 +166,7 @@ export function turnBar({ enabled = () => true } = {}) {
     if (k === 'n') { mark('wrong'); return true; }
     if (k === 'p') { mark(item.mode === 'first' ? 'reveal' : 'pass'); return true; }
     if (k === 's' && spec.show) { mark('reveal'); return true; }
+    if (k === 'enter' && suggested) { mark(suggested); return true; }
     if (k === 'arrowdown' || k === 'arrowup') { step(k === 'arrowdown' ? 1 : -1); return true; }
     return false;
   }
@@ -192,6 +204,7 @@ export function turnBar({ enabled = () => true } = {}) {
         }, `${t.emoji} ${t.name}`));
       });
       card.append(row, h('div', { class: 'tb-actions' }, btn('🙈 Nobody', 'P', () => mark('reveal'))));
+      if (suggested) card.append(suggestLine());
       card.append(h('div', { class: 'tb-hint' }, spec.judge ? 'Click the team that got it.' : `Click the team whose hand went up, then ${prompt[0].toLowerCase()}${prompt.slice(1)}.`));
     } else {
       const steal = item.phase === 'steal';
@@ -203,15 +216,22 @@ export function turnBar({ enabled = () => true } = {}) {
         h('span', { class: 'tb-what' }, steal ? `steal it for ${POINTS.steal}!` : 'your turn!')));
       if (note) card.append(h('div', { class: 'tb-note' }, note));
       const actions = h('div', { class: 'tb-actions' });
-      if (spec.judge) actions.append(btn('✓ Right', 'Y', () => mark('right'), 'tb-right'), btn('✗ Wrong', 'N', () => mark('wrong'), 'tb-wrong'));
+      if (spec.judge) {
+        actions.append(
+          btn('✓ Right', 'Y', () => mark('right'), `tb-right${suggested === 'right' ? ' tb-suggested' : ''}`),
+          btn('✗ Wrong', 'N', () => mark('wrong'), `tb-wrong${suggested === 'wrong' ? ' tb-suggested' : ''}`));
+      }
       actions.append(btn('🤷 Pass', 'P', () => mark('pass')));
       card.append(actions);
+      if (suggested) card.append(suggestLine());
       const pts = r.keep ? `${POINTS.own} points and go again` : r.steal && item.n > 1 ? `${POINTS.own} points, ${POINTS.steal} for a steal` : `${POINTS.own} points`;
       card.append(h('div', { class: 'tb-hint' }, spec.judge ? (spec.prompt ? `${spec.prompt} · ${pts}` : `${pts} · ↑/↓ another team`) : `${prompt} · ${pts}`));
     }
     if (r.think) card.append(h('div', { class: 'tb-timer' }, h('div', { class: 'tb-timer-fill' })));
     el.append(card);
   }
+
+  const suggestLine = () => h('div', { class: 'tb-suggest' }, `🎙️ The mic says ${suggested === 'right' ? '✓ right' : '✗ wrong'} · Enter accepts`);
 
   function drawIdle(teams) {
     const r = rulesFor(teams);
@@ -240,6 +260,8 @@ export function turnBar({ enabled = () => true } = {}) {
     // Points and turns change the chips, not the banner; a team edited in the
     // dialog (name, mascot) must show here too.
     if (detail.bump) return;
+    if (playing && wasOn && !teams.on) toast('Teams go off after this game.', '', 2600);
+    wasOn = teams.on;
     if (item && teams.list.map((t) => t.id).join() !== ids.join()) {
       // The teams themselves changed mid-item: start that item again.
       const s = spec;
@@ -252,13 +274,15 @@ export function turnBar({ enabled = () => true } = {}) {
 
   const api = {
     get active() { return teamsOn(); },
+    get playing() { return playing; },
     open,
     mark,
     nudge,
+    suggest(result) { if (item) { suggested = result === 'right' ? 'right' : 'wrong'; draw(); } },
     ready: () => !item || item.mode !== 'first' || item.answering !== null,
     isOpen: () => !!item,
-    idle() { if (!item) { shown = true; draw(); } },
-    end() { stopTimer(); clearTimeout(flashTimer); item = null; flash = null; shown = false; draw(); },
+    idle() { if (!item) { shown = true; if (teamsOn()) playing = true; draw(); } },
+    end() { stopTimer(); clearTimeout(flashTimer); item = null; flash = null; shown = false; playing = false; suggested = null; draw(); },
   };
   return {
     el,
@@ -294,7 +318,7 @@ export function turnSetup({ hide = [], only = false, note = null } = {}) {
       chips.forEach((c) => c.classList.remove('turn'));
       spinTeams(chips, (pick) => setTurn(pick));
     } }, '🎲 Who starts') : null;
-    box.append(
+    add(box,
       row('Teams', h('span', { class: 'turn-setup-teams' }, chips), spin,
         h('button', { class: 'btn btn-sm', type: 'button', onclick: () => openTeamsDialog() }, '✏️ Edit')),
       only ? null : row('Answering', choiceRow([['turns', '🔄 Turns'], ['first', '✋ First hand up']], r.mode, (v) => setTeamRules({ mode: v }))),

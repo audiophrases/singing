@@ -2,9 +2,10 @@
  * Say it! A line of the song on screen; a student says (or sings) it into
  * the microphone and the browser's speech recognition checks every word.
  *
- * In teams each line is one team's turn (js/views/turnbar.js): the mic marks
- * it (75% of the words or more is right) and the teacher can overrule it with
- * Y / N; then the next line comes up for the next team.
+ * In teams each line is one team's turn (js/views/turnbar.js): the mic
+ * suggests right (75% of the words or more) or wrong, the teacher decides
+ * (Enter accepts, Y / N), then the next line comes up for the next team. A
+ * mic that fails (blocked, heard nothing) costs nobody the turn.
  */
 import { h, clear } from '../ui.js';
 import { setupCard, choiceRow } from './common.js';
@@ -73,7 +74,7 @@ export async function start(ctx) {
     const results = new Map();
     // Teams: each line is one team's turn (js/views/turnbar.js).
     const T = ctx.turns?.active ? ctx.turns : null;
-    const turn = { judge: true, prompt: 'The mic marks it', onOutcome: (o) => onTurn(o) };
+    const turn = { judge: true, prompt: 'The mic suggests, you decide', onOutcome: (o) => onTurn(o) };
     const lineBox = h('div', { class: 'say-line' });
     const tipBox = h('div', { class: 'say-tips' });
     const heardBox = h('div', { class: 'say-heard' });
@@ -104,21 +105,30 @@ export async function start(ctx) {
       micBtn.textContent = '👂 Listening…';
       micBtn.classList.add('listening');
       let finalText = '';
+      let heard = '';     // what the mic heard so far (interim results too)
+      let failed = false; // blocked, nothing heard, stopped: nothing to mark
+      const me = rec;
       rec.onresult = (e) => {
         let text = '';
         for (let i = 0; i < e.results.length; i += 1) text += `${e.results[i][0].transcript} `;
-        heardBox.textContent = `"${text.trim()}"`;
+        heard = text.trim();
+        heardBox.textContent = `"${heard}"`;
         if (e.results[e.results.length - 1].isFinal) finalText = text;
       };
       rec.onerror = (e) => {
+        failed = true;
+        if (e.error === 'aborted') return;
         heardBox.textContent = e.error === 'not-allowed' ? '🚫 The microphone is blocked.' : e.error === 'no-speech' ? 'I did not hear anything. Try again!' : `Error: ${e.error}`;
       };
       rec.onend = () => {
+        if (rec !== me) return; // a newer attempt replaced this one
         micBtn.textContent = '🎙️ Speak';
         micBtn.classList.remove('listening');
         rec = null;
-        const said = (finalText || heardBox.textContent.replace(/"/g, '')).trim();
-        if (!said) return;
+        // Only words the mic really heard are marked: an error message is
+        // not an answer, and the team can simply try again.
+        const said = (finalText || heard).trim();
+        if (failed || !said) return;
         const l = lines[idx];
         const marks = compareWords(l.words.map((w) => w.text), said.split(/\s+/));
         const pct = Math.round((marks.filter(Boolean).length / marks.length) * 100);
@@ -128,9 +138,8 @@ export async function start(ctx) {
         const prev = results.get(idx) || 0;
         results.set(idx, Math.max(prev, pct));
         if (T) {
-          // The mic marks the turn; the banner scores it.
-          if (T.isOpen() && T.ready()) T.mark(pct >= 75 ? 'right' : 'wrong', { pct });
-          else if (T.isOpen()) T.nudge();
+          // The mic only suggests: the teacher accepts it (Enter) or decides (Y / N).
+          if (T.isOpen()) T.suggest(pct >= 75 ? 'right' : 'wrong');
         } else if (pct === 100) { sfx('correct', { volume: 0.5 }); confetti({ count: 60 }); } else if (pct < 50) sfx('wrong', { volume: 0.3 });
       };
       rec.start();
@@ -140,6 +149,8 @@ export async function start(ctx) {
       idx = Math.max(0, Math.min(lines.length - 1, idx + d));
       shown = false;
       draw();
+      // Teams: a new line always has a turn to score.
+      if (T && !T.isOpen()) T.open(turn);
     };
     function onTurn(o) {
       const at = idx;
@@ -151,10 +162,10 @@ export async function start(ctx) {
       const ok = o.outcome === 'right' || o.outcome === 'stolen';
       if (!ok) { shown = true; draw(); speak(lines[idx].text); } // nobody said it: hear it
       if (idx < lines.length - 1) {
+        // On to the next line, unless the teacher already moved (◀ ▶ open a turn).
         setTimeout(() => {
           if (idx !== at || T.isOpen() || !lineBox.isConnected) return;
           go(1);
-          T.open(turn);
         }, ok ? 1800 : 3500);
       }
     }

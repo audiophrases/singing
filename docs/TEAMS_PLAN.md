@@ -75,7 +75,7 @@ time. They are stored with the teams.
 | Grammar hunt | one word | click the word they name; when nobody finds one, the game shows one |
 | Rhyme memory | two cards | click the two cards they choose; a pair keeps the turn, no steals, always in turn order |
 | Line builder | a line | tap the tiles in the order they say; a wrong tile hands the rest to the next team |
-| Say it! | a line at the mic | the mic marks it, then the next team comes up |
+| Say it! | a line at the mic | the mic suggests ✓/✗; Enter accepts, Y / N decide; then the next team comes up |
 
 Unchanged: Hot mic (holding the mic decides who answers) and Karaoke, Echo,
 Round, Pitch Pal, Freeze dance and Bingo.
@@ -168,3 +168,16 @@ pass, ↑/↓, the next game carrying the order on). Help page and README at the
   Checked in Chrome: both games with 3 teams (right, wrong + steal, pass, S,
   no early taps, the mic's right and wrong with Y overruling it, From memory),
   then all the earlier checks again.
+- 2026-11-22: **review fixes.** (1) A game that starts in teams keeps them to
+  the end: switching teams off mid-game used to leave the next item with no
+  turn (every turn game stalled); now the banner and chips stay and "Teams go
+  off after this game" shows. (2) Grammar hunt in teams: 👀 Show the rest ends
+  the hunt with the results ("Hunt over!") instead of leaving it unfinishable.
+  (3) Enter in the Teams window (class list, names) or any text box no longer
+  starts the game behind it. (4) Say it!: a mic error (blocked, nothing
+  heard, stopped) is not marked, so the same team tries again. (5) Say it!:
+  the mic only suggests: the banner lights up ✓ or ✗, Enter accepts, Y / N
+  decide (before, its verdict was final and Y after a wrong verdict scored the
+  stealing team). (6) Say it!: ◀ ▶ while waiting for the next line opens a
+  turn on the new line. (7) No literal "null" on start cards that leave out
+  the Answering or Steal row.

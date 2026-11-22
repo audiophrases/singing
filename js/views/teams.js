@@ -172,12 +172,13 @@ export function showPodium() {
 }
 
 // Chips for the stage header; keeps itself up to date. glow(teams): light up
-// the team whose turn it is (in games that take turns).
-export function teamStrip({ glow = () => false } = {}) {
+// the team whose turn it is (in games that take turns). keep(): a game is
+// still playing in teams after they were switched off (js/views/turnbar.js).
+export function teamStrip({ glow = () => false, keep = () => false } = {}) {
   const el = h('div', { class: 'team-strip' });
   const draw = (teams = getTeams(), detail = {}) => {
     clear(el);
-    if (!teams.on) {
+    if (!teams.on && !keep()) {
       el.append(h('button', { class: 'btn btn-sm', type: 'button', title: 'Teams (T)', onclick: () => openTeamsDialog() }, '👥'));
       return;
     }
@@ -196,6 +197,7 @@ export function teamStrip({ glow = () => false } = {}) {
   draw();
   const off = onTeams(draw);
   el.destroy = off;
+  el.refresh = () => draw();
   return el;
 }
 

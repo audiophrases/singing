@@ -60,13 +60,16 @@ export async function render(root, params) {
   const bottom = h('div', { class: 'stage-bottom' });
   // Homework is played alone: no teams there.
   const teamPlay = !assignmentRun;
-  const teams = teamStrip({ glow: (t) => teamPlay && !!game.turns && (game.turns === 'only' || rulesOf(t).mode === 'turns') });
-  cleanups.push(() => teams.destroy && teams.destroy());
   const turnbar = game.turns ? turnBar({ enabled: () => teamPlay }) : null;
   if (turnbar) {
     cleanups.push(() => turnbar.destroy());
     keyHandlers.push(turnbar.onKey); // first in: the game's own keys come before it
   }
+  const teams = teamStrip({
+    glow: (t) => teamPlay && !!game.turns && (game.turns === 'only' || rulesOf(t).mode === 'turns'),
+    keep: () => !!turnbar?.api.playing, // teams switched off mid-game stay until it ends
+  });
+  cleanups.push(() => teams.destroy && teams.destroy());
 
   let optionsBuilder = null;
   const optBtn = h('button', { class: 'btn icon-btn', type: 'button', title: 'Game settings', 'aria-label': 'Game settings', onclick: () => openOptions() }, '⚙️');
@@ -169,7 +172,7 @@ export async function render(root, params) {
     } : null,
     async finish(result) {
       track.pause();
-      if (turnbar) turnbar.api.end();
+      if (turnbar) { turnbar.api.end(); teams.refresh(); }
       if (!assignmentRun) { showResult(result); return; }
       try {
         await answerQueue;

@@ -98,10 +98,11 @@ export async function start(ctx) {
       counter.textContent = `${cat.emoji} ${cat.name}: ${got} / ${total}`;
       if (total && !left && !over) {
         over = true;
-        confetti();
+        if (got === total) confetti();
         // The end screen replaces the board, and the last find's explanation would go with it.
         const last = why.textContent ? ` ${why.textContent}` : '';
-        setTimeout(() => ctx.finish({ score: score.value, max: total * 10, emoji: '🔎', title: 'All found!', text: set ? `${total} words found.${last}` : `${total} ${cat.name.toLowerCase()} found.`, stars: score.value >= total * 9 ? 3 : score.value >= total * 6 ? 2 : 1 }), 900);
+        const found = got === total ? (set ? `${total} words found.` : `${total} ${cat.name.toLowerCase()} found.`) : `${got} of ${total} found.`;
+        setTimeout(() => ctx.finish({ score: score.value, max: total * 10, emoji: '🔎', title: got === total ? 'All found!' : 'Hunt over!', text: set ? `${found}${last}` : found, stars: score.value >= total * 9 ? 3 : score.value >= total * 6 ? 2 : 1 }), got === total ? 900 : 2200);
       }
     };
     function find(tk) {
@@ -133,7 +134,12 @@ export async function start(ctx) {
     }
     const reveal = () => {
       for (const t of tokens) if (t.answer && t.state !== 'found') t.el.classList.add('revealed');
-      if (T) { stopped = true; if (T.isOpen()) T.mark('reveal', { all: true }); }
+      if (!T) return;
+      // Teams: the hunt is over; the class sees the rest, then the results.
+      stopped = true;
+      for (const t of tokens) if (t.answer && t.state === 'idle') t.state = 'shown';
+      if (T.isOpen()) T.mark('reveal', { all: true });
+      updateCount();
     };
 
     function openTurn() {

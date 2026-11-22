@@ -589,6 +589,9 @@ kbd {
 .stage .tb-team[aria-pressed='true'] { background: hsl(var(--team-hue) 85% 58%); color: #0b0c1a; box-shadow: 0 0 0 3px #fff; }
 .stage .tb-team.out { opacity: 0.35; text-decoration: line-through; }
 .tb-hint { max-width: 26ch; text-align: left; font-size: 0.85rem; line-height: 1.25; opacity: 0.75; }
+/* Say it!: the mic's guess, for the teacher to accept (Enter) or change. */
+.stage .tb-btn.tb-suggested { box-shadow: 0 0 0 3px #fff, 0 0 18px rgba(255, 255, 255, 0.7); transform: scale(1.06); }
+.tb-suggest { font-weight: 700; font-size: 0.95rem; }
 .tb-timer { position: absolute; left: 0; right: 0; bottom: 0; height: 0.35rem; background: rgba(255, 255, 255, 0.12); }
 .tb-timer-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #ef4444, #facc15, #22c55e); }
 .turn-setup-teams { display: inline-flex; gap: 0.35rem; flex-wrap: wrap; }

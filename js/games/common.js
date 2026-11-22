@@ -2,7 +2,7 @@
  * Pieces several games share: stopping the music at chosen moments, the
  * set-up card shown before a game starts, the line display, scores.
  */
-import { h, clear } from '../ui.js';
+import { h, clear, modalOpen } from '../ui.js';
 import { lineEl, paintLine } from './karaoke.js';
 import { currentLineAt } from '../music/timeline.js';
 
@@ -69,6 +69,11 @@ export function setupCard({ emoji, title, intro, body, startLabel = '▶ Start',
     h('div', { class: 'setup-actions' }, btn));
   btn.addEventListener('click', () => onStart());
   const onKey = (e) => {
+    // Not while a dialog is open over the card (the Teams window's class
+    // list) or while typing somewhere.
+    const t = e.target;
+    const typing = t && (t.tagName === 'TEXTAREA' || t.isContentEditable || (t.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit', 'range', 'color'].includes(t.type)));
+    if (modalOpen() || typing) return;
     if (e.key === 'Enter' && card.isConnected && document.activeElement && document.activeElement.tagName !== 'SELECT') {
       e.preventDefault();
       onStart();
