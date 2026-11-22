@@ -578,6 +578,7 @@ kbd {
 .tb-who { display: flex; align-items: center; gap: 0.5rem; font-family: var(--font-fun); font-weight: 700; font-size: clamp(1.3rem, 2.8vw, 2.2rem); line-height: 1.1; }
 .tb-emoji { font-size: 1.3em; }
 .tb-what { font-weight: 600; opacity: 0.9; }
+.tb-student { font-weight: 600; color: hsl(var(--team-hue) 95% 82%); max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tb-note { font-weight: 700; font-size: clamp(1rem, 2vw, 1.4rem); }
 .tb-actions, .tb-teams { display: flex; gap: 0.45rem; flex-wrap: wrap; justify-content: center; }
 .stage .tb-btn { font-size: 1.1rem; font-weight: 700; padding: 0.45rem 0.9rem; }
@@ -724,7 +725,25 @@ kbd {
 
 /* Teams dialog and podium */
 .team-edit-list { display: flex; flex-direction: column; gap: 0.45rem; margin-top: 0.7rem; }
-.team-edit { display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 0.4rem; align-items: center; border-left: 5px solid hsl(var(--team-hue) 80% 55%); padding-left: 0.5rem; }
+.team-edit { display: grid; grid-template-columns: auto 1fr auto auto auto auto; gap: 0.4rem; align-items: center; border-left: 5px solid hsl(var(--team-hue) 80% 55%); padding-left: 0.5rem; border-radius: 0.4rem; transition: background 0.12s; }
+.team-edit.next { background: hsl(var(--team-hue) 80% 55% / 0.1); }
+.team-next-tag { grid-column: 2 / -1; margin-top: -0.25rem; font-size: 0.8rem; font-weight: 700; color: hsl(var(--team-hue) 70% 35%); }
+.team-turns { font-size: 0.8rem; color: var(--muted); white-space: nowrap; min-width: 3.6rem; }
+.team-edit .team-score { width: 5rem; }
+@media (max-width: 560px) {
+  .team-edit .team-score { width: 3.6rem; }
+  .team-edit .team-turns { display: none; }
+  .team-edit { grid-template-columns: auto minmax(5rem, 1fr) auto auto auto auto; }
+}
+/* 🎲 Who starts: the light running round the teams. */
+.team-edit.spin { background: hsl(var(--team-hue) 85% 55% / 0.35); }
+.team-chip.spin { box-shadow: 0 0 0 3px #fff, 0 0 22px hsl(var(--team-hue) 90% 60%); transform: scale(1.08); }
+.team-students { margin-top: 1rem; border-top: 1px solid var(--line); padding-top: 0.7rem; }
+.team-students summary { cursor: pointer; font-weight: 700; }
+.team-students textarea { width: 100%; margin: 0.3rem 0 0.4rem; }
+.team-members-list { display: flex; flex-direction: column; gap: 0.35rem; margin-top: 0.6rem; }
+.team-members { display: grid; grid-template-columns: minmax(7rem, auto) 1fr; gap: 0.5rem; align-items: center; border-left: 5px solid hsl(var(--team-hue) 80% 55%); padding-left: 0.5rem; font-weight: 400; }
+.tm-team { font-weight: 700; white-space: nowrap; }
 .team-edit input[type='color'] { width: 2.6rem; height: 2.3rem; padding: 0.15rem; }
 .podium { text-align: center; }
 .podium-reveal { min-height: 220px; display: grid; place-items: center; }

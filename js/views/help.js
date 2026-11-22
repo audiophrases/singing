@@ -58,6 +58,7 @@ export async function render(el) {
         h('kbd', null, '1'), '–', h('kbd', null, '4'), ' the option they said · ', h('kbd', null, 'Y'), ' right · ', h('kbd', null, 'N'), ' wrong · ', h('kbd', null, 'P'), ' pass (don\'t know) · ', h('kbd', null, 'S'), ' show the answer · ',
         h('kbd', null, '↑'), ' ', h('kbd', null, '↓'), ' another team. Right on your own turn is 2 points; after a miss or a pass the next team can steal it for 1. Choose turns or first hand up on the game\'s start card.'),
       h('p', null, 'In Fill the gaps choose 🗣️ Said aloud and press Y or N, or type or tap the word they say. In Wrong word, Line order and Grammar hunt, click the word or line the team names; when nobody finds a word in Grammar hunt, the game shows one. In Rhyme memory the team chooses two cards and you turn them: a pair keeps the turn, and there are no steals.'),
+      h('p', null, 'In the Teams window (', h('kbd', null, 'T'), '), 🎲 Who starts picks the first team at random, and each team shows how many turns it has had. Under 🧑‍🎓 Students you can paste the class list: 🔀 Make teams shares the names out at random, and on its own turn each team\'s students answer one after another (the banner shows whose go it is). Steals are for the whole team. The names stay on this computer.'),
       ] : []),
       h('h2', null, 'Settings'),
       h('label', null, 'Voice for words and lines'), voice,

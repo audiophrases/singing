@@ -24,9 +24,9 @@
  */
 import { h, clear, toast } from '../ui.js';
 import { getTeams, addPoints, endTurn, setTurn, setTeamRules, onTeams } from '../store.js';
-import { openItem, markItem, chooseTeam, stepTeam, nextTurn, keepsTurn, rulesOf, POINTS, THINK_TIMES } from '../games/turns.js';
+import { openItem, markItem, chooseTeam, stepTeam, nextTurn, keepsTurn, rulesOf, whoAnswers, POINTS, THINK_TIMES } from '../games/turns.js';
 import { choiceRow } from '../games/common.js';
-import { openTeamsDialog } from './teams.js';
+import { openTeamsDialog, spinTeams } from './teams.js';
 import { sfx, confetti } from '../sfx.js';
 
 const FLASH_MS = 1800;
@@ -195,7 +195,11 @@ export function turnBar({ enabled = () => true } = {}) {
       card.append(h('div', { class: 'tb-hint' }, spec.judge ? 'Click the team that got it.' : `Click the team whose hand went up, then ${prompt[0].toLowerCase()}${prompt.slice(1)}.`));
     } else {
       const steal = item.phase === 'steal';
+      // With student names, one student answers for the team on its own
+      // turn; a steal is for the whole team.
+      const student = steal ? '' : whoAnswers(who);
       card.append(h('div', { class: 'tb-who' }, h('span', { class: 'tb-emoji' }, who?.emoji || '🎯'), h('span', null, who?.name || ''),
+        student ? h('span', { class: 'tb-student' }, `· ${student},`) : null,
         h('span', { class: 'tb-what' }, steal ? `steal it for ${POINTS.steal}!` : 'your turn!')));
       if (note) card.append(h('div', { class: 'tb-note' }, note));
       const actions = h('div', { class: 'tb-actions' });
@@ -216,7 +220,9 @@ export function turnBar({ enabled = () => true } = {}) {
       return;
     }
     const next = teams.list[(teams.turn || 0) % teams.list.length];
-    el.append(h('div', { class: 'tb-card idle', style: { '--team-hue': next.hue } }, h('span', { class: 'tb-next' }, 'Next turn:'), h('b', null, `${next.emoji} ${next.name}`)));
+    const student = whoAnswers(next);
+    el.append(h('div', { class: 'tb-card idle', style: { '--team-hue': next.hue } }, h('span', { class: 'tb-next' }, 'Next turn:'), h('b', null, `${next.emoji} ${next.name}`),
+      student ? h('span', { class: 'tb-student' }, `· ${student}`) : null));
   }
 
   function draw() {
@@ -281,14 +287,21 @@ export function turnSetup({ hide = [], only = false, note = null } = {}) {
     const r = rulesOf(teams);
     if (only) r.mode = 'turns';
     const next = teams.list[(teams.turn || 0) % teams.list.length];
+    const who = whoAnswers(next);
+    const chips = teams.list.map((t) => h('span', { class: `team-chip${r.mode === 'turns' && t === next ? ' turn' : ''}`, style: { '--team-hue': t.hue } }, h('span', { class: 'tc-emoji' }, t.emoji), h('span', { class: 'tc-name' }, t.name)));
+    const spin = r.mode === 'turns' && chips.length > 1 ? h('button', { class: 'btn btn-sm', type: 'button', title: 'Pick the team that starts at random', onclick: () => {
+      spin.disabled = true;
+      chips.forEach((c) => c.classList.remove('turn'));
+      spinTeams(chips, (pick) => setTurn(pick));
+    } }, '🎲 Who starts') : null;
     box.append(
-      row('Teams', h('span', { class: 'turn-setup-teams' }, teams.list.map((t) => h('span', { class: `team-chip${r.mode === 'turns' && t === next ? ' turn' : ''}`, style: { '--team-hue': t.hue } }, h('span', { class: 'tc-emoji' }, t.emoji), h('span', { class: 'tc-name' }, t.name)))),
+      row('Teams', h('span', { class: 'turn-setup-teams' }, chips), spin,
         h('button', { class: 'btn btn-sm', type: 'button', onclick: () => openTeamsDialog() }, '✏️ Edit')),
       only ? null : row('Answering', choiceRow([['turns', '🔄 Turns'], ['first', '✋ First hand up']], r.mode, (v) => setTeamRules({ mode: v }))),
       !only && r.mode === 'turns' ? row('Steal', choiceRow([[true, '🦝 Next team can steal'], [false, 'No steals']], r.steal, (v) => setTeamRules({ steal: v }))) : null,
       row('Thinking time', choiceRow(THINK_TIMES.map((s) => [s, s ? `${s} s` : 'No limit']), r.think, (v) => setTeamRules({ think: v }))),
       h('p', { class: 'small turn-setup-note' }, note ? note(next) : r.mode === 'turns'
-        ? `${next.emoji} ${next.name} starts. Each team answers in turn: ${POINTS.own} points if right${r.steal ? `, or the next team can steal it for ${POINTS.steal}` : ''}. 🤷 Pass (P) loses the turn.`
+        ? `${next.emoji} ${next.name}${who ? ` (${who})` : ''} starts. Each team answers in turn: ${POINTS.own} points if right${r.steal ? `, or the next team can steal it for ${POINTS.steal}` : ''}. 🤷 Pass (P) loses the turn.`
         : `Click the team whose hand went up first, then enter its answer: ${POINTS.first} point. A team that is wrong is out for that question.`),
     );
   };

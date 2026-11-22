@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { openItem, markItem, chooseTeam, stepTeam, nextTurn, keepsTurn, rulesOf, POINTS } from '../js/games/turns.js';
+import { openItem, markItem, chooseTeam, stepTeam, nextTurn, keepsTurn, rulesOf, POINTS, parseNames, makeTeams, whoAnswers } from '../js/games/turns.js';
 
 const TURNS = rulesOf({});
 const NO_STEAL = rulesOf({ rules: { steal: false } });
@@ -128,4 +128,31 @@ test('keep (Rhyme memory): a pair keeps the turn, a miss passes it on with no st
   // Without keep, right still moves the turn on.
   r = markItem(openItem({ teams: 3, turn: 1, rules: TURNS }), 'right', TURNS);
   assert.equal(keepsTurn(r.item), false);
+});
+
+test('a pasted class list: lines, commas, numbering, repeats and blanks', () => {
+  const pasted = ['1. Marta', '2) Joan', '', '  Pau  Garcia ', 'marta', 'Aina, Biel; Carla\tDani'].join('\n');
+  assert.deepEqual(parseNames(pasted), ['Marta', 'Joan', 'Pau Garcia', 'Aina', 'Biel', 'Carla', 'Dani']);
+  assert.deepEqual(parseNames('Marta\r\nJoan\r\n'), ['Marta', 'Joan'], 'Windows line ends');
+  assert.deepEqual(parseNames(''), []);
+  assert.equal(parseNames('x'.repeat(80))[0].length, 30);
+});
+
+test('make teams: every name once, sizes differ by one at most', () => {
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const names = Array.from({ length: 25 }, (_, i) => `S${i}`);
+  const teams = makeTeams(names, 4, rnd);
+  assert.equal(teams.length, 4);
+  assert.deepEqual(teams.flat().sort(), names.slice().sort());
+  const sizes = teams.map((t) => t.length);
+  assert.ok(Math.max(...sizes) - Math.min(...sizes) <= 1, sizes.join());
+  assert.deepEqual(makeTeams([], 3).map((t) => t.length), [0, 0, 0]);
+});
+
+test('who answers: the next student of the team, round and round', () => {
+  assert.equal(whoAnswers({ members: ['Marta', 'Joan'], next: 0 }), 'Marta');
+  assert.equal(whoAnswers({ members: ['Marta', 'Joan'], next: 3 }), 'Joan');
+  assert.equal(whoAnswers({ members: [] }), '');
+  assert.equal(whoAnswers({}), '');
 });

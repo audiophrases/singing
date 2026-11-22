@@ -141,4 +141,18 @@ pass, ↑/↓, the next game carrying the order on). Help page and README at the
   Checked in Chrome: 3 teams through all five games (right, wrong + steal,
   pass, S, R at a stop, no early answers), the step 1–2 games again, and games
   without teams.
-- Next: step 4 (Teams dialog).
+- 2026-11-22: **step 4 built.** Teams dialog: 🧑‍🎓 Students (optional) with
+  a pasted class list, 🔀 Make teams (random, sizes differ by one at most),
+  names typed per team, 🗑️ Clear names; 🎲 Who starts (a light runs round the
+  teams, also on each game's start card); turns taken on every team row; the
+  team that starts next is marked. Students are `team.members` and
+  `team.next` (`parseNames`, `makeTeams`, `whoAnswers` in `turns.js`, unit
+  tested); `endTurn` moves a team on to its next student. The banner and the
+  start card name the student on the team's own turn ("🐼 Pop Pandas · Aina,
+  your turn!"); steals and first hand up stay whole-team. Names are kept in
+  this browser only (`singing.teams.v1`, never synced). The dialog now changes
+  the latest teams, so a turn ending while it is open is not undone.
+  Checked in Chrome: Make teams, typed names, Who starts in the dialog and on
+  the start card, the student on the banner and rotating after the turn,
+  Clear names, Reset scores, the dialog at 420 px wide.
+- Next: step 5 (Line builder, Say it!).

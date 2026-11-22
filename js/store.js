@@ -197,10 +197,12 @@ export function setTurn(index) {
 }
 
 // A turn is over: count it for the team that had it, then hand the turn on.
+// With student names, that team's next student answers next time.
 export function endTurn(teamId, turn) {
   const teams = getTeams();
   const t = teams.list.find((x) => x.id === teamId);
   if (t) t.turns = (t.turns || 0) + 1;
+  if (t?.members?.length) t.next = ((t.next || 0) + 1) % t.members.length;
   if (teams.list.length && Number.isFinite(turn)) teams.turn = ((turn % teams.list.length) + teams.list.length) % teams.list.length;
   setTeams(teams, { turn: teams.turn, ended: teamId });
 }

@@ -109,3 +109,49 @@ export function nextTurn(item, turn) {
   if (keepsTurn(item)) return item.owner;
   return item?.mode === 'turns' && item.owner !== null ? wrap(item.owner + 1, item.n) : turn;
 }
+
+// ----------------------------------------------------------------- students
+// Optional names inside each team (team.members, team.next). On its own turn
+// a team's next student answers; steals and first hand up are for the whole
+// team. The names stay in this browser (store.js).
+
+export const MAX_NAME = 30;
+
+// A pasted class list: one name per line, or separated by commas, semicolons
+// or tabs. Blank lines, repeats and numbering ("1. Marta") are dropped.
+export function parseNames(text) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of String(text || '').split(/[\n\r,;\t]+/)) {
+    const name = raw.replace(/^\s*\d+[.)]\s*/, '').replace(/\s+/g, ' ').trim().slice(0, MAX_NAME);
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    out.push(name);
+  }
+  return out;
+}
+
+// Share names out at random over n teams; team sizes differ by one at most,
+// and the bigger teams are not always the first ones.
+export function makeTeams(names, n, rnd = Math.random) {
+  const count = Math.max(1, Math.floor(n) || 1);
+  const mix = (arr) => {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(rnd() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+  const teams = Array.from({ length: count }, () => []);
+  const order = mix([...Array(count).keys()]);
+  mix(names).forEach((name, i) => teams[order[i % count]].push(name));
+  return teams;
+}
+
+// The student who answers on this team's next turn ('' without names).
+export function whoAnswers(team) {
+  const m = Array.isArray(team?.members) ? team.members : [];
+  return m.length ? m[wrap(Number(team.next) || 0, m.length)] : '';
+}
