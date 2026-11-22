@@ -1,6 +1,10 @@
 /*
  * Line builder: the words of the next line are scrambled tiles. Tap them in
  * order before the song gets there (word order practice, PinPlay-puzzle style).
+ *
+ * In teams each line is one team's turn (js/views/turnbar.js): the music
+ * waits after the line, the team says the words in order and the teacher taps
+ * the tiles. A wrong tile hands the rest of the line to the next team.
  */
 import { h, clear, shuffle, seeded } from '../ui.js';
 import { lineStops, setupCard, choiceRow, scoreBox, centerOf, stars } from './common.js';
@@ -15,9 +19,10 @@ export async function start(ctx) {
   const card = setupCard({
     emoji: '🧱',
     title: 'Line builder',
-    intro: 'The words are mixed up! Tap them in the right order to build the line - the music waits for you.',
-    body: h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Lines'),
+    intro: 'The words are mixed up! Tap them in the right order to build the line - the music waits for you. In teams, each team builds a line in turn, saying the words in order.',
+    body: h('div', null, h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Lines'),
       choiceRow([['unique', 'Each line once'], ['all', 'Every line']], conf.which, (v) => { conf.which = v; })),
+      ctx.turns?.setup()),
     onStart: () => { card.destroy(); begin(); },
   });
   clear(main).append(card);
@@ -49,6 +54,9 @@ export async function start(ctx) {
     let waiting = false;
     let resolveWait = null;
     let playingEl = null;
+    // Teams: each line is one team's turn, at the stop (js/views/turnbar.js).
+    const T = ctx.turns?.active ? ctx.turns : null;
+    let turnTask = null;
 
     const nextTask = () => {
       const t = track.time();
@@ -71,7 +79,27 @@ export async function start(ctx) {
       }
     };
 
+    // The line is finished (built, or shown when nobody could): carry on.
+    function complete(task, pts) {
+      task.done = true;
+      if (pts) {
+        score.add(pts);
+        const c = centerOf(built);
+        floatEmoji(`+${pts}`, c.x, c.y - 40, { size: 32 });
+      } else score.breakStreak();
+      if (waiting && resolveWait) { const r = resolveWait; resolveWait = null; setTimeout(r, pts ? 300 : 1200); } else {
+        const si = stops.findIndex((s) => s.line === task.line.index);
+        if (si >= 0) runner.pass(si);
+      }
+      setTimeout(() => draw(nextTask()), pts ? 450 : 1300);
+    }
+
     function tap(task, o, btn) {
+      if (T) {
+        // The team says the words at the stop; no early answers.
+        if (!waiting || turnTask !== task || !T.isOpen()) return;
+        if (!T.ready()) { T.nudge(); return; }
+      }
       const expected = task.line.words[task.built].text;
       // Same word twice in a line: either tile is fine.
       if (normWord(o.w) === normWord(expected)) {
@@ -82,26 +110,31 @@ export async function start(ctx) {
         slot.classList.add('filled');
         sfx('pop', { volume: 0.3 });
         if (task.built === task.line.words.length) {
-          task.done = true;
-          const pts = Math.max(3, (waiting ? 6 : 10) - task.mistakes * 2);
-          score.add(pts);
-          ctx.award(1);
-          const c = centerOf(built);
-          floatEmoji(`+${pts}`, c.x, c.y - 40, { size: 32 });
+          if (T) { T.mark('right'); return; } // the banner scores it
           sfx('correct', { volume: 0.5 });
-          if (waiting && resolveWait) { const r = resolveWait; resolveWait = null; setTimeout(r, 300); } else {
-            const si = stops.findIndex((s) => s.line === task.line.index);
-            if (si >= 0) runner.pass(si);
-          }
-          setTimeout(() => draw(nextTask()), 450);
+          complete(task, Math.max(3, (waiting ? 6 : 10) - task.mistakes * 2));
         }
         return;
       }
       task.mistakes += 1;
-      score.breakStreak();
       btn.classList.add('shake', 'wrong');
       setTimeout(() => btn.classList.remove('shake', 'wrong'), 400);
+      // In teams a wrong word hands the rest of the line to the next team.
+      if (T) { T.mark('wrong'); return; }
+      score.breakStreak();
       sfx('wrong', { volume: 0.3 });
+    }
+
+    function onTurn(o) {
+      const task = turnTask;
+      if (!task || task.done || !o.done) return;
+      turnTask = null;
+      if (o.outcome === 'right' || o.outcome === 'stolen') { complete(task, 10); return; }
+      // Nobody finished it: show the rest of the line.
+      const words = task.line.words.map((w) => w.text);
+      [...built.children].forEach((slot, i) => { if (i >= task.built) { slot.textContent = words[i]; slot.classList.add('filled', 'shown'); } });
+      clear(tiles);
+      complete(task, 0);
     }
 
     const stops = tasks.map((t) => ({ line: t.line.index, at: Math.min(t.line.end - 0.02, t.line.singEnd + 0.1) }));
@@ -110,8 +143,12 @@ export async function start(ctx) {
       if (!task || task.done) { resolve(); return; }
       waiting = true;
       if (current !== task) draw(task);
-      msg.textContent = '⏸ Finish building the line!';
+      msg.textContent = T ? '⏸ Say the words in order!' : '⏸ Finish building the line!';
       resolveWait = () => { waiting = false; msg.textContent = ''; resolve(); };
+      if (T) {
+        turnTask = task;
+        T.open({ onOutcome: onTurn, prompt: 'Tap the tiles in the order they say' });
+      }
     }));
 
     let raf = 0;
@@ -135,6 +172,7 @@ export async function start(ctx) {
     };
     raf = requestAnimationFrame(loop);
     draw(nextTask());
+    if (T) T.idle();
     const offEnd = track.on('end', () => {
       const max = tasks.length * 10;
       ctx.finish({ score: score.value, max, emoji: '🧱', title: 'Master builder!', text: `${tasks.filter((t) => t.done).length} lines built.`, stars: stars(score.value / max) });

@@ -155,4 +155,16 @@ pass, ↑/↓, the next game carrying the order on). Help page and README at the
   Checked in Chrome: Make teams, typed names, Who starts in the dialog and on
   the start card, the student on the banner and rotating after the turn,
   Clear names, Reset scores, the dialog at 420 px wide.
-- Next: step 5 (Line builder, Say it!).
+- 2026-11-22: **step 5 built; the plan is done.** Line builder: one line per
+  turn at the stop; the teacher taps the tiles in the order the team says
+  them, a wrong tile hands the rest of the line to the next team (it carries
+  on from there), and S fills the line in. Say it!: each line is one team's
+  turn; the mic marks it (75% of the words or more is right) and Y / N on the
+  banner overrules it; the next line comes up for the next team, and a line
+  nobody said is read aloud (and shown, from memory). Every game that keeps a
+  team score now does it on the banner, so `ctx.award` and the `scores` flag
+  are gone; games without `turns` (Hot mic, Karaoke, Echo...) score by the
+  chips. Help page and README updated.
+  Checked in Chrome: both games with 3 teams (right, wrong + steal, pass, S,
+  no early taps, the mic's right and wrong with Y overruling it, From memory),
+  then all the earlier checks again.

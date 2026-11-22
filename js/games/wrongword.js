@@ -106,7 +106,6 @@ export async function start(ctx) {
         const pts = waiting === line.index ? 5 : 10;
         score.add(pts);
         floatEmoji(`+${pts}`, c.x, c.y - 30, { size: 30 });
-        ctx.award(1);
         sfx('correct', { volume: 0.5 });
         updateProgress();
         view.refresh();

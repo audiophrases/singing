@@ -8,10 +8,10 @@
  *        'lines:N' - at least N sung lines
  * mic: uses the microphone.
  * turns: in teams, the turn banner says who answers and the teacher enters
- *        what they said (js/views/turnbar.js, ctx.turns). 'only': always in
- *        turn order, never first hand up (Rhyme memory).
- * scores: in teams, its points go to the team whose turn it is, and the turn
- *         passes on (ctx.award).
+ *        what they said (js/views/turnbar.js, ctx.turns); the banner keeps the
+ *        score. 'only': always in turn order, never first hand up (Rhyme
+ *        memory). Games without it keep no team score of their own: the
+ *        teacher clicks the team chips.
  */
 export const GAMES = [
   { id: 'karaoke', name: 'Karaoke', emoji: '🎤', group: 'Sing', desc: 'Big lyrics that light up as you sing, with a bouncing ball, pictures and a loudness meter.' },
@@ -24,12 +24,12 @@ export const GAMES = [
   { id: 'order', name: 'Line order', emoji: '🧩', group: 'Listen', desc: 'The lines are mixed up. Put them in order while the song plays.', needs: 'lines:4', turns: true },
   { id: 'bingo', name: 'Lyrics bingo', emoji: '🎱', group: 'Listen', desc: 'Bingo cards with words from the song, on paper or on phones.' },
   { id: 'finish', name: 'Finish the line', emoji: '🛑', group: 'Play', desc: 'The music stops before the end of a line. Which team remembers the words?', turns: true },
-  { id: 'builder', name: 'Line builder', emoji: '🧱', group: 'Play', desc: 'Tap the words of each line in the right order before the song gets there.', scores: true },
+  { id: 'builder', name: 'Line builder', emoji: '🧱', group: 'Play', desc: 'Tap the words of each line in the right order before the song gets there.', turns: true },
   { id: 'hotmic', name: 'Hot mic', emoji: '🔥', group: 'Play', desc: 'Pass the mic while the music plays. When it stops, the holder answers a card.' },
   { id: 'freeze', name: 'Freeze dance', emoji: '🧊', group: 'Play', desc: 'Dance and do the actions on the screen. When the music stops: freeze!' },
   { id: 'rhyme', name: 'Rhyme memory', emoji: '🃏', group: 'Words', desc: 'Turn the cards and find words that rhyme.', turns: 'only' },
   { id: 'hunt', name: 'Grammar hunt', emoji: '🔎', group: 'Words', desc: 'Find all the past verbs, plurals, adjectives... hidden in the lyrics.', turns: true },
-  { id: 'speak', name: 'Say it!', emoji: '🗣️', group: 'Words', desc: 'Say a line into the microphone; every word turns green or red.', mic: true, scores: true },
+  { id: 'speak', name: 'Say it!', emoji: '🗣️', group: 'Words', desc: 'Say a line into the microphone; every word turns green or red.', mic: true, turns: true },
   { id: 'quiz', name: 'Song quiz', emoji: '❓', group: 'Words', desc: 'Quick questions about words, rhymes and meaning, made from the song.', turns: true },
 ];
 

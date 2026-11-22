@@ -255,7 +255,6 @@ export async function start(ctx, forced = {}) {
         if (points) {
           const c = centerOf(box);
           floatEmoji(`+${points}`, c.x, c.y - 30, { size: 30 });
-          if (!T) ctx.award(1); // in turns the banner gives the team its points
         }
       }
       updateProgress();

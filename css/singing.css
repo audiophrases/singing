@@ -895,6 +895,8 @@ kbd {
 .lb-built { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; min-height: 3.6rem; }
 .lb-slot { min-width: 4.5rem; min-height: 2.8rem; border-bottom: 3px solid rgba(255, 255, 255, 0.5); font-family: var(--font-fun); font-size: clamp(1.3rem, 3vw, 2.4rem); font-weight: 600; padding: 0 0.3rem; }
 .lb-slot.filled { border-color: #4ade80; color: #4ade80; animation: pop-in 0.25s; }
+/* Teams: nobody finished the line, so the rest is shown. */
+.lb-slot.filled.shown { border-color: #fb923c; color: #fb923c; }
 .lb-tiles { display: flex; gap: 0.6rem; flex-wrap: wrap; justify-content: center; }
 
 /* Bingo (stage) */

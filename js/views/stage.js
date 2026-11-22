@@ -6,15 +6,14 @@
  *   ctx.main            the big centre area (the game draws here)
  *   ctx.setBottom(el)   replace the transport bar (null = default, false = none)
  *   ctx.onKey(fn)       fn(event) -> true when the game used the key
- *   ctx.award(n, opts)  points for the team whose turn it is (if teams are on);
- *                       the turn then passes on
- *   ctx.turns           games marked `turns`: the turn banner (views/turnbar.js)
+ *   ctx.turns           games marked `turns`: the turn banner (views/turnbar.js),
+ *                       which says who answers and gives the team its points
  *   ctx.finish(result)  the end screen with stars
  *   ctx.options(build)  fill the ⚙ menu with the game's settings
  *   ctx.addCleanup(fn)
  */
 import { h, clear, typingTarget, toast, modalOpen, openModal } from '../ui.js';
-import { getSong, getSettings, getTeams, addPoints, endTurn, recordPlay, bestScore } from '../store.js';
+import { getSong, getSettings, getTeams, recordPlay, bestScore } from '../store.js';
 import { makeTrack } from '../track.js';
 import { transportBar, knobsBar, applyKnobs } from '../controls.js';
 import { gameById, loadGame, gameFits } from '../games/index.js';
@@ -22,7 +21,7 @@ import { teamStrip, openTeamsDialog, showPodium } from './teams.js';
 import { turnBar, turnSetup } from './turnbar.js';
 import { rulesOf } from '../games/turns.js';
 import { startViz } from '../viz.js';
-import { sfx, confetti, floatEmoji } from '../sfx.js';
+import { sfx, confetti } from '../sfx.js';
 import { lineIndexAt } from '../music/timeline.js';
 import { api } from '../cloud/session.js';
 
@@ -61,7 +60,7 @@ export async function render(root, params) {
   const bottom = h('div', { class: 'stage-bottom' });
   // Homework is played alone: no teams there.
   const teamPlay = !assignmentRun;
-  const teams = teamStrip({ glow: (t) => teamPlay && (game.scores || (game.turns && (game.turns === 'only' || rulesOf(t).mode === 'turns'))) });
+  const teams = teamStrip({ glow: (t) => teamPlay && !!game.turns && (game.turns === 'only' || rulesOf(t).mode === 'turns') });
   cleanups.push(() => teams.destroy && teams.destroy());
   const turnbar = game.turns ? turnBar({ enabled: () => teamPlay }) : null;
   if (turnbar) {
@@ -157,20 +156,6 @@ export async function render(root, params) {
     addCleanup: (fn) => cleanups.push(fn),
     onKey: (fn) => keyHandlers.push(fn),
     options: (build) => { optionsBuilder = build; },
-    award(points, { x, y, team } = {}) {
-      const t = getTeams();
-      if (teamPlay && t.on && t.list.length) {
-        if (team) addPoints(team, points);
-        else {
-          // The team whose turn it is (its chip glows) scores, then the next
-          // team has a go; without this every point went to the same team.
-          const turn = (t.turn || 0) % t.list.length;
-          addPoints(t.list[turn].id, points);
-          endTurn(t.list[turn].id, turn + 1);
-        }
-      }
-      if (x !== undefined) floatEmoji(points > 0 ? `+${points}` : String(points), x, y, { size: 36 });
-    },
     turns: turnbar ? {
       ...turnbar.api,
       get active() { return turnbar.api.active; },

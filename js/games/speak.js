@@ -1,6 +1,10 @@
 /*
  * Say it! A line of the song on screen; a student says (or sings) it into
  * the microphone and the browser's speech recognition checks every word.
+ *
+ * In teams each line is one team's turn (js/views/turnbar.js): the mic marks
+ * it (75% of the words or more is right) and the teacher can overrule it with
+ * Y / N; then the next line comes up for the next team.
  */
 import { h, clear } from '../ui.js';
 import { setupCard, choiceRow } from './common.js';
@@ -49,9 +53,10 @@ export async function start(ctx) {
   const card = setupCard({
     emoji: '🗣️',
     title: 'Say it!',
-    intro: SR ? 'Read the line aloud (or sing it!) into the microphone. Every word you say clearly turns green.' : 'This browser cannot recognise speech. Open Singing in Chrome or Edge to play Say it!',
-    body: SR ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Practice'),
-      choiceRow([...(packLines.length ? [['pack', `🧠 AI pack (${packLines.length} lines)`]] : []), ['say', '🗣️ Say the lines'], ['memory', '🙈 From memory (line hidden)']], conf.mode, (v) => { conf.mode = v; })) : null,
+    intro: SR ? 'Read the line aloud (or sing it!) into the microphone. Every word you say clearly turns green. In teams, each team says a line in turn.' : 'This browser cannot recognise speech. Open Singing in Chrome or Edge to play Say it!',
+    body: SR ? h('div', null, h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Practice'),
+      choiceRow([...(packLines.length ? [['pack', `🧠 AI pack (${packLines.length} lines)`]] : []), ['say', '🗣️ Say the lines'], ['memory', '🙈 From memory (line hidden)']], conf.mode, (v) => { conf.mode = v; })),
+      ctx.turns?.setup()) : null,
     onStart: () => { if (SR) { card.destroy(); begin(); } },
   });
   clear(main).append(card);
@@ -64,7 +69,11 @@ export async function start(ctx) {
     const lines = conf.mode === 'pack' ? packLines : everyLine;
     let idx = 0;
     let rec = null;
+    let shown = false; // from memory: the line is shown after nobody said it
     const results = new Map();
+    // Teams: each line is one team's turn (js/views/turnbar.js).
+    const T = ctx.turns?.active ? ctx.turns : null;
+    const turn = { judge: true, prompt: 'The mic marks it', onOutcome: (o) => onTurn(o) };
     const lineBox = h('div', { class: 'say-line' });
     const tipBox = h('div', { class: 'say-tips' });
     const heardBox = h('div', { class: 'say-heard' });
@@ -77,7 +86,7 @@ export async function start(ctx) {
       clear(lineBox);
       const notes = conf.mode === 'pack' ? tips.get(l.index) || [] : [];
       l.words.forEach((w, i) => {
-        const hidden = conf.mode === 'memory' && !marks;
+        const hidden = conf.mode === 'memory' && !marks && !shown;
         const target = notes.some((n) => i >= n.from && i <= n.to);
         lineBox.append(h('span', { class: `say-word${target ? ' target' : ''}${marks ? (marks[i] ? ' ok' : ' miss') : ''}${hidden ? ' hidden-word' : ''}` }, hidden ? '•'.repeat(Math.max(2, normWord(w.text).length)) : w.text), ' ');
       });
@@ -115,20 +124,40 @@ export async function start(ctx) {
         const pct = Math.round((marks.filter(Boolean).length / marks.length) * 100);
         draw(marks);
         heardBox.textContent = `"${said}"`;
-        scoreEl.textContent = pct === 100 ? '💯 Perfect!' : pct >= 75 ? `👍 ${pct}%` : `💪 ${pct}% - try again!`;
+        scoreEl.textContent = pct === 100 ? '💯 Perfect!' : pct >= 75 ? `👍 ${pct}%` : T ? `💪 ${pct}%` : `💪 ${pct}% - try again!`;
         const prev = results.get(idx) || 0;
         results.set(idx, Math.max(prev, pct));
-        if (pct === 100) { sfx('correct', { volume: 0.5 }); confetti({ count: 60 }); } else if (pct < 50) sfx('wrong', { volume: 0.3 });
-        // In teams: the point goes to the team whose turn it is, then the next team speaks.
-        if (pct >= 75 && prev < 75) ctx.award(1);
+        if (T) {
+          // The mic marks the turn; the banner scores it.
+          if (T.isOpen() && T.ready()) T.mark(pct >= 75 ? 'right' : 'wrong', { pct });
+          else if (T.isOpen()) T.nudge();
+        } else if (pct === 100) { sfx('correct', { volume: 0.5 }); confetti({ count: 60 }); } else if (pct < 50) sfx('wrong', { volume: 0.3 });
       };
       rec.start();
     };
     micBtn.addEventListener('click', () => (rec ? rec.stop() : listen()));
     const go = (d) => {
       idx = Math.max(0, Math.min(lines.length - 1, idx + d));
+      shown = false;
       draw();
     };
+    function onTurn(o) {
+      const at = idx;
+      if (!o.done) {
+        // The next team tries the same line: a clean line after a moment.
+        setTimeout(() => { if (idx === at && T.isOpen()) draw(); }, 1500);
+        return;
+      }
+      const ok = o.outcome === 'right' || o.outcome === 'stolen';
+      if (!ok) { shown = true; draw(); speak(lines[idx].text); } // nobody said it: hear it
+      if (idx < lines.length - 1) {
+        setTimeout(() => {
+          if (idx !== at || T.isOpen() || !lineBox.isConnected) return;
+          go(1);
+          T.open(turn);
+        }, ok ? 1800 : 3500);
+      }
+    }
     const hearSung = () => {
       const l = lines[idx];
       track.setBarrier(l.singEnd + 0.2);
@@ -157,6 +186,7 @@ export async function start(ctx) {
       } }, '🏁 Finish')));
     ctx.setBottom(false);
     draw();
+    if (T) T.open(turn);
     ctx.onKey((e) => {
       const k = e.key.toLowerCase();
       if (k === 'm') { micBtn.click(); return true; }

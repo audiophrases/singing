@@ -88,7 +88,6 @@ export async function start(ctx) {
         // The automatic listening pause must not reduce credit for a correct answer.
         const pts = 10;
         score.add(pts);
-        ctx.award(1);
         floatEmoji(`+${pts}`, cc.x, cc.y - 20, { size: 28 });
         sfx('correct', { volume: 0.45 });
         if (waiting !== null && resolveWait) { const r = resolveWait; resolveWait = null; setTimeout(r, 400); } else {

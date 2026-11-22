@@ -207,7 +207,7 @@ export function turnBar({ enabled = () => true } = {}) {
       actions.append(btn('🤷 Pass', 'P', () => mark('pass')));
       card.append(actions);
       const pts = r.keep ? `${POINTS.own} points and go again` : r.steal && item.n > 1 ? `${POINTS.own} points, ${POINTS.steal} for a steal` : `${POINTS.own} points`;
-      card.append(h('div', { class: 'tb-hint' }, spec.judge ? `${spec.prompt ? `${spec.prompt} · ` : ''}${pts} · ↑/↓ another team` : `${prompt} · ${pts}`));
+      card.append(h('div', { class: 'tb-hint' }, spec.judge ? (spec.prompt ? `${spec.prompt} · ${pts}` : `${pts} · ↑/↓ another team`) : `${prompt} · ${pts}`));
     }
     if (r.think) card.append(h('div', { class: 'tb-timer' }, h('div', { class: 'tb-timer-fill' })));
     el.append(card);

@@ -98,6 +98,15 @@ All of them run on a projector stage with **team scores** (click +1, right-click
 a winner podium with drumroll and confetti, an audio-reactive visualizer and
 keyboard shortcuts (Space, ←/→, F, T, W, H, Esc).
 
+**Team turns** for a class answering aloud on one computer: in the listening,
+word and play games a banner says which team (and, with the class list
+entered, which student) answers; the teacher enters what they say (1–4,
+Y/N, P pass, S show the answer, ↑/↓ another team). 2 points on your own turn,
+1 for a steal by the next team; or play "first hand up". Optional thinking
+time, 🔀 Make teams from a pasted class list, 🎲 Who starts. Student names
+stay in the browser. Rules: `js/games/turns.js`; banner: `js/views/turnbar.js`;
+plan: `docs/TEAMS_PLAN.md`.
+
 ### ✨ Song maker
 Type any text, such as a vocabulary list, a grammar rule or your class rules, and
 Singing composes a song for it:

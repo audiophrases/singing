@@ -121,7 +121,6 @@ export async function start(ctx) {
       const c = centerOf(tk.el);
       if (tk.answer) {
         find(tk);
-        ctx.award(1);
         floatEmoji('+10', c.x, c.y - 20, { size: 26 });
         sfx('pop', { volume: 0.4 });
         updateCount();
