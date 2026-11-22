@@ -7,7 +7,8 @@
  * (Enter accepts, Y / N), then the next line comes up for the next team. A
  * mic that fails (blocked, heard nothing) costs nobody the turn. A recording
  * and its suggestion belong to their line and their try: ◀ ▶, a steal or
- * ↑/↓ drop them.
+ * ↑/↓ drop them. ◀ ▶ during a steal ends the missed line (no points); the
+ * new line is the next team's own turn.
  */
 import { h, clear } from '../ui.js';
 import { setupCard, choiceRow } from './common.js';
@@ -173,7 +174,10 @@ export async function start(ctx) {
       shown = false;
       T?.suggest(null); // the mic's guess was about the old line
       draw();
-      // Teams: a new line always has a turn to score.
+      // Teams: a turn nobody has tried yet comes along to the new line. A
+      // steal (or a team that is out) belongs to the line that was missed:
+      // that line ends with no points, and the new line is a fresh turn.
+      if (T?.started()) T.close();
       if (T && !T.isOpen()) T.open(turn);
     };
     function onTurn(o) {

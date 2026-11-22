@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { openItem, markItem, chooseTeam, stepTeam, nextTurn, keepsTurn, rulesOf, POINTS, parseNames, makeTeams, whoAnswers } from '../js/games/turns.js';
+import { openItem, markItem, chooseTeam, stepTeam, nextTurn, keepsTurn, started, rulesOf, POINTS, parseNames, makeTeams, whoAnswers } from '../js/games/turns.js';
 
 const TURNS = rulesOf({});
 const NO_STEAL = rulesOf({ rules: { steal: false } });
@@ -128,6 +128,22 @@ test('keep (Rhyme memory): a pair keeps the turn, a miss passes it on with no st
   // Without keep, right still moves the turn on.
   r = markItem(openItem({ teams: 3, turn: 1, rules: TURNS }), 'right', TURNS);
   assert.equal(keepsTurn(r.item), false);
+});
+
+test('started: a steal on, or a team out; not a fresh turn, a pick or a finished item', () => {
+  let item = openItem({ teams: 3, turn: 1, rules: TURNS });
+  assert.equal(started(item), false, 'your turn');
+  assert.equal(started(stepTeam(item, 1)), false, 'another team on its own turn');
+  item = markItem(item, 'wrong', TURNS).item;
+  assert.equal(started(item), true, 'the steal is on');
+  assert.equal(started(markItem(item, 'right', TURNS).item), false, 'done');
+  assert.equal(started(markItem(openItem({ teams: 3, turn: 0, rules: NO_STEAL }), 'wrong', NO_STEAL).item), false, 'no steal: done at once');
+  let first = openItem({ teams: 3, rules: FIRST });
+  first = chooseTeam(first, 2);
+  assert.equal(started(first), false, 'a hand up, no answer yet');
+  first = markItem(first, 'wrong', FIRST).item;
+  assert.equal(started(first), true, 'a team is out');
+  assert.equal(started(null), false);
 });
 
 test('a pasted class list: lines, commas, numbering, repeats and blanks', () => {

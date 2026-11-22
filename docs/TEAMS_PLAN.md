@@ -191,3 +191,10 @@ pass, ↑/↓, the next game carrying the order on). Help page and README at the
   fresh turn on it, so Y could score it again and again. Also fixed:
   `ctx.turns` copied the banner's getters once (`...turnbar.api`), so
   `playing` and `turnId` read there never changed.
+- 2026-11-22: **Say it!: no steal on another line.** ◀ ▶ during a steal used
+  to take the steal along to the new line ("steal it for 1" on a line nobody
+  had missed). Now a turn nobody has tried yet still comes along, but an
+  item a team already missed (`started` in `turns.js`: a steal, or a team
+  out in first hand up) ends with no points (`T.close()`), the turn order
+  moves on as after any item, and the new line is the next team's own turn.
+  In first hand up, teams that were out are back in on the new line.

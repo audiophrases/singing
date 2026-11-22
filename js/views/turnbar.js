@@ -20,6 +20,10 @@
  *                                    new try (a steal, ↑/↓, the next item)
  *   T.turnId                         changes with every new try: a guess
  *                                    started under an old one is stale
+ *   T.started()                      a team already missed the open item
+ *                                    (a steal is on, or a team is out)
+ *   T.close()                        end the open item now, no points, and
+ *                                    move the turn on (the game moved away)
  *   T.ready() / T.nudge()            first hand up: has a team been picked?
  *   T.mark('right'|'wrong'|'pass'|'reveal', meta)
  *   onOutcome({ outcome, result, done, team, points, meta })
@@ -33,7 +37,7 @@
  */
 import { h, clear, add, toast } from '../ui.js';
 import { getTeams, addPoints, endTurn, setTurn, setTeamRules, onTeams } from '../store.js';
-import { openItem, markItem, chooseTeam, stepTeam, nextTurn, keepsTurn, rulesOf, whoAnswers, POINTS, THINK_TIMES } from '../games/turns.js';
+import { openItem, markItem, chooseTeam, stepTeam, nextTurn, keepsTurn, started, rulesOf, whoAnswers, POINTS, THINK_TIMES } from '../games/turns.js';
 import { choiceRow } from '../games/common.js';
 import { openTeamsDialog, spinTeams } from './teams.js';
 import { sfx, confetti } from '../sfx.js';
@@ -141,6 +145,20 @@ export function turnBar({ enabled = () => true } = {}) {
     draw();
     spec.onOutcome(info);
     return info;
+  }
+
+  // The game moved on before the item was resolved (Say it!: ◀ ▶ during a
+  // steal): it ends with no points and no fanfare, and the turn order moves
+  // on as after any item. The game is not told; it asked for it.
+  function close() {
+    if (!item) return;
+    const before = item;
+    const res = markItem(item, 'reveal', rules);
+    stopTimer();
+    setItem(null);
+    const owner = res.item.mode === 'turns' ? teamAt(before.owner) : null;
+    if (owner) endTurn(owner.id, nextTurn(res.item, before.owner));
+    draw();
   }
 
   function pickTeam(i) {
@@ -285,6 +303,8 @@ export function turnBar({ enabled = () => true } = {}) {
     get turnId() { return turnId; },
     open,
     mark,
+    close,
+    started: () => started(item),
     nudge,
     suggest(result) {
       const next = !item || !result ? null : result === 'right' ? 'right' : 'wrong';

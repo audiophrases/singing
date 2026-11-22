@@ -98,6 +98,13 @@ export function stepTeam(item, dir) {
   return item;
 }
 
+// A team has already had a go at this open item: a steal is on, or (first hand
+// up) a team is out. Such an item belongs to its question; one nobody has
+// tried yet is just "your turn" and can move to another (Say it!'s ◀ ▶).
+export function started(item) {
+  return !!item && !item.done && item.tried.length > 0;
+}
+
 // A team that scores on its own turn plays again (rules.keep).
 export function keepsTurn(item) {
   return !!item?.keep && item.mode === 'turns' && item.outcome === 'right';
