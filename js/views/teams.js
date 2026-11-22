@@ -48,7 +48,7 @@ export function openTeamsDialog() {
         save();
         draw();
       } }, '➕ Add team'),
-      h('button', { class: 'btn', type: 'button', onclick: () => { teams.list.forEach((t) => { t.score = 0; }); save(); draw(); } }, '↺ Reset scores'),
+      h('button', { class: 'btn', type: 'button', title: 'Scores and turns back to 0; the first team starts', onclick: () => { teams.list.forEach((t) => { t.score = 0; t.turns = 0; }); teams.turn = 0; save(); draw(); } }, '↺ Reset scores'),
       h('span', { class: 'grow' }),
       h('button', { class: 'btn primary', type: 'button', onclick: () => { m.close(); showPodium(); } }, '🏆 Show winner'),
     ));
@@ -62,6 +62,8 @@ export function showPodium() {
   const ranked = teams.list.slice().sort((a, b) => (b.score || 0) - (a.score || 0));
   const top = ranked[0];
   const tie = ranked.length > 1 && ranked[1].score === top.score;
+  // Songs don't share out evenly between teams: show who had more turns.
+  const turnsShown = teams.list.some((t) => t.turns);
   const drum = sfx('drumroll', { volume: 0.8 });
   const box = h('div', { class: 'podium' },
     h('h2', null, '🏆 And the winner is...'),
@@ -76,7 +78,8 @@ export function showPodium() {
         h('div', { class: 'pw-emoji' }, tie ? '🤝' : top.emoji),
         h('div', { class: 'pw-name' }, tie ? 'It\'s a tie!' : top.name),
         h('div', { class: 'pw-score' }, `${top.score || 0} points`)),
-      h('ol', { class: 'podium-list' }, ranked.map((t) => h('li', { style: { '--team-hue': t.hue } }, h('span', null, `${t.emoji} ${t.name}`), h('b', null, String(t.score || 0))))),
+      h('ol', { class: 'podium-list' }, ranked.map((t) => h('li', { style: { '--team-hue': t.hue } }, h('span', null, `${t.emoji} ${t.name}`),
+        h('span', null, h('b', null, String(t.score || 0)), turnsShown ? h('span', { class: 'podium-turns' }, ` · ${t.turns || 0} ${t.turns === 1 ? 'turn' : 'turns'}`) : null)))),
     );
     confetti({ count: 220 });
     if (drum) drum.pause();
@@ -84,8 +87,9 @@ export function showPodium() {
   return m;
 }
 
-// Chips for the stage header; keeps itself up to date.
-export function teamStrip() {
+// Chips for the stage header; keeps itself up to date. glow(teams): light up
+// the team whose turn it is (in games that take turns).
+export function teamStrip({ glow = () => false } = {}) {
   const el = h('div', { class: 'team-strip' });
   const draw = (teams = getTeams(), detail = {}) => {
     clear(el);
@@ -95,7 +99,7 @@ export function teamStrip() {
     }
     teams.list.forEach((t, i) => {
       const chip = h('button', {
-        class: `team-chip${detail.bump === t.id ? ' bump' : ''}${(teams.turn || 0) % teams.list.length === i && teams.showTurn ? ' turn' : ''}`,
+        class: `team-chip${detail.bump === t.id ? ' bump' : ''}${(teams.turn || 0) % teams.list.length === i && glow(teams) ? ' turn' : ''}`,
         type: 'button',
         style: { '--team-hue': t.hue },
         title: `${t.name}: click +1, right-click -1`,

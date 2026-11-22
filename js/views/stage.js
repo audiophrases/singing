@@ -6,17 +6,21 @@
  *   ctx.main            the big centre area (the game draws here)
  *   ctx.setBottom(el)   replace the transport bar (null = default, false = none)
  *   ctx.onKey(fn)       fn(event) -> true when the game used the key
- *   ctx.award(n, opts)  points for the team whose turn it is (if teams are on)
+ *   ctx.award(n, opts)  points for the team whose turn it is (if teams are on);
+ *                       the turn then passes on
+ *   ctx.turns           games marked `turns`: the turn banner (views/turnbar.js)
  *   ctx.finish(result)  the end screen with stars
  *   ctx.options(build)  fill the ⚙ menu with the game's settings
  *   ctx.addCleanup(fn)
  */
 import { h, clear, typingTarget, toast, modalOpen, openModal } from '../ui.js';
-import { getSong, getSettings, getTeams, addPoints, recordPlay, bestScore } from '../store.js';
+import { getSong, getSettings, getTeams, addPoints, endTurn, recordPlay, bestScore } from '../store.js';
 import { makeTrack } from '../track.js';
 import { transportBar, knobsBar, applyKnobs } from '../controls.js';
 import { gameById, loadGame, gameFits } from '../games/index.js';
 import { teamStrip, openTeamsDialog, showPodium } from './teams.js';
+import { turnBar, turnSetup } from './turnbar.js';
+import { rulesOf } from '../games/turns.js';
 import { startViz } from '../viz.js';
 import { sfx, confetti, floatEmoji } from '../sfx.js';
 import { lineIndexAt } from '../music/timeline.js';
@@ -55,8 +59,15 @@ export async function render(root, params) {
   const canvas = h('canvas', { class: 'viz', 'aria-hidden': 'true' });
   const main = h('div', { class: 'stage-main' }, h('div', { class: 'stage-loading' }, '🎵'));
   const bottom = h('div', { class: 'stage-bottom' });
-  const teams = teamStrip();
+  // Homework is played alone: no teams there.
+  const teamPlay = !assignmentRun;
+  const teams = teamStrip({ glow: (t) => teamPlay && (game.scores || (game.turns && rulesOf(t).mode === 'turns')) });
   cleanups.push(() => teams.destroy && teams.destroy());
+  const turnbar = game.turns ? turnBar({ enabled: () => teamPlay }) : null;
+  if (turnbar) {
+    cleanups.push(() => turnbar.destroy());
+    keyHandlers.push(turnbar.onKey); // first in: the game's own keys come before it
+  }
 
   let optionsBuilder = null;
   const optBtn = h('button', { class: 'btn icon-btn', type: 'button', title: 'Game settings', 'aria-label': 'Game settings', onclick: () => openOptions() }, '⚙️');
@@ -72,7 +83,7 @@ export async function render(root, params) {
     optBtn,
     fsBtn,
   );
-  root.append(canvas, top, main, bottom);
+  root.append(...[canvas, top, turnbar?.el, main, bottom].filter(Boolean));
 
   let track;
   try {
@@ -148,14 +159,32 @@ export async function render(root, params) {
     options: (build) => { optionsBuilder = build; },
     award(points, { x, y, team } = {}) {
       const t = getTeams();
-      if (t.on && t.list.length) {
-        const target = team || t.list[(t.turn || 0) % t.list.length].id;
-        addPoints(target, points);
+      if (teamPlay && t.on && t.list.length) {
+        if (team) addPoints(team, points);
+        else {
+          // The team whose turn it is (its chip glows) scores, then the next
+          // team has a go; without this every point went to the same team.
+          const turn = (t.turn || 0) % t.list.length;
+          addPoints(t.list[turn].id, points);
+          endTurn(t.list[turn].id, turn + 1);
+        }
       }
       if (x !== undefined) floatEmoji(points > 0 ? `+${points}` : String(points), x, y, { size: 36 });
     },
+    turns: turnbar ? {
+      ...turnbar.api,
+      get active() { return turnbar.api.active; },
+      // The team rows for the set-up card (none in homework).
+      setup: (opts) => {
+        if (!teamPlay) return null;
+        const box = turnSetup(opts);
+        cleanups.push(() => box.destroy());
+        return box;
+      },
+    } : null,
     async finish(result) {
       track.pause();
+      if (turnbar) turnbar.api.end();
       if (!assignmentRun) { showResult(result); return; }
       try {
         await answerQueue;

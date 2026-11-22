@@ -7,25 +7,29 @@
  *        'round' - songs written as rounds
  *        'lines:N' - at least N sung lines
  * mic: uses the microphone.
+ * turns: in teams, the turn banner says who answers and the teacher enters
+ *        what they said (js/views/turnbar.js, ctx.turns).
+ * scores: in teams, its points go to the team whose turn it is, and the turn
+ *         passes on (ctx.award).
  */
 export const GAMES = [
   { id: 'karaoke', name: 'Karaoke', emoji: '🎤', group: 'Sing', desc: 'Big lyrics that light up as you sing, with a bouncing ball, pictures and a loudness meter.' },
   { id: 'echo', name: 'Echo', emoji: '🔁', group: 'Sing', desc: 'The song sings a line, then the class sings it back. The best way to learn a new song.' },
   { id: 'round', name: 'Round', emoji: '🌀', group: 'Sing', desc: 'Split the class into groups that start one after another.', needs: 'round' },
   { id: 'pitch', name: 'Pitch Pal', emoji: '🎯', group: 'Sing', desc: 'Sing into the microphone and hit the notes. Stars for every singer.', needs: 'notes', mic: true },
-  { id: 'gapfill', name: 'Fill the gaps', emoji: '⌨️', group: 'Listen', desc: 'The music waits at the end of each line until the missing words are typed.' },
-  { id: 'choose', name: 'Choose the word', emoji: '🔘', group: 'Listen', desc: 'Pick the word you hear from three options. Great for beginners.' },
-  { id: 'wrongword', name: 'Wrong word', emoji: '🕵️', group: 'Listen', desc: 'One word in each line is wrong. Spot it while you listen!' },
-  { id: 'order', name: 'Line order', emoji: '🧩', group: 'Listen', desc: 'The lines are mixed up. Put them in order while the song plays.', needs: 'lines:4' },
+  { id: 'gapfill', name: 'Fill the gaps', emoji: '⌨️', group: 'Listen', desc: 'The music waits at the end of each line until the missing words are typed.', scores: true },
+  { id: 'choose', name: 'Choose the word', emoji: '🔘', group: 'Listen', desc: 'Pick the word you hear from three options. Great for beginners.', turns: true },
+  { id: 'wrongword', name: 'Wrong word', emoji: '🕵️', group: 'Listen', desc: 'One word in each line is wrong. Spot it while you listen!', scores: true },
+  { id: 'order', name: 'Line order', emoji: '🧩', group: 'Listen', desc: 'The lines are mixed up. Put them in order while the song plays.', needs: 'lines:4', scores: true },
   { id: 'bingo', name: 'Lyrics bingo', emoji: '🎱', group: 'Listen', desc: 'Bingo cards with words from the song, on paper or on phones.' },
-  { id: 'finish', name: 'Finish the line', emoji: '🛑', group: 'Play', desc: 'The music stops before the end of a line. Which team remembers the words?' },
-  { id: 'builder', name: 'Line builder', emoji: '🧱', group: 'Play', desc: 'Tap the words of each line in the right order before the song gets there.' },
+  { id: 'finish', name: 'Finish the line', emoji: '🛑', group: 'Play', desc: 'The music stops before the end of a line. Which team remembers the words?', turns: true },
+  { id: 'builder', name: 'Line builder', emoji: '🧱', group: 'Play', desc: 'Tap the words of each line in the right order before the song gets there.', scores: true },
   { id: 'hotmic', name: 'Hot mic', emoji: '🔥', group: 'Play', desc: 'Pass the mic while the music plays. When it stops, the holder answers a card.' },
   { id: 'freeze', name: 'Freeze dance', emoji: '🧊', group: 'Play', desc: 'Dance and do the actions on the screen. When the music stops: freeze!' },
-  { id: 'rhyme', name: 'Rhyme memory', emoji: '🃏', group: 'Words', desc: 'Turn the cards and find words that rhyme.' },
-  { id: 'hunt', name: 'Grammar hunt', emoji: '🔎', group: 'Words', desc: 'Find all the past verbs, plurals, adjectives... hidden in the lyrics.' },
-  { id: 'speak', name: 'Say it!', emoji: '🗣️', group: 'Words', desc: 'Say a line into the microphone; every word turns green or red.', mic: true },
-  { id: 'quiz', name: 'Song quiz', emoji: '❓', group: 'Words', desc: 'Quick questions about words, rhymes and meaning, made from the song.' },
+  { id: 'rhyme', name: 'Rhyme memory', emoji: '🃏', group: 'Words', desc: 'Turn the cards and find words that rhyme.', scores: true },
+  { id: 'hunt', name: 'Grammar hunt', emoji: '🔎', group: 'Words', desc: 'Find all the past verbs, plurals, adjectives... hidden in the lyrics.', scores: true },
+  { id: 'speak', name: 'Say it!', emoji: '🗣️', group: 'Words', desc: 'Say a line into the microphone; every word turns green or red.', mic: true, scores: true },
+  { id: 'quiz', name: 'Song quiz', emoji: '❓', group: 'Words', desc: 'Quick questions about words, rhymes and meaning, made from the song.', turns: true },
 ];
 
 export const GROUPS = [

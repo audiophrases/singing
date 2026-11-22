@@ -11,7 +11,7 @@ import { categoryById, baseForm } from '../lyrics/grammar.js';
 import { normWord } from '../lyrics/text.js';
 import { STOPWORDS, IRREGULAR_PAST } from '../lyrics/wordlists.js';
 import { lessonOf, lessonQuiz, packLevels, quizRound, startLevel } from '../lesson/pack.js';
-import { getTeams, addPoints, setTeams, setSettings } from '../store.js';
+import { setSettings } from '../store.js';
 import { sfx, confetti } from '../sfx.js';
 
 export function makeQuestions(timeline, rnd, count = 10) {
@@ -98,10 +98,13 @@ export async function start(ctx) {
   const packed = lessonQuiz(timeline, lesson);
   const levels = packLevels(packed);
   const conf = { count: 10, timer: packed.length ? 30 : 20, source: packed.length ? 'pack' : 'auto', when: '', level: startLevel(levels, ctx.settings.packLevel, lesson) };
+  // In teams the shared thinking time replaces the quiz's own timer.
+  const timerRow = h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Timer'),
+    choiceRow([[0, 'None'], [10, '10 s'], [20, '20 s'], [30, '30 s']], conf.timer, (v) => { conf.timer = v; }));
   const card = setupCard({
     emoji: '❓',
     title: 'Song quiz',
-    intro: 'Questions about the words of the song. Answer with the mouse or the keys 1, 2, 3 and 4. In teams, each team gets a question in turn.',
+    intro: 'Questions about the words of the song. Answer with the mouse or the keys 1, 2, 3 and 4. In teams, each team gets a question in turn and says its answer aloud.',
     body: h('div', null,
       packed.length ? h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Questions from'),
         choiceRow([['pack', `🧠 AI pack (${packed.length})`], ['auto', '🤖 Made by Singing']], conf.source, (v) => { conf.source = v; })) : null,
@@ -111,8 +114,8 @@ export async function start(ctx) {
         choiceRow([['', 'All'], ['before', '🔮 Before listening'], ['after', '🎧 After listening']], conf.when, (v) => { conf.when = v; })) : null,
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Questions'),
         choiceRow([[5, '5'], [10, '10'], [15, '15']], conf.count, (v) => { conf.count = v; })),
-      h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Timer'),
-        choiceRow([[0, 'None'], [10, '10 s'], [20, '20 s'], [30, '30 s']], conf.timer, (v) => { conf.timer = v; }))),
+      timerRow,
+      ctx.turns?.setup({ hide: [timerRow] })),
     onStart: () => { card.destroy(); begin(); },
   });
   clear(main).append(card);
@@ -128,8 +131,10 @@ export async function start(ctx) {
       clear(main).append(h('div', { class: 'setup-card' }, h('h2', null, 'No questions for this song yet')));
       return;
     }
-    const teams = getTeams();
-    if (teams.on) { teams.showTurn = true; setTeams(teams); }
+    // Teams: each question is one team's turn, answered aloud; the teacher
+    // presses the option the team said (js/views/turnbar.js).
+    const T = ctx.turns?.active ? ctx.turns : null;
+    const timer = T ? 0 : conf.timer;
     const score = scoreBox();
     let qi = 0;
     let answered = false;
@@ -141,8 +146,6 @@ export async function start(ctx) {
     const show = () => {
       answered = false;
       const q = qs[qi];
-      const t = getTeams();
-      const who = t.on ? t.list[(t.turn || 0) % t.list.length] : null;
       const timerFill = h('div', { class: 'fin-timer-fill' });
       const opts = h('div', { class: `quiz-options${q.long ? ' long' : ''}${q.big ? ' big' : ''}` }, q.options.map((o, i) => {
         const b = h('button', { class: 'quiz-opt', type: 'button', style: { '--opt': COLORS[i] } }, h('span', { class: 'qo-shape' }, SHAPES[i]), h('span', { class: 'qo-text' }, o));
@@ -150,47 +153,66 @@ export async function start(ctx) {
         return b;
       }));
       add(clear(area),
-        h('div', { class: 'gf-top' }, h('div', { class: 'gf-progress' }, `Question ${qi + 1} / ${qs.length}${who ? ` · ${who.emoji} ${who.name}` : ''}`), score.el),
+        h('div', { class: 'gf-top' }, h('div', { class: 'gf-progress' }, `Question ${qi + 1} / ${qs.length}`), score.el),
         h('div', { class: 'quiz-q' }, h('span', { class: 'quiz-emoji' }, q.emoji), h('div', { class: 'quiz-text' }, q.q)),
         q.line ? h('button', { class: 'btn', type: 'button', onclick: () => { track.setBarrier(q.line.singEnd + 0.2); track.seek(Math.max(0, q.line.start - 0.2)); track.play(); } }, '🎵 Listen') : null,
-        conf.timer ? h('div', { class: 'fin-timer' }, timerFill) : null,
+        timer ? h('div', { class: 'fin-timer' }, timerFill) : null,
         opts,
         h('div', { class: 'quiz-next' }),
       );
       cancelAnimationFrame(timerRaf);
-      if (conf.timer) {
+      if (timer) {
         const t0 = performance.now();
         const step = () => {
-          const left = conf.timer - (performance.now() - t0) / 1000;
-          timerFill.style.width = `${Math.max(0, (left / conf.timer) * 100)}%`;
+          const left = timer - (performance.now() - t0) / 1000;
+          timerFill.style.width = `${Math.max(0, (left / timer) * 100)}%`;
           if (left <= 0) { answer(-1, null, opts); return; }
           timerRaf = requestAnimationFrame(step);
         };
         timerRaf = requestAnimationFrame(step);
       }
+      if (T) T.open({ onOutcome: (o) => onTurn(o, opts) });
     };
 
     const answer = (i, btn, opts) => {
       if (answered) return;
+      const q = qs[qi];
+      const ok = i >= 0 && q.options[i] === q.answer;
+      if (T) {
+        if (!T.ready()) { T.nudge(); return; }
+        T.mark(ok ? 'right' : 'wrong', { choice: i });
+        return;
+      }
+      settle(i, ok, opts);
+      if (ok) sfx('correct', { volume: 0.5 }); else sfx('wrong', { volume: 0.4 });
+    };
+
+    // A team missed: grey out what it said; the next team (or hand) can try.
+    const onTurn = (o, opts) => {
+      if (!o.done) {
+        const b = opts.children[o.meta.choice];
+        if (b) { b.disabled = true; b.classList.add('wrong'); }
+        return;
+      }
+      settle(o.meta.choice ?? -1, o.outcome === 'right' || o.outcome === 'stolen', opts);
+    };
+
+    // The question is over: show the answer, the explanation and Next.
+    const settle = (i, ok, opts) => {
       answered = true;
       cancelAnimationFrame(timerRaf);
       const q = qs[qi];
-      const ok = i >= 0 && q.options[i] === q.answer;
       [...opts.children].forEach((b, k) => {
         b.disabled = true;
         if (q.options[k] === q.answer) b.classList.add('correct');
-        else if (k === i) b.classList.add('wrong');
+        else if (k === i || b.classList.contains('wrong')) b.classList.add('wrong');
         else b.classList.add('dim');
       });
-      const t = getTeams();
       if (ok) {
         right += 1;
         score.add(10);
-        sfx('correct', { volume: 0.5 });
-        if (t.on) addPoints(t.list[(t.turn || 0) % t.list.length].id, 1);
       } else {
         score.breakStreak();
-        sfx('wrong', { volume: 0.4 });
       }
       const next = area.querySelector('.quiz-next');
       if (q.explain) next.append(h('p', { class: 'quiz-explain' }, `💡 ${q.explain}`));
@@ -199,8 +221,6 @@ export async function start(ctx) {
 
     const goNext = () => {
       track.pause();
-      const t = getTeams();
-      if (t.on) { t.turn = ((t.turn || 0) + 1) % t.list.length; setTeams(t, { turn: t.turn }); }
       qi += 1;
       if (qi >= qs.length) {
         if (right === qs.length) confetti();
@@ -220,6 +240,6 @@ export async function start(ctx) {
       return false;
     });
     show();
-    cleanup = () => { cancelAnimationFrame(timerRaf); const t = getTeams(); if (t.showTurn) { t.showTurn = false; setTeams(t); } };
+    cleanup = () => { cancelAnimationFrame(timerRaf); };
   }
 }

@@ -52,8 +52,11 @@ export async function start(ctx, forced = {}) {
       choiceRow([['type', '⌨️ Typing'], ['bank', '👆 Tapping words']], conf.input, (v) => { conf.input = v; })),
   );
   if (ctx.assignment) setupBody.querySelectorAll('button, input, select').forEach((control) => { control.disabled = true; });
+  // Choose the word in teams: each gap is one team's turn (js/views/turnbar.js).
+  const teamRows = ctx.turns?.setup();
+  if (teamRows) setupBody.append(teamRows);
   const intro = forced.input === 'choose'
-    ? 'Listen and choose the word you hear. The music waits for you at the end of each line.'
+    ? 'Listen and choose the word you hear. The music waits for you at the end of each line. In teams, each team gets a word in turn and says its answer aloud.'
     : 'Listen and type the missing words. The music waits at the end of each line. Type before the line ends for a speed bonus!';
   const card = setupCard({
     emoji: forced.input === 'choose' ? '🔘' : '⌨️',
@@ -83,7 +86,7 @@ export async function start(ctx, forced = {}) {
       for (const wi of [...set].sort((a, b) => a - b)) {
         const word = l.words[wi].text.replace(/^[^A-Za-z0-9'’]+|[^A-Za-z0-9'’]+$/g, '');
         const note = notes.get(`${l.index}:${wi}`);
-        const item = { id: items.length, line: l.index, wi, word, status: 'open', hints: 0, options: null, wrong: (note?.options || []).map((o) => matchCase(word, o)), why: note?.why || '' };
+        const item = { id: items.length, line: l.index, wi, word, status: 'open', hints: 0, options: null, tried: new Set(), wrong: (note?.options || []).map((o) => matchCase(word, o)), why: note?.why || '' };
         items.push(item);
         list.push(item.id);
       }
@@ -105,6 +108,10 @@ export async function start(ctx, forced = {}) {
       if (saved.skipped) item.status = 'revealed';
       else if (answer === 'right' || (answer === 'close' && conf.input === 'type')) item.status = answer;
     }
+    // Choose the word in teams: the music waits at each line and every gap is
+    // one team's turn, answered aloud; the teacher presses the option it said.
+    const T = conf.input === 'choose' && ctx.turns?.active ? ctx.turns : null;
+    let turnItem = null; // the gap the open turn is about
     const score = scoreBox();
     const progress = h('div', { class: 'gf-progress' });
     let active = null;
@@ -167,7 +174,7 @@ export async function start(ctx, forced = {}) {
     function drawBank() {
       clear(bank);
       if (conf.input === 'type') return;
-      if (!active) { bank.append(h('span', { class: 'small' }, 'Listen…')); return; }
+      if (!active || (T && waitingLine === null)) { bank.append(h('span', { class: 'small' }, 'Listen…')); return; }
       let opts;
       if (conf.input === 'choose') {
         opts = active.options;
@@ -177,7 +184,30 @@ export async function start(ctx, forced = {}) {
         const extra = active.wrong.length ? active.wrong : distractors(active.word, { pool, count: 2, seed: conf.seed + active.id * 7 });
         opts = shuffle([...new Set([...words, ...extra])], seeded(conf.seed + active.id));
       }
-      opts.forEach((w, i) => bank.append(h('button', { class: 'btn bank-word', type: 'button', onclick: (e) => tryAnswer(w, e.currentTarget) }, h('kbd', null, String(i + 1)), ` ${w}`)));
+      // Options a team already said (and missed) stay greyed out for the steal.
+      opts.forEach((w, i) => bank.append(h('button', { class: `btn bank-word${active.tried.has(w) ? ' wrong' : ''}`, type: 'button', disabled: active.tried.has(w), onclick: (e) => tryAnswer(w, e.currentTarget) }, h('kbd', null, String(i + 1)), ` ${w}`)));
+    }
+
+    function openTurn() {
+      if (!T || waitingLine === null || !active || T.isOpen()) return;
+      turnItem = active;
+      T.open({ onOutcome: onTurn });
+    }
+
+    function onTurn(o) {
+      const it = turnItem;
+      if (!it || it.status !== 'open') return;
+      if (!o.done) {
+        if (o.meta.word) { it.tried.add(o.meta.word); drawBank(); }
+        return;
+      }
+      turnItem = null;
+      if (o.outcome === 'right' || o.outcome === 'stolen') settle(it, 'right', Math.max(2, 10 - it.hints * 3));
+      else settle(it, 'revealed', 0);
+      // More gaps in this line: the next team's turn, after a moment.
+      if (waitingLine !== null && !lineDone(waitingLine)) {
+        setTimeout(() => { if (waitingLine !== null) { active = null; drawActive(); openTurn(); } }, 900);
+      }
     }
 
     function settle(it, status, points, answer = it.word) {
@@ -193,7 +223,7 @@ export async function start(ctx, forced = {}) {
         if (points) {
           const c = centerOf(box);
           floatEmoji(`+${points}`, c.x, c.y - 30, { size: 30 });
-          ctx.award(1);
+          if (!T) ctx.award(1); // in turns the banner gives the team its points
         }
       }
       updateProgress();
@@ -214,6 +244,13 @@ export async function start(ctx, forced = {}) {
 
     function tryAnswer(text, btn) {
       if (!active) return false;
+      if (T) {
+        if (waitingLine === null || !T.isOpen() || turnItem !== active) return false;
+        if (!T.ready()) { T.nudge(); return false; }
+        const ok = checkAnswer(text, active.word) === 'right';
+        T.mark(ok ? 'right' : 'wrong', { word: text });
+        return ok;
+      }
       const res = checkAnswer(text, active.word);
       if (res === 'right' || (res === 'close' && conf.input === 'type')) {
         const early = waitingLine === null;
@@ -272,6 +309,7 @@ export async function start(ctx, forced = {}) {
 
     function reveal() {
       if (!active) return;
+      if (T) { if (T.isOpen()) T.mark('reveal'); return; }
       sfx('wrong', { volume: 0.25 });
       settle(active, 'revealed', 0);
     }
@@ -280,6 +318,9 @@ export async function start(ctx, forced = {}) {
       const li = waitingLine !== null ? waitingLine : Math.max(0, view.index);
       const line = timeline.lines[li];
       if (!line) return;
+      // While the music waits at a line: play it again and wait there again.
+      const stop = waitingLine !== null ? stopsList.find((s) => s.line === waitingLine) : null;
+      if (stop) track.setBarrier(stop.at);
       track.seek(Math.max(0, line.start - 0.25));
       track.play();
       if (conf.input === 'type') input.focus();
@@ -292,6 +333,8 @@ export async function start(ctx, forced = {}) {
     });
     const runner = lineStops(track, stopsList, (stop) => new Promise((resolve) => {
       if (lineDone(stop.line)) { resolve(); return; }
+      // "Again" brings the music back to the same stop: the turn carries on.
+      const again = waitingLine === stop.line;
       waitingLine = stop.line;
       view.hold(stop.line);
       msg.textContent = conf.input === 'type' ? '⏸ Type the missing word! (R: again · Tab: hint)' : '⏸ Which word did you hear?';
@@ -300,8 +343,10 @@ export async function start(ctx, forced = {}) {
         view.release();
         resolve();
       };
+      if (again && T?.isOpen()) return;
       active = null;
       drawActive();
+      if (T) openTurn();
       if (conf.input === 'type') input.focus();
     }));
 
@@ -343,6 +388,7 @@ export async function start(ctx, forced = {}) {
       });
     });
 
+    if (T) T.idle();
     track.seek(0);
     track.play();
     if (conf.input === 'type') setTimeout(() => input.focus(), 50);

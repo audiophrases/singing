@@ -181,6 +181,30 @@ export function addPoints(teamId, points) {
   setTeams(teams, { bump: teamId, points });
 }
 
+// How teams answer (js/games/turns.js rulesOf): { mode, steal, think }.
+export function setTeamRules(patch) {
+  const teams = getTeams();
+  teams.rules = { ...(teams.rules || {}), ...patch };
+  setTeams(teams, { rules: true });
+}
+
+// Point the turn at a team (by its place in the list).
+export function setTurn(index) {
+  const teams = getTeams();
+  if (!teams.list.length) return;
+  teams.turn = ((index % teams.list.length) + teams.list.length) % teams.list.length;
+  setTeams(teams, { turn: teams.turn });
+}
+
+// A turn is over: count it for the team that had it, then hand the turn on.
+export function endTurn(teamId, turn) {
+  const teams = getTeams();
+  const t = teams.list.find((x) => x.id === teamId);
+  if (t) t.turns = (t.turns || 0) + 1;
+  if (teams.list.length && Number.isFinite(turn)) teams.turn = ((turn % teams.list.length) + teams.list.length) % teams.list.length;
+  setTeams(teams, { turn: teams.turn, ended: teamId });
+}
+
 export function nextTurn() {
   const teams = getTeams();
   if (!teams.list.length) return null;

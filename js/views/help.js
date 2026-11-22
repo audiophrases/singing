@@ -53,7 +53,10 @@ export async function render(el) {
       ...(teacher ? [
       h('h2', null, 'On the projector'),
       h('p', null, h('kbd', null, 'T'), ' teams · ', h('kbd', null, 'W'), ' show the winner · ', h('kbd', null, 'H'), ' hide the controls'),
-      h('p', null, 'Teams: click a team on the stage for +1 point, right-click for -1. Most games give points to the team whose turn it is.'),
+      h('p', null, 'Teams: click a team on the stage for +1 point, right-click for -1. Most games give points to the team whose turn it is (its chip glows), then the next team has a go.'),
+      h('p', null, 'Song quiz, Choose the word and Finish the line take turns: a banner says which team answers, the team says its answer aloud and you enter it. ',
+        h('kbd', null, '1'), '–', h('kbd', null, '4'), ' the option they said · ', h('kbd', null, 'Y'), ' right · ', h('kbd', null, 'N'), ' wrong · ', h('kbd', null, 'P'), ' pass (don\'t know) · ',
+        h('kbd', null, '↑'), ' ', h('kbd', null, '↓'), ' another team. Right on your own turn is 2 points; after a miss or a pass the next team can steal it for 1. Choose turns or first hand up on the game\'s start card.'),
       ] : []),
       h('h2', null, 'Settings'),
       h('label', null, 'Voice for words and lines'), voice,

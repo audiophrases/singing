@@ -1,12 +1,12 @@
 /*
  * Finish the line: the music stops just before the last words of a line.
- * Teams shout the ending; the teacher gives the point and the song itself
- * sings the answer when it carries on.
+ * The class (or, in teams, the team whose turn it is) says the ending; the
+ * teacher marks it and the song itself sings the answer when it carries on.
  */
 import { h, clear, shuffle, seeded } from '../ui.js';
-import { getTeams, addPoints } from '../store.js';
+import { getTeams } from '../store.js';
 import { lineStops, setupCard, choiceRow, lyricView } from './common.js';
-import { sfx, confetti } from '../sfx.js';
+import { sfx } from '../sfx.js';
 import { normWord } from '../lyrics/text.js';
 import { lessonOf, lessonStops } from '../lesson/pack.js';
 
@@ -14,17 +14,20 @@ export async function start(ctx) {
   const { track, timeline, main } = ctx;
   const packStops = lessonStops(timeline, lessonOf(ctx.song));
   const conf = { hide: 2, which: packStops.size ? 'pack' : 'some', timer: 10 };
+  // In teams the shared thinking time replaces this timer.
+  const timerRow = h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Timer'),
+    choiceRow([[0, 'None'], [5, '5 s'], [10, '10 s'], [15, '15 s']], conf.timer, (v) => { conf.timer = v; }));
   const card = setupCard({
     emoji: '🛑',
     title: 'Finish the line',
-    intro: 'The music stops before the end of a line. Who remembers how it goes? Shout it, then let the song tell you if you were right!',
+    intro: 'The music stops before the end of a line. Who remembers how it goes? Say it, then let the song tell you if you were right!',
     body: h('div', null,
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Hide'),
         choiceRow([[1, 'Last word'], [2, 'Last 2 words'], [3, 'Last 3 words'], [0, 'Half the line']], conf.hide, (v) => { conf.hide = v; })),
       h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Stop at'),
         choiceRow([...(packStops.size ? [['pack', `🧠 AI pack (${packStops.size})`]] : []), ['all', 'Every line'], ['some', 'Every other line'], ['few', '6 surprise lines']], conf.which, (v) => { conf.which = v; })),
-      h('div', { class: 'setup-row' }, h('span', { class: 'setup-label' }, 'Timer'),
-        choiceRow([[0, 'None'], [5, '5 s'], [10, '10 s'], [15, '15 s']], conf.timer, (v) => { conf.timer = v; })),
+      timerRow,
+      ctx.turns?.setup({ hide: [timerRow] }),
     ),
     onStart: () => { card.destroy(); begin(); },
   });
@@ -64,6 +67,9 @@ export async function start(ctx) {
     clear(main).append(h('div', { class: 'gf-wrap' }, view.el, timerBar, panel));
     ctx.setBottom(null);
 
+    // Teams: each stop is one team's turn; the teacher marks what it said
+    // (✓ Y / ✗ N / 🤷 P on the turn banner, js/views/turnbar.js).
+    const T = ctx.turns?.active ? ctx.turns : null;
     let resolveStop = null;
     let timerRaf = 0;
     const runTimer = (secs, onEnd) => {
@@ -84,17 +90,13 @@ export async function start(ctx) {
       timerRaf = requestAnimationFrame(step);
     };
 
-    const reveal = (winner) => {
+    // The stop is over (points, if any, are already given): the song sings the ending.
+    const reveal = () => {
       if (waitingFor === null) return;
       cancelAnimationFrame(timerRaf);
       timerBar.classList.add('hidden');
       const tg = targets.get(waitingFor);
       tg.revealed = true;
-      if (winner) {
-        addPoints(winner, 1);
-        sfx('correct', { volume: 0.6 });
-        confetti({ count: 70 });
-      }
       waitingFor = null;
       clear(panel);
       view.refresh();
@@ -105,17 +107,13 @@ export async function start(ctx) {
 
     const showPanel = () => {
       clear(panel);
-      const teams = getTeams();
       panel.append(h('div', { class: 'fin-q' }, targets.get(waitingFor)?.ask || '🤔 How does it end?'));
-      const row = h('div', { class: 'row', style: { justifyContent: 'center' } });
-      if (teams.on) {
-        row.append(h('span', { class: 'small', style: { marginRight: '.4rem' } }, 'Who got it?'));
-        for (const t of teams.list) row.append(h('button', { class: 'btn btn-lg team-btn', type: 'button', style: { '--team-hue': t.hue }, onclick: () => reveal(t.id) }, `${t.emoji} ${t.name}`));
-        row.append(h('button', { class: 'btn btn-lg', type: 'button', onclick: () => reveal(null) }, '🙈 Nobody'));
-      } else {
-        row.append(h('button', { class: 'btn primary btn-lg', type: 'button', onclick: () => reveal(null) }, '▶ Hear the answer (Enter)'));
+      if (T) {
+        panel.append(h('div', { class: 'small' }, 'Mark the answer on the banner above · Enter: hear the answer now'));
+        return;
       }
-      panel.append(row);
+      panel.append(h('div', { class: 'row', style: { justifyContent: 'center' } },
+        h('button', { class: 'btn primary btn-lg', type: 'button', onclick: () => reveal() }, '▶ Hear the answer (Enter)')));
     };
 
     const runner = lineStops(track, stops, (stop) => new Promise((resolve) => {
@@ -123,13 +121,20 @@ export async function start(ctx) {
       resolveStop = resolve;
       view.hold(stop.line);
       view.refresh();
-      sfx('pop', { volume: 0.5 });
       showPanel();
-      runTimer(conf.timer, () => { sfx('wrong', { volume: 0.4 }); });
+      if (T) {
+        T.open({ judge: true, onOutcome: (o) => { if (o.done) reveal(); } });
+      } else {
+        sfx('pop', { volume: 0.5 });
+        runTimer(conf.timer, () => { sfx('wrong', { volume: 0.4 }); });
+      }
     }).then(() => view.release()));
 
     ctx.onKey((e) => {
-      if (e.key === 'Enter' && waitingFor !== null) { reveal(null); return true; }
+      if (e.key === 'Enter' && waitingFor !== null) {
+        if (T && T.isOpen()) T.mark('reveal'); else reveal();
+        return true;
+      }
       return false;
     });
 
@@ -137,6 +142,7 @@ export async function start(ctx) {
     const loop = () => { view.tick(); raf = requestAnimationFrame(loop); };
     raf = requestAnimationFrame(loop);
     const offEnd = track.on('end', () => ctx.finish({ emoji: '🏁', title: 'Song finished!', text: getTeams().on ? 'See who won with W.' : 'You know this song!', stars: 3 }));
+    if (T) T.idle();
     track.seek(0);
     track.play();
     cleanup = () => { cancelAnimationFrame(raf); cancelAnimationFrame(timerRaf); runner.destroy(); offEnd(); };

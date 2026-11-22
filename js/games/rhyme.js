@@ -7,7 +7,7 @@ import { setupCard, choiceRow } from './common.js';
 import { rhymePairs, rhymes } from '../lyrics/rhymes.js';
 import { normWord } from '../lyrics/text.js';
 import { rhymeFamily } from '../lyrics/wordlists.js';
-import { getTeams, addPoints, setTeams } from '../store.js';
+import { getTeams, addPoints, endTurn } from '../store.js';
 import { sfx, confetti } from '../sfx.js';
 import { speak } from '../tts.js';
 import { lessonOf, orderSets, pickSet, readAloud, setLabel } from '../lesson/pack.js';
@@ -62,8 +62,6 @@ export async function start(ctx) {
       clear(main).append(h('div', { class: 'setup-card' }, h('h2', null, 'Not enough rhymes in this song'), h('a', { class: 'btn', href: `#/song/${encodeURIComponent(ctx.song.id)}` }, 'Back')));
       return;
     }
-    const teams = getTeams();
-    if (teams.on) { teams.showTurn = true; setTeams(teams); }
     const cards = shuffle(pairs.flatMap(([a, b], i) => [{ word: a, pair: i, side: 'a' }, { word: b, pair: i, side: 'b' }]), rnd);
     const grid = h('div', { class: 'rm-grid', style: { '--cols': cards.length > 12 ? 5 : 4 } });
     const status = h('div', { class: 'rm-status' });
@@ -112,11 +110,12 @@ export async function start(ctx) {
         a.el.classList.remove('up');
         b.el.classList.remove('up');
         busy = false;
+        // A miss ends the team's turn (a pair lets it go again).
         const t = getTeams();
-        if (t.on) { t.turn = ((t.turn || 0) + 1) % t.list.length; setTeams(t, { turn: t.turn }); }
+        if (t.on) { const turn = (t.turn || 0) % t.list.length; endTurn(t.list[turn].id, turn + 1); }
         turnText();
       }, 1300);
     }
-    cleanup = () => { const t = getTeams(); if (t.showTurn) { t.showTurn = false; setTeams(t); } };
+    cleanup = () => {};
   }
 }

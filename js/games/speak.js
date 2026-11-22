@@ -6,7 +6,7 @@ import { h, clear } from '../ui.js';
 import { setupCard, choiceRow } from './common.js';
 import { normWord } from '../lyrics/text.js';
 import { speak, stopSpeaking } from '../tts.js';
-import { getSettings, getTeams, addPoints } from '../store.js';
+import { getSettings } from '../store.js';
 import { sfx, confetti } from '../sfx.js';
 import { lessonOf, lessonSay } from '../lesson/pack.js';
 
@@ -119,8 +119,8 @@ export async function start(ctx) {
         const prev = results.get(idx) || 0;
         results.set(idx, Math.max(prev, pct));
         if (pct === 100) { sfx('correct', { volume: 0.5 }); confetti({ count: 60 }); } else if (pct < 50) sfx('wrong', { volume: 0.3 });
-        const t = getTeams();
-        if (t.on && pct >= 75 && prev < 75) addPoints(t.list[(t.turn || 0) % t.list.length].id, 1);
+        // In teams: the point goes to the team whose turn it is, then the next team speaks.
+        if (pct >= 75 && prev < 75) ctx.award(1);
       };
       rec.start();
     };
